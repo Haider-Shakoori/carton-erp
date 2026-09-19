@@ -1,0 +1,129 @@
+name: Temporary Carton ERP Smoke Test
+
+on:
+  push:
+    branches:
+      - qa/smoke-20260919
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_DATABASE: carton_erp_test
+          MYSQL_USER: laravel
+          MYSQL_PASSWORD: laravel
+          MYSQL_ROOT_PASSWORD: root
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup PHP 8.3
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, dom, fileinfo, mysql, pdo_mysql, sqlite3, pdo_sqlite, bcmath, intl, curl
+          coverage: none
+
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Tool versions
+        run: |
+          php -v
+          composer --version
+          node --version
+          npm --version
+
+      - name: Prepare environment
+        run: |
+          cp .env.example .env
+          {
+            echo "APP_ENV=testing"
+            echo "APP_DEBUG=true"
+            echo "APP_URL=http://127.0.0.1:8000"
+            echo "DB_CONNECTION=mysql"
+            echo "DB_HOST=127.0.0.1"
+            echo "DB_PORT=3306"
+            echo "DB_DATABASE=carton_erp_test"
+            echo "DB_USERNAME=laravel"
+            echo "DB_PASSWORD=laravel"
+            echo "CACHE_STORE=array"
+            echo "SESSION_DRIVER=array"
+            echo "QUEUE_CONNECTION=sync"
+            echo "MAIL_MAILER=array"
+          } >> .env
+
+      - name: Validate Composer metadata
+        run: composer validate --no-check-publish
+
+      - name: Install PHP dependencies
+        run: composer install --no-interaction --prefer-dist --no-progress
+
+      - name: Generate application key
+        run: php artisan key:generate --force
+
+      - name: Laravel boot smoke
+        run: |
+          php artisan about
+          php artisan route:list
+
+      - name: Cache smoke
+        run: |
+          php artisan config:clear
+          php artisan config:cache
+          php artisan config:clear
+          php artisan view:cache
+          php artisan view:clear
+
+      - name: PHP syntax lint
+        run: |
+          find app bootstrap config database routes tests -type f -name '*.php' -print0 | xargs -0 -n1 php -l
+
+      - name: Fresh MySQL migration
+        run: php artisan migrate:fresh --force --no-interaction
+
+      - name: Database seed smoke
+        run: php artisan db:seed --force --no-interaction
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Build frontend assets
+        run: npm run build
+
+      - name: HTTP smoke
+        run: |
+          php artisan serve --host=127.0.0.1 --port=8000 > /tmp/carton-erp-server.log 2>&1 &
+          SERVER_PID=$!
+          sleep 4
+          ROOT_CODE=$(curl -sS -o /tmp/root.html -w "%{http_code}" http://127.0.0.1:8000/)
+          LOGIN_CODE=$(curl -sS -o /tmp/login.html -w "%{http_code}" http://127.0.0.1:8000/login)
+          echo "Root HTTP status: $ROOT_CODE"
+          echo "Login HTTP status: $LOGIN_CODE"
+          cat /tmp/carton-erp-server.log || true
+          kill $SERVER_PID || true
+          test "$ROOT_CODE" -lt 500
+          test "$LOGIN_CODE" -eq 200
+
+      - name: Automated test suite
+        run: php artisan test
