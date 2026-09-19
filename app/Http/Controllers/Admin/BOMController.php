@@ -710,32 +710,34 @@ class BOMController extends Controller
      */
     private function calculateRollWeight($itemData, $formulaType, $quantity)
     {
-        $rollWeight = 0;
-
         if ($formulaType === 'carton_3d') {
-            $length = floatval($itemData['length_inch'] ?? 0);
-            $width = floatval($itemData['width_inch'] ?? 0);
-            $height = floatval($itemData['height_inch'] ?? 0);
-            $gsm = floatval($itemData['paper_gsm'] ?? 0);
+            $length = (float) ($itemData['length_inch'] ?? 0);
+            $width = (float) ($itemData['width_inch'] ?? 0);
+            $height = (float) ($itemData['height_inch'] ?? 0);
+            $gsm = (float) ($itemData['paper_gsm'] ?? 0);
+            $layers = max((float) ($itemData['multiplication_layer'] ?? $itemData['layers'] ?? 1), 1);
 
             if ($length > 0 && $width > 0 && $height > 0 && $gsm > 0) {
                 $reelLength = (($length + $width) * 2) + 4;
                 $reelHeight = $width + $height + 1;
-                $rollWeight = $quantity * ($reelLength * $reelHeight * $gsm) / 1000;
-            }
-        } elseif ($formulaType === 'cut_roll') {
-            $cutLength = floatval($itemData['cut_length_inch'] ?? 0);
-            $cutWidth = floatval($itemData['cut_width_inch'] ?? 0);
-            $grh = floatval($itemData['grh'] ?? 0);
 
-            if ($cutLength > 0 && $cutWidth > 0 && $grh > 0) {
-                $rollWeight = $quantity * ($cutLength * $cutWidth * $grh) / 1000;
+                return $reelLength * $reelHeight * 0.00064516 * $gsm / 1000 * $layers;
             }
-        } else {
-            $rollWeight = $quantity;
         }
 
-        return $rollWeight;
+        if ($formulaType === 'cut_roll') {
+            $cutLength = (float) ($itemData['cut_length_inch'] ?? 0);
+            $cutWidth = (float) ($itemData['cut_width_inch'] ?? 0);
+            $grh = (float) ($itemData['grh'] ?? 0);
+            $ply = max((float) ($itemData['ply'] ?? 1), 1);
+            $layers = max((float) ($itemData['multiplication_layer'] ?? 1), 1);
+
+            if ($cutLength > 0 && $cutWidth > 0 && $grh > 0) {
+                return $cutLength * $cutWidth * 0.00064516 * $grh / 1000 * $ply * $layers;
+            }
+        }
+
+        return (float) $quantity;
     }
 
     /**
