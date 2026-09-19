@@ -88,6 +88,7 @@ jobs:
           php -l app/Models/BOMItem.php
           php -l app/Models/SaleItem.php
           php -l app/Services/BOMCostingService.php
+          php -l app/Services/SaleProfitService.php
           php -l app/Http/Controllers/Admin/PurchaseExpenseController.php
           php -l app/Http/Controllers/Admin/BOMController.php
           php -l app/Http/Controllers/Admin/SaleController.php
