@@ -1600,57 +1600,20 @@ class SaleController extends Controller
      */
     private function latestInventoryCostForMaterial(int $materialId, float $fallbackRate = 85): array
     {
-        $purchaseItem = PurchaseItem::query()
-            ->where('product_id', $materialId)
-            ->where('qty_available', '>', 0)
-            ->whereHas('purchase', function ($query) {
-                $query->where('status', 'arrived');
-            })
-            ->with(['purchase.currency', 'purchase.supplier'])
-            ->latest('id')
-            ->first();
-
-        if (!$purchaseItem) {
-            return [
-                'found' => false,
-                'purchase_item_id' => null,
-                'cost_usd' => 0.0,
-                'cost_afn' => 0.0,
-                'unit' => null,
-                'purchase_date' => null,
-                'supplier_name' => null,
-                'batch_no' => null,
-                'available_qty' => 0.0,
-                'exchange_rate' => $fallbackRate,
-            ];
-        }
-
-        $costUsd = (float) ($purchaseItem->usd_cost_per_item ?? 0);
-        if ($costUsd <= 0 && (float) ($purchaseItem->qty ?? 0) > 0) {
-            $costUsd = (float) ($purchaseItem->usd_total ?? 0) / (float) $purchaseItem->qty;
-        }
-
-        $rate = (float) ($purchaseItem->rate ?? $fallbackRate);
-        if ($rate <= 0) {
-            $rate = $fallbackRate > 0 ? $fallbackRate : 85;
-        }
-
-        $purchaseDate = optional($purchaseItem->purchase)->purchase_date
-            ?? $purchaseItem->created_at;
+        $cost = app(\App\Services\BOMCostingService::class)
+            ->latestInventoryCost($materialId, $fallbackRate, true);
 
         return [
-            'found' => $costUsd > 0,
-            'purchase_item_id' => $purchaseItem->id,
-            'cost_usd' => $costUsd,
-            'cost_afn' => $costUsd * $rate,
-            'unit' => $purchaseItem->unit ?? null,
-            'purchase_date' => $purchaseDate
-                ? date('Y-m-d', strtotime($purchaseDate))
-                : null,
-            'supplier_name' => optional(optional($purchaseItem->purchase)->supplier)->name,
-            'batch_no' => $purchaseItem->batch_no ?? null,
-            'available_qty' => (float) ($purchaseItem->qty_available ?? 0),
-            'exchange_rate' => $rate,
+            'found' => (bool) $cost['found'],
+            'purchase_item_id' => $cost['purchase_item_id'],
+            'cost_usd' => (float) $cost['cost_usd'],
+            'cost_afn' => (float) $cost['cost_afn'],
+            'unit' => $cost['basis_unit'],
+            'purchase_date' => $cost['purchase_date'],
+            'supplier_name' => null,
+            'batch_no' => $cost['batch_no'],
+            'available_qty' => (float) $cost['available_quantity'],
+            'exchange_rate' => $fallbackRate,
         ];
     }
 
@@ -1669,28 +1632,12 @@ class SaleController extends Controller
      */
     private function latestPurchaseRateKgForMaterial(int $materialId): float
     {
-        $purchaseItem = PurchaseItem::query()
-            ->where('product_id', $materialId)
-            ->whereHas('purchase', function ($query) {
-                $query->where('status', 'arrived');
-            })
-            ->with('purchase')
-            ->get()
-            ->sortByDesc(function ($item) {
-                $purchase = $item->purchase;
-                $date = optional($purchase)->arrival_date
-                    ?? optional($purchase)->purchase_date
-                    ?? $item->created_at;
+        $cost = app(\App\Services\BOMCostingService::class)
+            ->latestInventoryCost($materialId, 85, false);
 
-                return [$date ? $date->getTimestamp() : 0, (int) $item->id];
-            })
-            ->first();
-
-        if (!$purchaseItem) {
-            return 0.0;
-        }
-
-        return (float) $purchaseItem->landedCostPerKg();
+        return $cost['basis_unit'] === 'kg'
+            ? (float) $cost['cost_usd']
+            : 0.0;
     }
 
     /**
