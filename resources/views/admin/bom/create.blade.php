@@ -483,38 +483,56 @@
                     <!-- Sidebar Cost Summary -->
                     <div class="form-section">
                         <div class="section-title">
-                            <i class="bi bi-calculator"></i> Cost Summary
+                            <i class="bi bi-calculator"></i> BOM Cost & Price Summary
                         </div>
                         <div id="costSummary" style="display: none;">
                             <div class="cost-summary-card">
-                                <div class="row g-2">
+                                <div class="row g-3">
                                     <div class="col-6">
-                                        <div class="cost-label">{{ __('ui.material_cost') }}</div>
-                                        <div class="cost-value material" id="summaryMaterialCostUsd">$0.00</div>
-                                        <div class="cost-value material" id="summaryMaterialCostAfn" style="color: #8b5cf6;">؋0.00</div>
+                                        <div class="cost-label">Base Material</div>
+                                        <div class="cost-value material" id="summaryBaseMaterialCostAfn">؋0.00</div>
+                                        <small class="text-muted">Before wastage</small>
                                     </div>
                                     <div class="col-6">
-                                        <div class="cost-label">Work Cost (<span id="workPercentDisplay">40</span>%)</div>
-                                        <div class="cost-value labor" id="summaryWorkCostAfn" style="color: #7c3aed;">؋0.00</div>
+                                        <div class="cost-label">Wastage Cost</div>
+                                        <div class="cost-value" id="summaryWastageCostAfn">؋0.00</div>
+                                        <small class="text-muted">Production cost only</small>
                                     </div>
                                     <div class="col-6">
-                                        <div class="cost-label">{{ __('ui.exchange_rate') }}</div>
-                                        <div class="cost-value" style="color: #8b5cf6;" id="summaryExchangeRate">1 USD = 85 AFN</div>
+                                        <div class="cost-label">Physical Material Cost</div>
+                                        <div class="cost-value material" id="summaryMaterialCostAfn">؋0.00</div>
+                                        <small class="text-muted">Includes wastage</small>
                                     </div>
                                     <div class="col-6">
-                                        <div class="cost-label">{{ __('ui.profit_margin') }}</div>
-                                        <div class="cost-value" style="color: #10b981;" id="summaryProfitMargin">0%</div>
+                                        <div class="cost-label">Standard Work / Profit</div>
+                                        <div class="cost-value" id="summaryWorkCostAfn" style="color:#7c3aed;">؋0.00</div>
+                                        <small class="text-muted">Commercial only</small>
+                                    </div>
+                                    <div class="col-6">
+                                        <div class="cost-label">Print Cost</div>
+                                        <div class="cost-value" id="summaryPrintCostAfn">؋0.00</div>
+                                    </div>
+                                    <div class="col-6">
+                                        <div class="cost-label">Additional Markup</div>
+                                        <div class="cost-value" id="summaryMarkupAfn">؋0.00</div>
+                                        <small class="text-muted"><span id="summaryProfitMargin">0%</span></small>
                                     </div>
                                 </div>
                                 <div class="cost-summary-divider"></div>
                                 <div class="row g-2">
-                                    <div class="col-6">
-                                        <div class="cost-label">Net Rate / Unit</div>
-                                        <div class="cost-value total" id="summaryTotalCost">؋0.00</div>
+                                    <div class="col-12">
+                                        <div class="cost-label">Commercial Base Rate</div>
+                                        <div class="cost-value total" id="summaryCommercialBase">؋0.00</div>
                                     </div>
-                                    <div class="col-6">
-                                        <div class="cost-label">{{ __('ui.selling_price_per_unit') }}</div>
+                                    <div class="col-12">
+                                        <div class="cost-label">Final Selling Price / Unit</div>
                                         <div class="cost-value selling" id="summarySellingPrice">؋0.00</div>
+                                    </div>
+                                    <div class="col-12">
+                                        <div class="d-flex justify-content-between text-muted small mt-1">
+                                            <span id="summaryMaterialCostUsd">$0.00 physical material</span>
+                                            <span id="summaryExchangeRate">1 USD = 85 AFN</span>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
