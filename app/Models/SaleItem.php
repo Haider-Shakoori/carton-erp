@@ -230,24 +230,19 @@ class SaleItem extends Model
         $qty = $this->qty ?? 1;
         $totalCostUsd = 0;
 
-        // Calculate material costs from BOM items
+        // Physical material cost only. Standard work/profit is commercial
+        // markup and is intentionally not injected into production COGS.
         foreach ($bom->items as $item) {
-            $requiredQty = (float) $item->quantity * (1 + ((float) ($item->wastage_percentage ?? 0) / 100));
+            $requiredQty = $item->calculateStockRequirement((float) $qty, true);
             $costPerUnitUsd = (float) ($item->cost_per_unit_usd ?? 0);
 
-            // If cost is 0, try to get from inventory
             if ($costPerUnitUsd <= 0) {
                 $inventory = $this->getLatestInventoryCost((int) $item->material_id, $exchangeRate);
                 $costPerUnitUsd = $inventory['cost_usd'] ?? 0;
             }
 
-            $totalCostUsd += $requiredQty * $costPerUnitUsd * $qty;
+            $totalCostUsd += $requiredQty * $costPerUnitUsd;
         }
-
-        // Add labor and overhead
-        $laborCostUsd = ((float) ($bom->labor_cost_per_unit ?? 0)) / $exchangeRate * $qty;
-        $overheadCostUsd = ((float) ($bom->overhead_cost_per_unit ?? 0)) / $exchangeRate * $qty;
-        $totalCostUsd += $laborCostUsd + $overheadCostUsd;
 
         // Update the sale item
         $this->total_cost_usd = $totalCostUsd;
@@ -261,32 +256,14 @@ class SaleItem extends Model
 
     private function getLatestInventoryCost(int $materialId, float $exchangeRate = 85): array
     {
-        $purchaseItem = PurchaseItem::query()
-            ->where('product_id', $materialId)
-            ->where('qty_available', '>', 0)
-            ->whereHas('purchase', function ($query) {
-                $query->where('status', 'arrived');
-            })
-            ->latest('id')
-            ->first();
-
-        if (!$purchaseItem) {
-            return [
-                'found' => false,
-                'cost_usd' => 0.0,
-                'cost_afn' => 0.0,
-            ];
-        }
-
-        $costUsd = (float) ($purchaseItem->usd_cost_per_item ?? 0);
-        if ($costUsd <= 0 && (float) ($purchaseItem->qty ?? 0) > 0) {
-            $costUsd = (float) ($purchaseItem->usd_total ?? 0) / (float) $purchaseItem->qty;
-        }
+        $cost = app(\App\Services\BOMCostingService::class)
+            ->latestInventoryCost($materialId, $exchangeRate, true);
 
         return [
-            'found' => $costUsd > 0,
-            'cost_usd' => $costUsd,
-            'cost_afn' => $costUsd * $exchangeRate,
+            'found' => (bool) $cost['found'],
+            'cost_usd' => (float) $cost['cost_usd'],
+            'cost_afn' => (float) $cost['cost_afn'],
         ];
     }
+
 }
