@@ -520,6 +520,7 @@ it('reconciles actual FIFO production cost and profit after completion', functio
     $sale->refresh();
 
     $summary = app(\App\Services\SaleProfitService::class)->calculate($sale);
+    $bomSummary = app(\App\Services\BOMCostingService::class)->summarize($bom);
     $consumedUsd = (float) DB::table('production_material_consumptions')
         ->where('production_order_id', $production->id)
         ->sum('total_cost_usd');
@@ -527,6 +528,10 @@ it('reconciles actual FIFO production cost and profit after completion', functio
     expect($summary['actual_available'])->toBeTrue()
         ->and(abs((float) $summary['actual_material_cost_usd'] - $consumedUsd))->toBeLessThan(0.01)
         ->and(abs((float) $summary['actual_production_cost_usd'] - $consumedUsd))->toBeLessThan(0.01)
+        ->and(abs(
+            (float) $summary['standard_work_profit_afn']
+            - ((float) $bomSummary['standard_work_profit_afn'] * 100)
+        ))->toBeLessThan(0.01)
         ->and(abs(
             (float) $summary['actual_profit_afn']
             - ((float) $summary['gross_sales_afn'] - (float) $summary['actual_production_cost_afn'])
