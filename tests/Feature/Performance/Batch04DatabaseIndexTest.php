@@ -13,16 +13,11 @@ use Illuminate\Support\Facades\DB;
 
 function batch04Indexes(string $table): array
 {
-    return collect(DB::select("PRAGMA index_list('{$table}')"))
-        ->mapWithKeys(function ($index) {
-            $columns = collect(DB::select("PRAGMA index_info('{$index->name}')"))
-                ->sortBy('seqno')
-                ->pluck('name')
-                ->values()
-                ->all();
-
-            return [$index->name => $columns];
-        })
+    return collect(\Illuminate\Support\Facades\Schema::getIndexes($table))
+        ->filter(fn (array $index) => !empty($index['name']))
+        ->mapWithKeys(fn (array $index) => [
+            $index['name'] => array_values($index['columns'] ?? []),
+        ])
         ->all();
 }
 
