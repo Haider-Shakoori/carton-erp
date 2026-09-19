@@ -289,188 +289,134 @@ class BOMController extends Controller
     public function getMaterialCost($materialId)
     {
         try {
-            Log::info('getMaterialCost called', ['material_id' => $materialId]);
-
-            if (!$materialId) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Material ID is required'
-                ], 422);
-            }
-
-            // Find the material with category
             $material = Product::with('category')->find($materialId);
 
-            if (!$material) {
+            if (! $material) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Material not found'
+                    'message' => 'Material not found',
                 ], 404);
             }
 
-            // Check if it's a raw material
-            if (!$material->isRawMaterial()) {
+            if (! $material->isRawMaterial()) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'This product is not a raw material'
+                    'message' => 'This product is not a raw material',
                 ], 422);
             }
 
-            // ─── GET ALL PURCHASE ITEMS WITH COST AND CURRENCY ───
-            $purchaseItems = PurchaseItem::where('product_id', $materialId)
-                ->where('qty_available', '>', 0)
-                ->whereHas('purchase', function($q) {
-                    $q->where('status', 'arrived');
+            $exchangeRate = $this->getDefaultExchangeRate();
+            $costing = app(\App\Services\BOMCostingService::class);
+
+            $purchaseItems = PurchaseItem::query()
+                ->where('product_id', $material->id)
+                ->whereHas('purchase', fn ($q) => $q->where('status', 'arrived'))
+                ->with(['purchase.currency'])
+                ->get()
+                ->filter(fn (PurchaseItem $item) => $item->availableInventoryQuantity() > 0)
+                ->sortByDesc(function (PurchaseItem $item) {
+                    $date = $item->purchase?->arrival_date
+                        ?? $item->purchase?->purchase_date
+                        ?? $item->created_at;
+
+                    return sprintf(
+                        '%010d-%020d',
+                        $date ? $date->getTimestamp() : 0,
+                        (int) $item->id
+                    );
                 })
-                ->with(['purchase', 'purchase.currency'])
-                ->orderBy('created_at', 'desc')  // ✅ Latest first
-                ->get();
+                ->values();
 
-            // ─── DETERMINE PURCHASE CURRENCY ───
-            $purchaseCurrency = 'AFN';
-            $currencyCode = 'AFN';
+            $latest = $costing->latestInventoryCost((int) $material->id, $exchangeRate, true);
+            $latestCostUsd = (float) ($latest['cost_usd'] ?? 0);
+            $latestCostAfn = (float) ($latest['cost_afn'] ?? 0);
+            $basisUnit = $latest['basis_unit']
+                ?? ($material->is_roll_based ? 'kg' : ($material->unit ?: 'unit'));
 
-            if ($purchaseItems->isNotEmpty()) {
-                $firstItem = $purchaseItems->first();
-                if ($firstItem->purchase && $firstItem->purchase->currency) {
-                    $purchaseCurrency = $firstItem->purchase->currency->code;
-                    $currencyCode = $firstItem->purchase->currency->code;
-                }
-            }
-
-            // ─── GET EXCHANGE RATE ───
-            $afnCurrency = Currency::where('code', 'AFN')->first();
-            $usdCurrency = Currency::where('code', 'USD')->first();
-
-            $exchangeRate = 1;
-            if ($afnCurrency && $usdCurrency && $usdCurrency->exchange_rate > 0) {
-                $exchangeRate = $afnCurrency->exchange_rate / $usdCurrency->exchange_rate;
-            } else {
-                $exchangeRate = 85;
-            }
-
-            // ─── GET LATEST BATCH (FIFO - Latest first) ───
-            $latestBatch = $purchaseItems->first();
-            $latestCost = 0;
-            $latestCostUsd = 0;
-            $latestCostAfn = 0;
             $batchDetails = [];
+            $totalCostUsd = 0.0;
+            $totalBasisQty = 0.0;
 
             foreach ($purchaseItems as $item) {
-                // Use cost_per_unit if set, otherwise use usd_unit_price
-                $costPerUnit = $item->cost_per_unit ?? $item->usd_unit_price ?? 0;
+                $basisQty = $item->availableInventoryQuantity();
+                $costUsd = $item->landedCostPerInventoryUnitUsd();
 
-                // If still 0, calculate from unit_price and rate
-                if ($costPerUnit == 0 && $item->unit_price > 0 && $item->rate > 0) {
-                    $costPerUnit = $item->unit_price / $item->rate;
-                }
-
-                $batchTotal = $item->qty_available * $costPerUnit;
+                $totalBasisQty += $basisQty;
+                $totalCostUsd += $basisQty * $costUsd;
 
                 $batchDetails[] = [
                     'id' => $item->id,
                     'batch_no' => $item->batch_no ?? 'N/A',
-                    'purchase_no' => $item->purchase->purchase_no ?? 'N/A',
-                    'purchase_date' => $item->purchase->purchase_date ?? $item->created_at,
-                    'qty_available' => $item->qty_available,
-                    'cost_per_unit' => $costPerUnit,
-                    'total_cost' => $batchTotal,
-                    'currency' => $item->purchase->currency->code ?? 'USD',
-                    'is_latest' => $item->id === ($latestBatch ? $latestBatch->id : null),
+                    'purchase_no' => $item->purchase?->purchase_no ?? 'N/A',
+                    'purchase_date' => $item->purchase?->arrival_date
+                        ?? $item->purchase?->purchase_date
+                        ?? $item->created_at,
+                    'qty_available' => $basisQty,
+                    'stock_qty_available' => (float) ($item->qty_available ?? 0),
+                    'cost_basis_unit' => $item->inventoryCostBasisUnit(),
+                    'cost_per_unit' => $costUsd,
+                    'cost_per_unit_usd' => $costUsd,
+                    'cost_per_unit_afn' => $costUsd * $exchangeRate,
+                    'total_cost' => $basisQty * $costUsd,
+                    'currency' => 'USD',
+                    'purchase_currency' => $item->purchase?->currency?->code ?? 'USD',
+                    'is_latest' => (int) $item->id === (int) ($latest['purchase_item_id'] ?? 0),
                 ];
             }
 
-            // ─── GET LATEST COST (from the most recent batch) ───
-            if ($latestBatch) {
-                $latestCost = $latestBatch->cost_per_unit ?? $latestBatch->usd_unit_price ?? 0;
-                if ($latestCost == 0 && $latestBatch->unit_price > 0 && $latestBatch->rate > 0) {
-                    $latestCost = $latestBatch->unit_price / $latestBatch->rate;
-                }
+            $weightedAvgCost = $totalBasisQty > 0
+                ? $totalCostUsd / $totalBasisQty
+                : 0.0;
 
-                // Convert based on currency
-                if ($purchaseCurrency === 'USD') {
-                    $latestCostUsd = $latestCost;
-                    $latestCostAfn = $latestCost * $exchangeRate;
-                } else {
-                    $latestCostAfn = $latestCost;
-                    $latestCostUsd = $latestCost / $exchangeRate;
-                }
-            }
-
-            // ─── CALCULATE WEIGHTED AVERAGE (for reference only) ───
-            $totalCost = 0;
-            $totalQty = 0;
-            foreach ($purchaseItems as $item) {
-                $costPerUnit = $item->cost_per_unit ?? $item->usd_unit_price ?? 0;
-                if ($costPerUnit == 0 && $item->unit_price > 0 && $item->rate > 0) {
-                    $costPerUnit = $item->unit_price / $item->rate;
-                }
-                $totalCost += $item->qty_available * $costPerUnit;
-                $totalQty += $item->qty_available;
-            }
-            $weightedAvgCost = $totalQty > 0 ? $totalCost / $totalQty : 0;
-
-            $batchBreakdown = [
-                'batches' => $batchDetails,
-                'total_qty' => $totalQty,
-                'total_cost' => $totalCost,
-                'weighted_avg' => $weightedAvgCost,
-                'latest_cost' => $latestCost,
-                'latest_cost_usd' => $latestCostUsd,
-                'latest_cost_afn' => $latestCostAfn,
-                'purchase_currency' => $purchaseCurrency,
-            ];
-
-            // Get current stock
-            $currentStock = $material->current_stock ?? 0;
-
-            // Get system currency
-            $setting = Setting::first();
-            $currencySymbol = $setting->currency ?? '؋';
-
-            Log::info('getMaterialCost result', [
-                'material_id' => $materialId,
-                'purchase_currency' => $purchaseCurrency,
-                'latest_cost' => $latestCost,
-                'latest_cost_usd' => $latestCostUsd,
-                'latest_cost_afn' => $latestCostAfn,
-                'weighted_avg_cost' => $weightedAvgCost,
-                'exchange_rate' => $exchangeRate,
-                'total_qty' => $totalQty,
-                'batches' => count($batchDetails),
-                'latest_batch_id' => $latestBatch ? $latestBatch->id : null,
-            ]);
+            $purchaseCurrency = $latest['purchase_currency'] ?? 'AFN';
+            $currencySymbol = Setting::first()?->currency ?? '؋';
 
             return response()->json([
                 'success' => true,
                 'data' => [
                     'id' => $material->id,
                     'name' => $material->name,
-                    'unit' => $material->unit,
-                    'current_stock' => $currentStock,
-                    'latest_cost' => $latestCost,
+                    'unit' => $basisUnit,
+                    'stock_unit' => $material->unit,
+                    'cost_basis_unit' => $basisUnit,
+                    'current_stock' => $material->is_roll_based
+                        ? (float) $material->current_stock_kg
+                        : (float) $material->current_stock,
+                    'latest_cost' => $latestCostUsd,
                     'latest_cost_usd' => $latestCostUsd,
                     'latest_cost_afn' => $latestCostAfn,
                     'weighted_avg_cost' => $weightedAvgCost,
                     'purchase_currency' => $purchaseCurrency,
+                    'purchase_currency_id' => $latest['purchase_currency_id'] ?? null,
                     'exchange_rate' => $exchangeRate,
-                    'batch_breakdown' => $batchBreakdown,
-                    'suggested_cost' => $latestCost > 0 ? $latestCost : ($weightedAvgCost > 0 ? $weightedAvgCost : 0),
-                    'category' => $material->category ? $material->category->name : 'Uncategorized',
+                    'batch_breakdown' => [
+                        'batches' => $batchDetails,
+                        'total_qty' => $totalBasisQty,
+                        'total_cost' => $totalCostUsd,
+                        'weighted_avg' => $weightedAvgCost,
+                        'latest_cost' => $latestCostUsd,
+                        'latest_cost_usd' => $latestCostUsd,
+                        'latest_cost_afn' => $latestCostAfn,
+                        'purchase_currency' => $purchaseCurrency,
+                        'cost_basis_unit' => $basisUnit,
+                    ],
+                    'suggested_cost' => $latestCostUsd > 0 ? $latestCostUsd : $weightedAvgCost,
+                    'category' => $material->category?->name ?? 'Uncategorized',
                     'currency_symbol' => $currencySymbol,
-                    'latest_batch_date' => $latestBatch ? ($latestBatch->purchase->purchase_date ?? $latestBatch->created_at) : null,
-                ]
+                    'latest_batch_date' => $latest['purchase_date'] ?? null,
+                    'latest_batch_no' => $latest['batch_no'] ?? null,
+                ],
             ]);
-
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             Log::error('Error in getMaterialCost', [
+                'material_id' => $materialId,
                 'message' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
+                'trace' => $e->getTraceAsString(),
             ]);
 
             return response()->json([
                 'success' => false,
-                'message' => 'Error fetching material cost: ' . $e->getMessage()
+                'message' => 'Error fetching material cost: ' . $e->getMessage(),
             ], 500);
         }
     }
