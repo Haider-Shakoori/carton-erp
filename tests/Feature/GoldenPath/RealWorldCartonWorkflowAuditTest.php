@@ -566,7 +566,45 @@ it('continues real imported stock through sale confirmation, production creation
 
     expect($production->status)->toBe('completed')
         ->and((float) $production->quantity_produced)->toBe((float) $production->quantity_ordered)
-        ->and($sale->is_produced)->toBeTrue();
+        ->and((bool) $sale->is_produced)->toBeTrue();
+});
+
+it('reconciles actual FIFO production cost and profit after completion', function () {
+    $fx = rwCreatePurchaseFlow();
+    $bom = rwCreateOperationalBom($fx);
+    $sale = rwCreateSaleWithBom($fx, $bom, 'SO-RW-PROFIT-001');
+
+    $confirm = (new SaleController())->confirmSale(
+        rwRequest('/admin/sales/'.$sale->id.'/confirm', 'POST', [
+            'discount_amount' => 0,
+            'advance_payment' => 0,
+            'start_production' => 1,
+        ]),
+        $sale->id
+    );
+    expect($confirm->getData(true)['success'])->toBeTrue();
+
+    $sale->refresh();
+    $production = $sale->productionOrder()->firstOrFail();
+
+    $start = (new ProductionOrderController())->startProduction($production);
+    expect($start->getSession()->get('success'))->not->toBeNull();
+
+    (new ProductionOrderController())->completeProduction($production);
+    $sale->refresh();
+
+    $summary = app(\App\Services\SaleProfitService::class)->calculate($sale);
+    $consumedUsd = (float) DB::table('production_material_consumptions')
+        ->where('production_order_id', $production->id)
+        ->sum('total_cost_usd');
+
+    expect($summary['actual_available'])->toBeTrue()
+        ->and(abs((float) $summary['actual_material_cost_usd'] - $consumedUsd))->toBeLessThan(0.01)
+        ->and(abs((float) $summary['actual_production_cost_usd'] - $consumedUsd))->toBeLessThan(0.01)
+        ->and(abs(
+            (float) $summary['actual_profit_afn']
+            - ((float) $summary['gross_sales_afn'] - (float) $summary['actual_production_cost_afn'])
+        ))->toBeLessThan(0.01);
 });
 
 it('applies a linked customer payment to the exact confirmed sale and reduces its due balance', function () {
