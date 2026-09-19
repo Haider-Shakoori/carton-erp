@@ -13,16 +13,11 @@ use Illuminate\Support\Facades\DB;
 
 function batch04Indexes(string $table): array
 {
-    return collect(DB::select("PRAGMA index_list('{$table}')"))
-        ->mapWithKeys(function ($index) {
-            $columns = collect(DB::select("PRAGMA index_info('{$index->name}')"))
-                ->sortBy('seqno')
-                ->pluck('name')
-                ->values()
-                ->all();
-
-            return [$index->name => $columns];
-        })
+    return collect(\Illuminate\Support\Facades\Schema::getIndexes($table))
+        ->filter(fn (array $index) => !empty($index['name']))
+        ->mapWithKeys(fn (array $index) => [
+            $index['name'] => array_values($index['columns'] ?? []),
+        ])
         ->all();
 }
 
@@ -171,19 +166,21 @@ it('preserves representative writes and relationships on indexed and related cor
         ->and($consumption->purchaseItem->is($purchaseItem))->toBeTrue();
 });
 
-it('removes only Batch 04 indexes in down and can apply them again without duplicates', function () {
+it('removes Batch 04 indexes safely and can apply them again without duplicates', function () {
     $migration = require database_path(
         'migrations/2026_07_30_120000_add_performance_indexes_batch_04.php'
     );
+
     $batch04 = [
         'sales' => ['sales_cust_stat_date_idx'],
         'transactions' => ['txn_account_curr_stat_date_idx', 'txn_reference_idx'],
         'exchanges' => ['exchange_report_idx'],
         'remittances' => ['remittance_report_idx'],
     ];
-    $expectedAfterDown = [];
+
+    $nonBatchBefore = [];
     foreach ($batch04 as $table => $names) {
-        $expectedAfterDown[$table] = array_diff_key(
+        $nonBatchBefore[$table] = array_diff_key(
             batch04Indexes($table),
             array_flip($names)
         );
@@ -193,11 +190,23 @@ it('removes only Batch 04 indexes in down and can apply them again without dupli
 
     foreach ($batch04 as $table => $names) {
         $indexes = batch04Indexes($table);
+
         foreach ($names as $name) {
             expect($indexes)->not->toHaveKey($name);
         }
-        expect($indexes)->toBe($expectedAfterDown[$table]);
+
+        // Rollback must preserve every pre-existing index. MySQL is allowed to
+        // need an additional narrow FK-support index before a wider composite
+        // report index can be removed.
+        foreach ($nonBatchBefore[$table] as $name => $columns) {
+            expect($indexes)->toHaveKey($name)
+                ->and($indexes[$name])->toBe($columns);
+        }
     }
+
+    // Foreign keys remain valid and writable after rollback.
+    $fixture = batch04Fixture();
+    expect($fixture['account']->exists)->toBeTrue();
 
     $migration->up();
 
@@ -205,7 +214,9 @@ it('removes only Batch 04 indexes in down and can apply them again without dupli
         $indexes = batch04Indexes($table);
         foreach ($names as $name) {
             expect($indexes)->toHaveKey($name)
-                ->and(collect(array_keys($indexes))->filter(fn ($index) => $index === $name))->toHaveCount(1);
+                ->and(collect(array_keys($indexes))->filter(
+                    fn ($index) => $index === $name
+                ))->toHaveCount(1);
         }
     }
 });

@@ -203,6 +203,51 @@ class PurchaseItem extends Model
         return $totalCostUsd / $totalKg;
     }
 
+    /**
+     * Inventory cost basis used by production/BOM costing.
+     *
+     * Roll batches are consumed in kilograms, so their authoritative landed
+     * cost is USD/kg. Other batches are consumed in their native purchase unit.
+     */
+    public function inventoryCostBasisUnit(): string
+    {
+        return $this->isRollBatch()
+            ? 'kg'
+            : (strtolower((string) ($this->unit ?? '')) ?: 'unit');
+    }
+
+    /**
+     * Remaining quantity in the same unit as inventoryCostBasisUnit().
+     */
+    public function availableInventoryQuantity(): float
+    {
+        return $this->isRollBatch()
+            ? $this->availableKg()
+            : max((float) ($this->qty_available ?? 0), 0);
+    }
+
+    /**
+     * Landed USD cost in the inventory consumption unit.
+     */
+    public function landedCostPerInventoryUnitUsd(): float
+    {
+        if ($this->isRollBatch()) {
+            return $this->landedCostPerKg();
+        }
+
+        $landed = (float) ($this->usd_cost_per_item ?? 0);
+        if ($landed > 0) {
+            return $landed;
+        }
+
+        $base = (float) ($this->cost_per_unit ?? 0);
+        if ($base > 0) {
+            return $base;
+        }
+
+        return max((float) ($this->usd_unit_price ?? 0), 0);
+    }
+
     public function getUsagePercentageAttribute()
     {
         if ($this->qty <= 0) {

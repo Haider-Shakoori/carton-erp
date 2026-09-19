@@ -172,66 +172,25 @@ class BOM extends Model
      */
     public function calculateTotals()
     {
-        $exchangeRate = $this->getUSDtoAFNRate();
-        $workPercentage = ($this->work_percentage ?? 40) / 100;
-        $profitMargin = ($this->profit_margin_percentage ?? 0) / 100;
+        $summary = app(\App\Services\BOMCostingService::class)->summarize($this);
 
-        // Sum material costs from all items
-        $materialCostUsd = 0;
-        $materialCostAfn = 0;
-
-        foreach ($this->items as $item) {
-            $materialCostUsd += $item->total_cost_usd ?? 0;
-            $materialCostAfn += $item->total_cost_afn ?? 0;
-        }
-
-        // Calculate work cost
-        $workCostUsd = $materialCostUsd * $workPercentage;
-        $workCostAfn = $materialCostAfn * $workPercentage;
-
-        // Calculate total cost
-        $totalCostUsd = $materialCostUsd + $workCostUsd;
-        $totalCostAfn = $materialCostAfn + $workCostAfn;
-
-        // Calculate selling price with profit margin
-        $sellingPriceUsd = $totalCostUsd * (1 + $profitMargin);
-        $sellingPriceAfn = $totalCostAfn * (1 + $profitMargin);
-
-        // Calculate profit
-        $profitUsd = $sellingPriceUsd - $totalCostUsd;
-        $profitAfn = $sellingPriceAfn - $totalCostAfn;
-
-        // Store calculated values
-        $this->total_material_cost_usd = $materialCostUsd;
-        $this->total_material_cost_afn = $materialCostAfn;
-        $this->total_cost_afn = $totalCostAfn;
-        $this->selling_price_afn = $sellingPriceAfn;
-        $this->profit_afn = $profitAfn;
+        $this->total_material_cost_usd = $summary['physical_material_cost_usd'];
+        $this->total_material_cost_afn = $summary['physical_material_cost_afn'];
+        $this->total_cost_afn = $summary['physical_production_cost_afn'];
+        $this->selling_price_afn = $summary['selling_price_afn'];
+        $this->profit_afn = $summary['expected_profit_afn'];
 
         return $this;
     }
 
     public function recalculateAfnValues()
     {
-        $exchangeRate = $this->getUSDtoAFNRate();
-        $materialCostUsd = $this->total_material_cost_usd ?? 0;
-        $workPercentage = ($this->work_percentage ?? 40) / 100;
-        $profitMargin = ($this->profit_margin_percentage ?? 0) / 100;
-
-        $workCostUsd = $materialCostUsd * $workPercentage;
-        $totalCostUsd = $materialCostUsd + $workCostUsd;
-        $sellingPriceUsd = $totalCostUsd * (1 + $profitMargin);
-        $profitUsd = $sellingPriceUsd - $totalCostUsd;
-
-        $this->total_material_cost_afn = $materialCostUsd * $exchangeRate;
-        $this->total_cost_afn = $totalCostUsd * $exchangeRate;
-        $this->selling_price_afn = $sellingPriceUsd * $exchangeRate;
-        $this->profit_afn = $profitUsd * $exchangeRate;
-
+        $this->calculateTotals();
         $this->saveQuietly();
 
         return $this;
     }
+
 
     /**
      * Force recalculate and save the BOM
@@ -267,8 +226,7 @@ class BOM extends Model
 
     public function getFormattedNetRateAttribute()
     {
-        $netRate = $this->total_cost_afn / max(1, $this->items->count());
-        return number_format($netRate, 8);
+        return number_format((float) ($this->selling_price_afn ?? 0), 8);
     }
 
     /**
@@ -276,27 +234,29 @@ class BOM extends Model
      */
     public function getCostBreakdownAttribute()
     {
-        $exchangeRate = $this->getUSDtoAFNRate();
-        $materialCostUsd = $this->total_material_cost_usd ?? 0;
-        $workPercentage = ($this->work_percentage ?? 40) / 100;
-        $profitMargin = ($this->profit_margin_percentage ?? 0) / 100;
-
-        $workCostUsd = $materialCostUsd * $workPercentage;
-        $totalCostUsd = $materialCostUsd + $workCostUsd;
-        $sellingPriceUsd = $totalCostUsd * (1 + $profitMargin);
-        $profitUsd = $sellingPriceUsd - $totalCostUsd;
+        $summary = app(\App\Services\BOMCostingService::class)->summarize($this);
+        $exchangeRate = max((float) $summary['exchange_rate'], 0.000001);
 
         return [
-            'material_cost_usd' => $materialCostUsd,
-            'material_cost_afn' => $materialCostUsd * $exchangeRate,
-            'work_cost_usd' => $workCostUsd,
-            'work_cost_afn' => $workCostUsd * $exchangeRate,
-            'total_cost_usd' => $totalCostUsd,
-            'total_cost_afn' => $totalCostUsd * $exchangeRate,
-            'selling_price_usd' => $sellingPriceUsd,
-            'selling_price_afn' => $sellingPriceUsd * $exchangeRate,
-            'profit_usd' => $profitUsd,
-            'profit_afn' => $profitUsd * $exchangeRate,
+            'material_cost_usd' => $summary['physical_material_cost_usd'],
+            'material_cost_afn' => $summary['physical_material_cost_afn'],
+            'base_material_cost_usd' => $summary['base_material_cost_usd'],
+            'base_material_cost_afn' => $summary['base_material_cost_afn'],
+            'wastage_cost_usd' => $summary['wastage_cost_usd'],
+            'wastage_cost_afn' => $summary['wastage_cost_afn'],
+            // Backward-compatible key: this is the standard commercial
+            // work/profit component, not a production labour expense.
+            'work_cost_usd' => $summary['standard_work_profit_afn'] / $exchangeRate,
+            'work_cost_afn' => $summary['standard_work_profit_afn'],
+            'print_cost_afn' => $summary['print_cost_afn'],
+            'commercial_base_afn' => $summary['commercial_base_afn'],
+            'additional_markup_afn' => $summary['additional_markup_afn'],
+            'total_cost_usd' => $summary['physical_production_cost_usd'],
+            'total_cost_afn' => $summary['physical_production_cost_afn'],
+            'selling_price_usd' => $summary['selling_price_usd'],
+            'selling_price_afn' => $summary['selling_price_afn'],
+            'profit_usd' => $summary['expected_profit_usd'],
+            'profit_afn' => $summary['expected_profit_afn'],
             'profit_margin_percentage' => $this->profit_margin_percentage ?? 0,
             'work_percentage' => $this->work_percentage ?? 40,
             'exchange_rate' => $exchangeRate,

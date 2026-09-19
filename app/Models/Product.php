@@ -168,18 +168,15 @@ class Product extends Model
                 return 0;
             }
 
-            $totalCost = 0;
-            $totalQty = 0;
+            $totalCost = 0.0;
+            $totalQty = 0.0;
 
             foreach ($purchaseItems as $item) {
-                // Prefer the recorded cost-per-unit; fall back to the unit price when
-                // the cost column is zero/empty (the column defaults to 0.0000).
-                $costPerUnit = (float) ($item->cost_per_unit ?? 0);
-                if ($costPerUnit <= 0) {
-                    $costPerUnit = (float) ($item->usd_unit_price ?? 0);
-                }
-                $totalCost += $item->qty_available * $costPerUnit;
-                $totalQty += $item->qty_available;
+                $basisQty = $item->availableInventoryQuantity();
+                $costPerUnit = $item->landedCostPerInventoryUnitUsd();
+
+                $totalCost += $basisQty * $costPerUnit;
+                $totalQty += $basisQty;
             }
 
             if ($totalQty <= 0) {
@@ -205,6 +202,9 @@ class Product extends Model
             ->orderBy('created_at', 'asc')
             ->get()
             ->map(function($item) {
+                $basisQty = $item->availableInventoryQuantity();
+                $basisCost = $item->landedCostPerInventoryUnitUsd();
+
                 return [
                     'id' => $item->id,
                     'batch_no' => $item->batch_no ?? 'N/A',
@@ -212,9 +212,11 @@ class Product extends Model
                     'purchase_date' => $item->purchase->purchase_date ?? $item->created_at,
                     'quantity' => $item->qty,
                     'qty_available' => $item->qty_available,
-                    'cost_per_unit' => $item->cost_per_unit ?? $item->usd_unit_price ?? 0,
-                    'total_cost' => ($item->cost_per_unit ?? $item->usd_unit_price ?? 0) * $item->qty_available,
-                    'currency' => $item->purchase->currency->code ?? 'USD',
+                    'qty_available_basis' => $basisQty,
+                    'cost_basis_unit' => $item->inventoryCostBasisUnit(),
+                    'cost_per_unit' => $basisCost,
+                    'total_cost' => $basisCost * $basisQty,
+                    'currency' => 'USD',
                 ];
             });
     }

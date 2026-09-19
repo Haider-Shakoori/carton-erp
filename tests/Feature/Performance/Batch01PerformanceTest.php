@@ -71,7 +71,7 @@ it('shares one setting instance across nested views in one request scope', funct
 
     $queries = [];
     DB::listen(function ($query) use (&$queries) {
-        if (str_contains($query->sql, 'from "settings"')) {
+        if (preg_match('/from\\s+[`"]?settings[`"]?/i', $query->sql)) {
             $queries[] = $query->sql;
         }
     });
@@ -130,7 +130,7 @@ it('preloads exact balances for agent supplier and saraf indexes', function () {
         expect($html)->toContain('$')
             ->and($html)->toContain('100.25')
             ->and(collect($queries)->filter(
-                fn ($query) => str_contains($query['query'], 'from "transactions"')
+                fn ($query) => preg_match('/from\\s+[`"]?transactions[`"]?/i', $query['query'])
             ))->toHaveCount(0);
     }
 });
@@ -234,7 +234,7 @@ it('reuses the production order sale loaded by the controller', function () {
     expect($view->getData()['sale']->sale_no)->toBe('SO-B01-PO')
         ->and($html)->toContain('SO-B01-PO')
         ->and(collect($queries)->filter(
-            fn ($query) => str_contains($query['query'], 'from "sales"')
+            fn ($query) => preg_match('/from\\s+[`"]?sales[`"]?/i', $query['query'])
         ))->toHaveCount(1);
 });
 

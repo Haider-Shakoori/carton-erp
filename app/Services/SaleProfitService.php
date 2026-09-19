@@ -353,60 +353,19 @@ class SaleProfitService
                 continue;
             }
 
-            // Shared reel dimensions from the first BOM item (3D-carton / cut-roll).
-            $firstItem = $bom->items->first();
-            $length = (float) ($firstItem->length_inch ?? 0);
-            $width = (float) ($firstItem->width_inch ?? 0);
-            $height = (float) ($firstItem->height_inch ?? 0);
-            $reelLength = (($length + $width) * 2) + 4;
-            $reelHeight = $width + $height + 1;
+            // Saved BOMs use the exact same canonical commercial calculation as
+            // BOM create/edit and sale quotation. This avoids formula drift and
+            // also works for fixed, 3D-carton and cut-roll rows without relying
+            // on legacy BOM-level formula columns.
+            $summary = app(\App\Services\BOMCostingService::class)->summarize($bom);
+            $qty = (float) ($saleItem->qty ?? 1);
 
-            $isCutRoll = ($bom->formula_type ?? '') === 'cut_roll';
-
-            foreach ($bom->items as $bomItem) {
-                $gsm = (float) ($bomItem->paper_gsm ?? 0);
-                $perGramRate = (float) ($bomItem->per_gram_rate ?? 0);
-                $multiplicationLayer = (float) ($bomItem->multiplication_layer ?? 1);
-                $print = (float) ($bomItem->print ?? 0);
-                $constant = (float) ($bomItem->formula_constant ?? 1550000);
-                $workPct = (float) ($bomItem->work_percentage ?? $bom->work_percentage ?? 40);
-
-                $paperRate = 0.0;
-                if ($isCutRoll) {
-                    $cutLength = (float) ($bom->cut_length_inch ?? 0);
-                    $cutWidth = (float) ($bom->cut_width_inch ?? 0);
-                    $grh = (float) ($bom->grh ?? 0);
-                    $ply = (float) ($bom->ply ?? 1);
-                    $multiplicationMethod = (string) ($bom->multiplication_method ?? 'multiply');
-                    $multiplicationValue = $multiplicationMethod === 'divide'
-                        ? ($cutLength * $cutWidth * $constant) / 1000
-                        : $cutLength * $cutWidth * $constant;
-                    if ($constant > 0) {
-                        $paperRate = ($multiplicationValue * $perGramRate * $grh * $ply) / $constant;
-                    }
-                } else {
-                    // 3D carton formula.
-                    if ($constant > 0) {
-                        $divisionValue = $reelLength * $reelHeight * $gsm * $perGramRate;
-                        $paperRate = $divisionValue / $constant;
-                    }
-                }
-
-                $paperRateByLayers = $multiplicationLayer * $paperRate;
-                $workAmount = $paperRateByLayers * ((float) $workPct / 100);
-
-                // These are per-unit rates from the client Excel formula. Scale by the
-                // sale item quantity to get the commercial totals for the whole order.
-                $qty = (float) ($saleItem->qty ?? 1);
-                $paperBasis += $paperRateByLayers * $qty;
-                $standardProfit += $workAmount * $qty;
-                $printTotal += $print * $qty;
-                $netRate += ($print + $paperRateByLayers + $workAmount) * $qty;
-            }
+            $paperBasis += (float) $summary['base_material_cost_afn'] * $qty;
+            $standardProfit += (float) $summary['standard_work_profit_afn'] * $qty;
+            $printTotal += (float) $summary['print_cost_afn'] * $qty;
+            $netRate += (float) $summary['commercial_base_afn'] * $qty;
         }
 
-        // Fallback: if no commercial row could be computed (e.g. non-formula BOM),
-        // fall back to the revenue-derived paper basis (only valid when Print = 0).
         if (!$hasCommercialRows && $grossSalesAfn > 0) {
             $paper = $grossSalesAfn / (1 + ($effectiveWorkPercentage / 100));
             $paperBasis = $paper;
@@ -453,11 +412,17 @@ class SaleProfitService
                 $wastage = (float) ($row['wastage'] ?? 0);
 
                 $rollWeightMissing = false;
-                $costPerUnitUsd = 0.0;
+                $costPerUnitUsd = (float) (
+                    $row['landed_cost_usd_per_kg']
+                    ?? $row['cost_per_unit_usd']
+                    ?? 0
+                );
                 $materialId = (int) ($row['material_id'] ?? 0);
 
                 if (isset($bomItemArray[$index]) && $bomItemArray[$index]) {
-                    $costPerUnitUsd = (float) ($bomItemArray[$index]->cost_per_unit_usd ?? 0);
+                    if ($costPerUnitUsd <= 0) {
+                        $costPerUnitUsd = (float) ($bomItemArray[$index]->cost_per_unit_usd ?? 0);
+                    }
                     $materialId = $materialId ?: (int) ($bomItemArray[$index]->material_id ?? 0);
                 }
                 if ($costPerUnitUsd <= 0 && $materialId > 0) {
