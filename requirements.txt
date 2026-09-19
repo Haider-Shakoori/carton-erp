@@ -1,0 +1,20 @@
+- 3 types of raw material (bleach card, glue and lamination plastic)
+- 2 factories (printing section)
+- When producing add 20% charges on production
+- Container (transport, tax etc) must be added and at the end the net price of the raw material must be calculated
+- Salary section
+- Employees section
+- Saraf payments
+- Advance payment of clients
+- Shortage item (alert)
+- Shareholders must have shares recorded
+- Production report
+
+
+- All items are purchased in other unit and used in different unit
+- In Stock Inventory AFN should be added (if the purchase is done in AFN)
+- Labor cost, Overhead Cost must be added in percentage
+- The BOM price is mandatory during sale order
+- in BOM replace the Weighted average cost with latest cost
+- Remove the alert for BOM Item (out of stock)
+- Add 2 business (one business must work in cartons and another must work in syrup box)
