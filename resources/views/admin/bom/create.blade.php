@@ -591,26 +591,24 @@
                 let hasUsd = false;
                 $('.bom-item-row').each(function() {
                     const id = $(this).attr('id').replace('item-', '');
-                    const currency = $(`#purchase-currency-${id}`).val() || 'AFN';
-                    if (currency === 'USD') {
+                    if (($(`#purchase-currency-${id}`).val() || 'AFN') === 'USD') {
                         hasUsd = true;
                     }
                 });
-                hasUsdMaterial = hasUsd;
 
-                if (hasUsd) {
-                    $('#mainExchangeRateContainer').show();
-                    $('#afnOnlyMessage').hide();
-                    $('#exchangeRateInfo').text('USD → AFN conversion rate for USD materials');
-                } else {
-                    $('#mainExchangeRateContainer').hide();
-                    $('#afnOnlyMessage').show();
-                    $('#exchangeRateInfo').text('All materials in AFN');
-                }
+                hasUsdMaterial = hasUsd;
+                $('#mainExchangeRateContainer').show();
+                $('#afnOnlyMessage').hide();
+                $('#exchangeRateInfo').text(
+                    hasUsd
+                        ? 'USD → AFN rate used for landed inventory and selling-price conversion'
+                        : 'USD → AFN rate used to normalize landed inventory cost and commercial pricing'
+                );
 
                 return hasUsd;
             }
 
+            // ─── GENERATE ITEM HTML
             // ─── GENERATE ITEM HTML ───
             function generateItemHtml(id) {
                 return `
@@ -1252,193 +1250,141 @@
             window.calculateFormulaBasedItem = function(id) {
                 const formulaType = $(`#formula-type-${id}`).val();
                 const exchangeRate = parseFloat($('#mainExchangeRate').val()) || defaultExchangeRate;
-                const wastage = parseFloat($(`#item-wastage-${id}`).val()) || 0;
+                const landedUsd = parseFloat($(`#cost-usd-${id}`).val()) || 0;
+                const landedAfn = landedUsd * exchangeRate;
+                const globalWorkPercentage = parseFloat($('input[name="work_percentage"]').val()) || 0;
 
-                let quantity = 1;
+                let quantity = parseFloat($(`#quantity-${id}`).val()) || 0;
                 let paperRate = 0;
                 let paperRateByLayers = 0;
                 let workCost = 0;
                 let netRate = 0;
+                let reelLength = 0;
+                let reelHeight = 0;
 
-                // ─── 3D CARTON FORMULA (EXACT EXCEL MATCH) ───
                 if (formulaType === 'carton_3d') {
                     const length = parseFloat($(`#length-${id}`).val()) || 0;
                     const width = parseFloat($(`#width-${id}`).val()) || 0;
                     const height = parseFloat($(`#height-${id}`).val()) || 0;
                     const gsm = parseFloat($(`#paper-gsm-${id}`).val()) || 0;
-                    const perGramRate = parseFloat($(`#per-gram-rate-${id}`).val()) || 0;
-                    const layers = parseFloat($(`#layers-${id}`).val()) || 1;
                     const multiplicationLayer = parseFloat($(`#multiplication-layer-${id}`).val()) || 1;
                     const printCost = parseFloat($(`#print-${id}`).val()) || 0;
-                    const constant = parseFloat($(`#formula-constant-${id}`).val()) || 1550000;
-                    const workPercentage = parseFloat($(`#carton-work-percentage-${id}`).val()) || 40;
+                    const workPercentage = parseFloat($(`#carton-work-percentage-${id}`).val());
+                    const effectiveWorkPercentage = Number.isFinite(workPercentage)
+                        ? workPercentage
+                        : globalWorkPercentage;
 
-                    if (length > 0 && width > 0 && height > 0 && gsm > 0 && perGramRate > 0 && constant > 0) {
+                    // The landed rate displayed by the formula is informative only.
+                    // The authoritative cost fields remain USD / inventory-basis unit.
+                    $(`#per-gram-rate-${id}`).val(landedAfn > 0 ? landedAfn.toFixed(4) : '0');
 
-                        // ─── Step 1: Reel Length (Excel: D4 = (A4 + B4) * 2 + 4) ───
-                        const reelLength = ((length + width) * 2) + 4;
+                    if (length > 0 && width > 0 && height > 0 && gsm > 0) {
+                        reelLength = ((length + width) * 2) + 4;
+                        reelHeight = width + height + 1;
 
-                        // ─── Step 2: Reel Height (Excel: E4 = B4 + C4 + 1) ───
-                        const reelHeight = width + height + 1;
+                        // Square inches -> square metres -> kg, including layer count.
+                        quantity = reelLength * reelHeight * 0.00064516 * gsm / 1000 * multiplicationLayer;
 
-                        // ─── Step 3: Division Value (Excel: M4 = D4 * E4 * F4 * G4) ───
-                        const divisionValue = reelLength * reelHeight * gsm * perGramRate;
-
-                        // ─── Step 4: Paper Rate (Excel: N4 = M4 / L4) ───
-                        paperRate = divisionValue / constant;
-
-                        // ─── Step 5: Paper Rate × Layers (Excel: O4 = H4 * N4) ───
-                        paperRateByLayers = multiplicationLayer * paperRate;
-
-                        // ─── Step 6: 40% Work (Excel: P4 = O4 * 0.4) ───
-                        workCost = paperRateByLayers * 0.40;
-
-                        // ─── Step 7: Row Net Rate (Excel: Q4 = K4 + O4 + P4) ───
+                        // Commercial paper rate excludes wastage by design.
+                        paperRate = quantity * landedAfn;
+                        paperRateByLayers = paperRate;
+                        workCost = paperRateByLayers * (effectiveWorkPercentage / 100);
                         netRate = printCost + paperRateByLayers + workCost;
 
-                        // ─── Display Reel Dimensions ───
                         $(`#reel-dimensions-${id}`).show();
                         $(`#reel-length-display-${id}`).text(reelLength.toFixed(2));
                         $(`#reel-height-display-${id}`).text(reelHeight.toFixed(2));
                         $(`#reel-length-detail-${id}`).text(reelLength.toFixed(2));
                         $(`#reel-height-detail-${id}`).text(reelHeight.toFixed(2));
 
-                        // ─── Display Calculation Details ───
                         $(`#carton-calculation-details-${id}`).show();
-                        $(`#division-value-${id}`).text(divisionValue.toFixed(2));
+                        $(`#division-value-${id}`).text((reelLength * reelHeight * gsm * landedAfn).toFixed(2));
                         $(`#paper-rate-${id}`).text(paperRate.toFixed(8));
                         $(`#paper-rate-by-layers-${id}`).text(paperRateByLayers.toFixed(8));
                         $(`#work-amount-${id}`).text(workCost.toFixed(8));
                         $(`#row-net-rate-${id}`).text(netRate.toFixed(8));
+                        $(`#unit-${id}`).val('kg');
                     } else {
+                        quantity = 0;
                         $(`#reel-dimensions-${id}`).hide();
                         $(`#carton-calculation-details-${id}`).hide();
                     }
-                }
-
-                // ─── CUT/ROLL FORMULA ───
-                else if (formulaType === 'cut_roll') {
+                } else if (formulaType === 'cut_roll') {
                     const cutLength = parseFloat($(`#cut-length-${id}`).val()) || 0;
                     const cutWidth = parseFloat($(`#cut-width-${id}`).val()) || 0;
                     const grh = parseFloat($(`#grh-${id}`).val()) || 0;
-                    const perGramRate = parseFloat($(`#per-gram-rate-cut-${id}`).val()) || 0;
                     const ply = parseFloat($(`#ply-${id}`).val()) || 1;
                     const multiplicationLayer = parseFloat($(`#multiplication-layer-cut-${id}`).val()) || 1;
                     const printCost = parseFloat($(`#print-cut-${id}`).val()) || 0;
-                    const constant = parseFloat($(`#formula-constant-cut-${id}`).val()) || 1550000;
-                    const workPercentage = parseFloat($(`#cut-work-percentage-${id}`).val()) || 40;
-                    const multiplicationMethod = $(`#multiplication-method-${id}`).val() || 'multiply';
+                    const workPercentage = parseFloat($(`#cut-work-percentage-${id}`).val());
+                    const effectiveWorkPercentage = Number.isFinite(workPercentage)
+                        ? workPercentage
+                        : globalWorkPercentage;
 
-                    if (cutLength > 0 && cutWidth > 0 && grh > 0 && perGramRate > 0 && constant > 0) {
-                        let multiplicationValue = cutLength * cutWidth * constant;
-                        if (multiplicationMethod === 'divide') {
-                            multiplicationValue = (cutLength * cutWidth * constant) / 1000;
-                        }
-                        paperRate = (multiplicationValue * perGramRate * grh * ply) / constant;
-                        paperRateByLayers = multiplicationLayer * paperRate;
-                        workCost = paperRateByLayers * 0.40;
-                        netRate = printCost + paperRateByLayers + workCost;
+                    $(`#per-gram-rate-cut-${id}`).val(landedAfn > 0 ? landedAfn.toFixed(4) : '0');
 
-                        // Hide reel dimensions for cut/roll
-                        $(`#reel-dimensions-${id}`).hide();
-                        $(`#carton-calculation-details-${id}`).hide();
+                    if (cutLength > 0 && cutWidth > 0 && grh > 0) {
+                        quantity = cutLength * cutWidth * 0.00064516 * grh / 1000 * ply * multiplicationLayer;
+                        paperRate = quantity * landedAfn;
+                        paperRateByLayers = paperRate;
+                        workCost = paperRate * (effectiveWorkPercentage / 100);
+                        netRate = printCost + paperRate + workCost;
+                        $(`#unit-${id}`).val('kg');
+                    } else {
+                        quantity = 0;
                     }
-                }
 
-                // ─── FIXED PERCENTAGE ───
-                else if (formulaType === 'fixed_percentage') {
+                    $(`#reel-dimensions-${id}`).hide();
+                    $(`#carton-calculation-details-${id}`).hide();
+                } else if (formulaType === 'fixed_percentage') {
                     const baseMaterialId = $(`#base-material-${id}`).val();
                     const percentage = parseFloat($(`#percentage-of-base-${id}`).val()) || 0;
                     let baseQuantity = 0;
 
                     $('.bom-item-row').each(function() {
                         const rowId = $(this).attr('id').replace('item-', '');
-                        if ($(`#material-${rowId}`).val() == baseMaterialId && rowId != id) {
+                        if (rowId != id && $(`#material-${rowId}`).val() == baseMaterialId) {
                             baseQuantity = parseFloat($(`#quantity-${rowId}`).val()) || 0;
                         }
                     });
 
                     quantity = baseQuantity * (percentage / 100);
-                    paperRate = 0;
-                    paperRateByLayers = 0;
-                    workCost = 0;
-                    netRate = 0;
-
                     $(`#reel-dimensions-${id}`).hide();
                     $(`#carton-calculation-details-${id}`).hide();
-                }
-
-                // ─── FIXED RATE ───
-                else if (formulaType === 'fixed_rate') {
+                } else if (formulaType === 'fixed_rate') {
                     const rate = parseFloat($(`#rate-per-unit-${id}`).val()) || 0;
                     const perUnits = parseFloat($(`#rate-base-units-${id}`).val()) || 1;
                     quantity = rate / perUnits;
-                    paperRate = 0;
-                    paperRateByLayers = 0;
-                    workCost = 0;
-                    netRate = 0;
-
                     $(`#reel-dimensions-${id}`).hide();
                     $(`#carton-calculation-details-${id}`).hide();
-                }
-
-                // ─── FIXED QUANTITY ───
-                else {
-                    quantity = parseFloat($(`#quantity-${id}`).val()) || 0;
-                    paperRate = 0;
-                    paperRateByLayers = 0;
-                    workCost = 0;
-                    netRate = 0;
-
-                    $(`#reel-dimensions-${id}`).hide();
-                    $(`#carton-calculation-details-${id}`).hide();
-                }
-
-                // ─── HANDLE CURRENCY CONVERSION FOR COST ───
-                const purchaseCurrency = $(`#purchase-currency-${id}`).val() || 'AFN';
-                let costInUsd = 0;
-                let costInAfn = 0;
-
-                // For 3D Carton and Cut/Roll, use the calculated net rate
-                if (formulaType === 'carton_3d' || formulaType === 'cut_roll') {
-                    quantity = 1;
-                    const netWithWastageAfn = netRate * (1 + wastage / 100);
-                    costInAfn = netWithWastageAfn;
-                    costInUsd = exchangeRate > 0 ? netWithWastageAfn / exchangeRate : 0;
                 } else {
-                    costInUsd = parseFloat($(`#cost-usd-${id}`).val()) || 0;
-                    costInAfn = costInUsd * exchangeRate;
+                    $(`#reel-dimensions-${id}`).hide();
+                    $(`#carton-calculation-details-${id}`).hide();
                 }
 
-                // Store both costs
-                $(`#cost-usd-${id}`).val(costInUsd.toFixed(5));
-                $(`#cost-afn-${id}`).val(costInAfn.toFixed(2));
-                $(`#cost-afn-display-${id}`).val(costInAfn.toFixed(2));
+                if (formulaType !== 'fixed') {
+                    $(`#quantity-${id}`).val(quantity > 0 ? quantity.toFixed(6) : '');
+                }
 
-                // Set quantity
-                $(`#quantity-${id}`).val(quantity > 0 ? quantity.toFixed(4) : '');
-
-                // Update cost hint
                 if (formulaType === 'carton_3d') {
-                    $(`#cost-hint-${id}`).html(`
-            <i class="bi bi-calculator me-1"></i>
-            Excel net rate: <strong>؋${netRate.toFixed(8)}</strong> per carton
-            (with ${wastage.toFixed(2)}% wastage = <strong>$${costInUsd.toFixed(5)}</strong> USD)
-            <br>
-            <span class="text-muted">Reel Length: ${reelLength.toFixed(2)} in | Reel Height: ${reelHeight.toFixed(2)} in</span>
-        `);
+                    $(`#cost-hint-${id}`).html(
+                        `<i class="bi bi-calculator me-1"></i>
+                         Physical paper: <strong>${quantity.toFixed(6)} kg</strong> / finished unit.
+                         Commercial row: <strong>؋${netRate.toFixed(4)}</strong>
+                         (wastage is added only to physical production cost).`
+                    );
                 } else if (formulaType === 'cut_roll') {
-                    $(`#cost-hint-${id}`).html(`
-            <i class="bi bi-calculator me-1"></i>
-            Cut/Roll net rate: <strong>؋${netRate.toFixed(8)}</strong>
-            (with ${wastage.toFixed(2)}% wastage = <strong>$${costInUsd.toFixed(5)}</strong> USD)
-        `);
-                } else {
-                    $(`#cost-hint-${id}`).text(`Cost loaded in ${purchaseCurrency}: ${purchaseCurrency === 'USD' ? '$' : '؋'}${purchaseCurrency === 'USD' ? costInUsd.toFixed(4) : costInAfn.toFixed(2)}`);
+                    $(`#cost-hint-${id}`).html(
+                        `<i class="bi bi-calculator me-1"></i>
+                         Physical paper: <strong>${quantity.toFixed(6)} kg</strong> / finished unit.
+                         Commercial row: <strong>؋${netRate.toFixed(4)}</strong>.`
+                    );
                 }
 
                 calculateItemCost(id);
             };
+
+            // ─── REMOVE ITEM
             // ─── REMOVE ITEM ───
             window.removeItem = function(id) {
                 if (confirm('Remove this material from the BOM?')) {
@@ -1463,222 +1409,243 @@
             function calculateItemCost(id) {
                 const quantity = parseFloat($(`#quantity-${id}`).val()) || 0;
                 const costUsd = parseFloat($(`#cost-usd-${id}`).val()) || 0;
-                const costAfn = parseFloat($(`#cost-afn-${id}`).val()) || 0;
                 const exchangeRate = parseFloat($('#mainExchangeRate').val()) || defaultExchangeRate;
                 const wastage = parseFloat($(`#item-wastage-${id}`).val()) || 0;
-                const formulaType = $(`#formula-type-${id}`).val();
-                const purchaseCurrency = $(`#purchase-currency-${id}`).val() || 'AFN';
 
-                const multiplier = (formulaType === 'carton_3d' || formulaType === 'cut_roll')
-                    ? 1
-                    : (1 + wastage / 100);
+                const costAfn = costUsd * exchangeRate;
+                const physicalQty = quantity * (1 + wastage / 100);
+                const totalCostUsd = physicalQty * costUsd;
+                const totalCostAfn = totalCostUsd * exchangeRate;
 
-                let totalCostUsd = quantity * costUsd * multiplier;
-                let totalCostAfn = quantity * costAfn * multiplier;
+                $(`#cost-afn-${id}`).val(costAfn.toFixed(4));
+                $(`#cost-afn-display-${id}`).val(costAfn.toFixed(4));
 
-                if (purchaseCurrency === 'AFN') {
-                    totalCostAfn = quantity * costAfn * multiplier;
-                    totalCostUsd = totalCostAfn / exchangeRate;
+                if ($(`#formula-type-${id}`).val() === 'carton_3d') {
+                    $(`#per-gram-rate-${id}`).val(costAfn > 0 ? costAfn.toFixed(4) : '0');
+                }
+                if ($(`#formula-type-${id}`).val() === 'cut_roll') {
+                    $(`#per-gram-rate-cut-${id}`).val(costAfn > 0 ? costAfn.toFixed(4) : '0');
                 }
 
-                $(`#cost-preview-${id}`).html(`
-                    Cost: $${totalCostUsd.toFixed(4)} USD
-                    <span class="text-muted">(؋${totalCostAfn.toFixed(2)} AFN)</span>
-                `);
+                $(`#cost-preview-${id}`).html(
+                    `Physical cost: $${totalCostUsd.toFixed(4)} USD
+                     <span class="text-muted">(؋${totalCostAfn.toFixed(2)} AFN)</span>`
+                );
 
                 updateTotalCost();
             }
 
-            // ─── FETCH MATERIAL COST (USES LATEST PRICE) ───
+            // ─── FETCH MATERIAL COST (LATEST LANDED INVENTORY BASIS) ───
             function fetchMaterialCost(materialId, id, currency) {
                 const $costInput = $(`#cost-usd-${id}`);
-                const $costAfnInput = $(`#cost-afn-${id}`);
-                const $costAfnDisplay = $(`#cost-afn-display-${id}`);
                 const $batchInfo = $(`#batch-info-${id}`);
                 const $hint = $(`#cost-hint-${id}`);
 
-                $costInput.prop('disabled', true);
-                $costInput.attr('placeholder', 'Loading...');
-                $hint.html('<i class="bi bi-hourglass-split me-1"></i> Fetching latest cost data...');
+                $costInput.prop('disabled', true).attr('placeholder', 'Loading...');
+                $hint.html('<i class="bi bi-hourglass-split me-1"></i> Fetching landed inventory cost...');
 
-                const url = '{{ route("bom.get-material-cost", ":material_id") }}'.replace(':material_id', materialId);
+                const url = '{{ route("bom.get-material-cost", ":material_id") }}'
+                    .replace(':material_id', materialId);
 
                 $.ajax({
-                    url: url,
+                    url,
                     method: 'GET',
                     success: function(response) {
-                        if (response.success) {
-                            const data = response.data;
-                            const exchangeRate = parseFloat($('#mainExchangeRate').val()) || defaultExchangeRate;
+                        if (!response.success) {
+                            $batchInfo.html(`<div class="text-danger">${response.message || 'Could not fetch cost.'}</div>`).show();
+                            $hint.html('<i class="bi bi-exclamation-triangle text-warning me-1"></i> Cost not found. Enter a USD inventory-basis cost manually.');
+                            return;
+                        }
 
-                            // ✅ USE LATEST COST
-                            let costInUsd = parseFloat(data.latest_cost_usd) || 0;
-                            let costInAfn = parseFloat(data.latest_cost_afn) || 0;
+                        const data = response.data;
+                        const exchangeRate = parseFloat($('#mainExchangeRate').val()) || defaultExchangeRate;
+                        const basisUnit = data.cost_basis_unit || data.unit || 'unit';
+                        const costInUsd = parseFloat(data.latest_cost_usd)
+                            || parseFloat(data.weighted_avg_cost)
+                            || 0;
+                        const costInAfn = costInUsd * exchangeRate;
 
-                            // If latest cost is 0, fallback to weighted average
-                            if (costInUsd === 0 && costInAfn === 0) {
-                                costInUsd = parseFloat(data.weighted_avg_cost) || 0;
-                                if (currency === 'AFN') {
-                                    costInAfn = costInUsd;
-                                    costInUsd = costInUsd / exchangeRate;
-                                } else {
-                                    costInAfn = costInUsd * exchangeRate;
-                                }
-                            }
+                        $(`#unit-${id}`).val(basisUnit);
+                        $(`#cost-basis-label-${id}`).text(`USD / ${basisUnit}`);
+                        $costInput.val(costInUsd.toFixed(6));
+                        $(`#cost-afn-${id}`).val(costInAfn.toFixed(4));
+                        $(`#cost-afn-display-${id}`).val(costInAfn.toFixed(4));
 
-                            // Update fields
-                            $(`#unit-${id}`).val(data.unit || 'Unit');
-                            $costInput.val(costInUsd.toFixed(4));
-                            $costAfnInput.val(costInAfn.toFixed(2));
-                            $costAfnDisplay.val(costInAfn.toFixed(2));
+                        const purchaseCurrency = data.purchase_currency || currency || 'AFN';
+                        $(`#purchase-currency-${id}`).val(purchaseCurrency);
+                        $(`#purchase-currency-id-${id}`).val(data.purchase_currency_id || '');
+                        $(`#currency-display-${id}`).val(purchaseCurrency);
+                        $(`#currency-badge-${id}`)
+                            .removeClass('usd afn')
+                            .addClass(purchaseCurrency === 'USD' ? 'usd' : 'afn')
+                            .text(purchaseCurrency);
 
-                            // Build batch info with LATEST highlighted
-                            let batchHtml = '';
-                            const batches = data.batch_breakdown?.batches || [];
-                            const latestBatchDate = data.latest_batch_date || '';
+                        if ($(`#formula-type-${id}`).val() === 'carton_3d') {
+                            $(`#per-gram-rate-${id}`).val(costInAfn.toFixed(4));
+                        }
+                        if ($(`#formula-type-${id}`).val() === 'cut_roll') {
+                            $(`#per-gram-rate-cut-${id}`).val(costInAfn.toFixed(4));
+                        }
 
-                            if (batches.length > 0) {
-                                batchHtml = `
-                                    <div class="fw-semibold mb-2">
-                                        <i class="bi bi-clock-history me-1"></i>
-                                        Batch Breakdown (Latest First):
-                                        ${latestBatchDate ? `<span class="text-muted small ms-2">Latest: ${new Date(latestBatchDate).toLocaleDateString()}</span>` : ''}
-                                    </div>
-                                `;
-                                batches.forEach(function(batch) {
-                                    const batchCost = parseFloat(batch.cost_per_unit) || 0;
-                                    const batchCostAfn = batchCost * exchangeRate;
-                                    const displayCost = currency === 'USD' ? batchCost : batchCostAfn;
-                                    const displayCurrency = currency === 'USD' ? 'USD' : 'AFN';
-                                    const isLatest = batch.is_latest || false;
+                        const batches = data.batch_breakdown?.batches || [];
+                        let batchHtml = '';
 
-                                    batchHtml += `
-                                        <div class="batch-item ${isLatest ? 'bg-success bg-opacity-10 p-1 rounded' : ''}"
-                                             style="${isLatest ? 'border-left: 3px solid #10b981;' : ''}">
-                                            <span>
-                                                ${batch.batch_no || 'N/A'} (${batch.purchase_date || 'N/A'})
-                                                ${isLatest ? '<span class="badge bg-success ms-1">{{ __('ui.latest') }}</span>' : ''}
-                                            </span>
-                                            <span>
-                                                ${batch.qty_available} ${data.unit}
-                                                @ ${displayCost.toFixed(4)} ${displayCurrency}
-                                                <span class="text-muted small">(${batch.currency})</span>
-                                            </span>
-                                        </div>
-                                    `;
-                                });
+                        if (batches.length) {
+                            batchHtml += `
+                                <div class="fw-semibold mb-2">
+                                    <i class="bi bi-box-seam me-1"></i>
+                                    Available landed-cost batches
+                                    <span class="text-muted small ms-2">Cost basis: USD / ${basisUnit}</span>
+                                </div>`;
+
+                            batches.forEach(function(batch) {
+                                const batchUsd = parseFloat(batch.cost_per_unit_usd ?? batch.cost_per_unit) || 0;
+                                const batchAfn = batchUsd * exchangeRate;
+                                const available = parseFloat(batch.qty_available) || 0;
+                                const batchUnit = batch.cost_basis_unit || basisUnit;
+                                const isLatest = !!batch.is_latest;
 
                                 batchHtml += `
-                                    <div class="batch-total" style="background: #d1fae5; padding: 0.5rem; border-radius: 4px; margin-top: 0.5rem;">
-                                        <div class="d-flex justify-content-between">
-                                            <span><i class="bi bi-star-fill text-warning me-1"></i> <strong>{{ __('ui.latest_cost') }}</strong></span>
-                                            <span><strong>${currency === 'USD' ? '$' : '؋'}${(currency === 'USD' ? costInUsd : costInAfn).toFixed(4)} ${data.unit}</strong></span>
-                                        </div>
-                                        ${currency === 'USD' ? `
-                                            <div class="d-flex justify-content-between text-muted small">
-                                                <span>In AFN</span>
-                                                <span>؋${costInAfn.toFixed(2)} ${data.unit}</span>
-                                            </div>
-                                        ` : `
-                                            <div class="d-flex justify-content-between text-muted small">
-                                                <span>In USD</span>
-                                                <span>$${costInUsd.toFixed(4)} ${data.unit}</span>
-                                            </div>
-                                        `}
-                                        <div class="d-flex justify-content-between text-muted small">
-                                            <span>{{ __('ui.exchange_rate') }}</span>
-                                            <span>1 USD = ${exchangeRate.toFixed(2)} AFN</span>
-                                        </div>
-                                    </div>
-                                `;
-                            } else {
-                                batchHtml = '<div class="text-muted">{{ __('ui.no_stock_manual_cost') }}</div>';
-                            }
+                                    <div class="batch-item ${isLatest ? 'bg-success bg-opacity-10 p-1 rounded' : ''}"
+                                         style="${isLatest ? 'border-left:3px solid #10b981;' : ''}">
+                                        <span>
+                                            ${batch.batch_no || 'N/A'} · ${batch.purchase_no || 'N/A'}
+                                            ${isLatest ? '<span class="badge bg-success ms-1">Latest</span>' : ''}
+                                            <br><small class="text-muted">Source currency: ${batch.purchase_currency || 'N/A'}</small>
+                                        </span>
+                                        <span class="text-end">
+                                            ${available.toFixed(4)} ${batchUnit}<br>
+                                            <strong>$${batchUsd.toFixed(6)} / ${batchUnit}</strong>
+                                            <br><small class="text-muted">؋${batchAfn.toFixed(4)} / ${batchUnit}</small>
+                                        </span>
+                                    </div>`;
+                            });
 
-                            $batchInfo.html(batchHtml).show();
-                            $hint.html(`<i class="bi bi-check-circle text-success me-1"></i> Latest cost loaded: ${currency === 'USD' ? '$' : '؋'}${(currency === 'USD' ? costInUsd : costInAfn).toFixed(4)} ${data.unit}`);
+                            batchHtml += `
+                                <div class="batch-total">
+                                    <div class="d-flex justify-content-between">
+                                        <span><strong>Selected latest landed cost</strong></span>
+                                        <span><strong>$${costInUsd.toFixed(6)} / ${basisUnit}</strong></span>
+                                    </div>
+                                    <div class="d-flex justify-content-between text-muted small">
+                                        <span>AFN equivalent</span>
+                                        <span>؋${costInAfn.toFixed(4)} / ${basisUnit}</span>
+                                    </div>
+                                </div>`;
                         } else {
-                            $batchInfo.html(`<div class="text-danger">${response.message || 'Could not fetch cost.'}</div>`).show();
-                            $hint.html('<i class="bi bi-exclamation-triangle text-warning me-1"></i> ' + (response.message || 'Cost not found. Enter manually.'));
+                            batchHtml = '<div class="text-warning">No available arrived stock batch. Latest arrived price may still be used for costing.</div>';
                         }
-                        $costInput.prop('disabled', false);
-                        $costInput.attr('placeholder', 'Enter cost');
-                        calculateItemCost(id);
+
+                        $batchInfo.html(batchHtml).show();
+                        $hint.html(
+                            `<i class="bi bi-check-circle text-success me-1"></i>
+                             Landed cost loaded: <strong>$${costInUsd.toFixed(6)} / ${basisUnit}</strong>`
+                        );
+
+                        toggleFormulaFields(id);
+                        calculateFormulaBasedItem(id);
+                        checkUsdMaterialExists();
                     },
-                    error: function() {
-                        $batchInfo.html('<div class="text-warning">{{ __('ui.server_cost_error') }}</div>').show();
-                        $costInput.prop('disabled', false);
-                        $costInput.attr('placeholder', 'Enter cost');
-                        $hint.html('<i class="bi bi-exclamation-triangle text-warning me-1"></i> Could not fetch cost. Enter manually.');
+                    error: function(xhr) {
+                        const message = xhr.responseJSON?.message || 'Could not fetch landed inventory cost.';
+                        $batchInfo.html(`<div class="text-warning">${message}</div>`).show();
+                        $hint.html('<i class="bi bi-exclamation-triangle text-warning me-1"></i> Enter a USD inventory-basis cost manually.');
+                    },
+                    complete: function() {
+                        $costInput.prop('disabled', false).attr('placeholder', 'USD cost');
                         calculateItemCost(id);
                     }
                 });
             }
 
-            // ─── UPDATE TOTAL COST ───
+            // ─── UPDATE TOTAL COST / COMMERCIAL SUMMARY ───
             function updateTotalCost() {
-                let totalCostUsd = 0;
-                let totalCostAfn = 0;
                 const exchangeRate = parseFloat($('#mainExchangeRate').val()) || defaultExchangeRate;
+                const globalWorkPercentage = parseFloat($('input[name="work_percentage"]').val()) || 0;
+                const profitMargin = parseFloat($('input[name="profit_margin_percentage"]').val()) || 0;
+
+                let baseMaterialUsd = 0;
+                let physicalMaterialUsd = 0;
+                let standardWorkAfn = 0;
+                let printAfn = 0;
 
                 $('.bom-item-row').each(function() {
                     const id = $(this).attr('id').replace('item-', '');
                     const quantity = parseFloat($(`#quantity-${id}`).val()) || 0;
                     const costUsd = parseFloat($(`#cost-usd-${id}`).val()) || 0;
-                    const costAfn = parseFloat($(`#cost-afn-${id}`).val()) || 0;
-                    const formulaType = $(`#formula-type-${id}`).val();
                     const wastage = parseFloat($(`#item-wastage-${id}`).val()) || 0;
-                    const purchaseCurrency = $(`#purchase-currency-${id}`).val() || 'AFN';
+                    const formulaType = $(`#formula-type-${id}`).val();
 
-                    const multiplier = (formulaType === 'carton_3d' || formulaType === 'cut_roll')
-                        ? 1
-                        : (1 + wastage / 100);
+                    const baseUsd = quantity * costUsd;
+                    const physicalUsd = baseUsd * (1 + wastage / 100);
 
-                    let itemCostUsd = quantity * costUsd * multiplier;
-                    let itemCostAfn = quantity * costAfn * multiplier;
+                    let rowWorkPercentage = globalWorkPercentage;
+                    let rowPrintAfn = 0;
 
-                    if (purchaseCurrency === 'AFN') {
-                        itemCostAfn = quantity * costAfn * multiplier;
-                        itemCostUsd = itemCostAfn / exchangeRate;
+                    if (formulaType === 'carton_3d') {
+                        const configured = parseFloat($(`#carton-work-percentage-${id}`).val());
+                        rowWorkPercentage = Number.isFinite(configured) ? configured : globalWorkPercentage;
+                        rowPrintAfn = parseFloat($(`#print-${id}`).val()) || 0;
+                    } else if (formulaType === 'cut_roll') {
+                        const configured = parseFloat($(`#cut-work-percentage-${id}`).val());
+                        rowWorkPercentage = Number.isFinite(configured) ? configured : globalWorkPercentage;
+                        rowPrintAfn = parseFloat($(`#print-cut-${id}`).val()) || 0;
                     }
 
-                    totalCostUsd += itemCostUsd;
-                    totalCostAfn += itemCostAfn;
+                    baseMaterialUsd += baseUsd;
+                    physicalMaterialUsd += physicalUsd;
+                    standardWorkAfn += (baseUsd * exchangeRate) * (rowWorkPercentage / 100);
+                    printAfn += rowPrintAfn;
                 });
 
-                $('#totalMaterialCost').html(`
-                    Material: $${totalCostUsd.toFixed(2)} USD
-                    <span class="text-muted">(؋${totalCostAfn.toFixed(2)} AFN)</span>
-                `);
+                const baseMaterialAfn = baseMaterialUsd * exchangeRate;
+                const physicalMaterialAfn = physicalMaterialUsd * exchangeRate;
+                const wastageAfn = Math.max(physicalMaterialAfn - baseMaterialAfn, 0);
+                const commercialBaseAfn = baseMaterialAfn + standardWorkAfn + printAfn;
+                const markupAfn = commercialBaseAfn * (profitMargin / 100);
+                const sellingPriceAfn = commercialBaseAfn + markupAfn;
 
-                updateCostSummary(totalCostUsd, totalCostAfn);
+                $('#totalMaterialCost').html(
+                    `Physical material: $${physicalMaterialUsd.toFixed(2)} USD
+                     <span class="text-muted">(؋${physicalMaterialAfn.toFixed(2)} AFN, incl. wastage)</span>`
+                );
+
+                updateCostSummary({
+                    baseMaterialAfn,
+                    physicalMaterialUsd,
+                    physicalMaterialAfn,
+                    wastageAfn,
+                    standardWorkAfn,
+                    printAfn,
+                    commercialBaseAfn,
+                    markupAfn,
+                    sellingPriceAfn,
+                    exchangeRate,
+                    profitMargin
+                });
             }
 
-// ─── UPDATE COST SUMMARY ───
-            function updateCostSummary(totalCostUsd, totalCostAfn) {
-                const exchangeRate = parseFloat($('#mainExchangeRate').val()) || defaultExchangeRate;
-                const workPercentage = parseFloat($('input[name="work_percentage"]').val()) || 40;
-                const profitMargin = parseFloat($('input[name="profit_margin_percentage"]').val()) || 0;
+            function updateCostSummary(summary) {
+                $('#summaryBaseMaterialCostAfn').text('؋ ' + summary.baseMaterialAfn.toFixed(2));
+                $('#summaryWastageCostAfn').text('؋ ' + summary.wastageAfn.toFixed(2));
+                $('#summaryMaterialCostUsd').text('$' + summary.physicalMaterialUsd.toFixed(2) + ' physical material');
+                $('#summaryMaterialCostAfn').text('؋ ' + summary.physicalMaterialAfn.toFixed(2));
+                $('#summaryWorkCostAfn').text('؋ ' + summary.standardWorkAfn.toFixed(2));
+                $('#summaryPrintCostAfn').text('؋ ' + summary.printAfn.toFixed(2));
+                $('#summaryMarkupAfn').text('؋ ' + summary.markupAfn.toFixed(2));
+                $('#summaryProfitMargin').text(summary.profitMargin.toFixed(2) + '%');
+                $('#summaryCommercialBase').text('؋ ' + summary.commercialBaseAfn.toFixed(2));
+                $('#summarySellingPrice').text('؋ ' + summary.sellingPriceAfn.toFixed(2));
+                $('#summaryExchangeRate').text(`1 USD = ${summary.exchangeRate.toFixed(2)} AFN`);
 
-                // ─── WORK PERCENTAGE AFFECTS THE TOTAL ───
-                const materialCostAfn = totalCostAfn || (totalCostUsd * exchangeRate);
-                const workCostAfn = materialCostAfn * (workPercentage / 100);
-                const totalCostAfnTotal = materialCostAfn + workCostAfn;
-                const sellingPriceAfn = totalCostAfnTotal * (1 + (profitMargin / 100));
-
-                $('#summaryMaterialCostUsd').text('$ ' + (totalCostUsd || 0).toFixed(2));
-                $('#summaryMaterialCostAfn').text('؋ ' + materialCostAfn.toFixed(2));
-                $('#summaryWorkCostAfn').text('؋ ' + workCostAfn.toFixed(2));  // Show work cost
-                $('#summaryTotalCost').text('؋ ' + totalCostAfnTotal.toFixed(2));
-                $('#summarySellingPrice').text('؋ ' + sellingPriceAfn.toFixed(2));
-                $('#summaryExchangeRate').text(`1 USD = ${exchangeRate.toFixed(2)} AFN`);
-
-                if (totalCostUsd > 0 || totalCostAfn > 0) {
+                if (summary.physicalMaterialUsd > 0 || summary.commercialBaseAfn > 0) {
                     $('#costSummary').show();
                 } else {
                     $('#costSummary').hide();
                 }
             }
+
+            // ─── EXCHANGE RATE CHANGE
             // ─── EXCHANGE RATE CHANGE ───
             $('#mainExchangeRate').on('input', function() {
                 const exchangeRate = parseFloat($(this).val()) || defaultExchangeRate;
