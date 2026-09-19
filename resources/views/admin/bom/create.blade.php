@@ -304,13 +304,24 @@
                         <i class="bi bi-plus-circle me-2"></i> {{ __('ui.create') }} <span class="accent">{{ __('ui.bom') }}</span>
                     </h1>
                     <p class="subtitle">
-                        <i class="bi bi-boxes me-1"></i> Create a new Bill of Materials with roll-based quantity calculation
+                        <i class="bi bi-boxes me-1"></i> Create a production-ready BOM with landed inventory costing and a separate commercial selling rate
                     </p>
                 </div>
                 <div class="d-flex gap-2 flex-wrap">
                     <a href="{{ route('bom.index') }}" class="btn btn-outline-secondary">
                         <i class="bi bi-arrow-left me-1"></i> Back to List
                     </a>
+                </div>
+            </div>
+        </div>
+
+        <div class="alert alert-primary border-0 shadow-sm mb-4" style="background:#eef2ff;color:#3730a3;">
+            <div class="d-flex gap-2 align-items-start">
+                <i class="bi bi-shield-check fs-5"></i>
+                <div>
+                    <strong>Costing rule:</strong> raw-material cost comes from the latest arrived landed inventory rate.
+                    Roll paper is always costed in <strong>USD/kg</strong>. Wastage increases physical production cost,
+                    while Standard Work / Profit and optional Additional Markup determine the commercial selling price.
                 </div>
             </div>
         </div>
@@ -370,11 +381,11 @@
 
                         <div class="row g-3">
                             <div class="col-md-4">
-                                <label class="form-label">Work, Overhead & Profit (%) <span class="text-danger">*</span></label>
+                                <label class="form-label">Standard Work / Profit (%) <span class="text-danger">*</span></label>
                                 <input type="number" class="form-control @error('work_percentage') is-invalid @enderror"
                                        name="work_percentage" value="{{ old('work_percentage', 40) }}"
                                        step="0.1" min="0" required>
-                                <small class="text-muted">This percentage is added once and includes labour, overhead and profit.</small>
+                                <small class="text-muted">Commercial markup on base material only. It is not recorded as actual production labour/overhead.</small>
                                 @error('work_percentage')
                                 <div class="invalid-feedback">{{ $message }}</div>
                                 @enderror
@@ -384,7 +395,7 @@
                                 <input type="number" class="form-control @error('profit_margin_percentage') is-invalid @enderror"
                                        name="profit_margin_percentage" value="{{ old('profit_margin_percentage', 0) }}"
                                        step="0.1" min="0" max="100">
-                                <small class="text-muted">Additional markup on top of the work percentage</small>
+                                <small class="text-muted">Optional extra markup applied after the Standard Work / Profit amount.</small>
                                 @error('profit_margin_percentage')
                                 <div class="invalid-feedback">{{ $message }}</div>
                                 @enderror
@@ -420,7 +431,7 @@
                             <i class="bi bi-box-seam"></i> Raw Materials
                             <span class="badge bg-primary ms-2" id="itemCount">0</span>
                             <span class="text-muted ms-2" style="font-weight: 400; font-size: 0.7rem;">
-                                <i class="bi bi-info-circle"></i> Excel-based formulas calculate the cost of one carton/material line
+                                <i class="bi bi-info-circle"></i> Formula rows calculate physical consumption; landed inventory cost remains the costing source of truth
                             </span>
                         </div>
 
@@ -592,7 +603,7 @@
 
                 <div class="item-counter">
                     Material #${id}
-                    <span class="material-cost-preview" id="cost-preview-${id}">Cost: $0.00 USD</span>
+                    <span class="material-cost-preview" id="cost-preview-${id}">Physical cost: $0.00 USD</span>
                     <span class="formula-badge fixed ms-2" id="formula-badge-${id}">Fixed</span>
                     <span class="currency-badge afn ms-2" id="currency-badge-${id}">AFN</span>
                 </div>
@@ -658,7 +669,7 @@
                     </div>
 
                     <div class="col-md-2">
-                        <label class="form-label">{{ __('ui.formula_quantity') }} <span class="text-danger">*</span></label>
+                        <label class="form-label">Consumption / Finished Unit <span class="text-danger">*</span></label>
                         <input type="number" class="form-control quantity-input auto-calculated"
                                name="items[${id}][quantity]"
                                id="quantity-${id}"
@@ -666,7 +677,7 @@
                                placeholder="{{ __('ui.auto_calculated') }}"
                                readonly>
                         <small class="text-muted" id="rolls-hint-${id}">
-                            <i class="bi bi-magic"></i> Auto-calculated from formula
+                            <i class="bi bi-magic"></i> Formula rows calculate physical consumption automatically
                         </small>
                     </div>
 
@@ -709,8 +720,8 @@
                                         <strong>{{ __('ui.step_2') }}</strong> Division Value = Reel Length × Reel Height × GSM × Per Gram Rate<br>
                                         <strong>{{ __('ui.step_3') }}</strong> Paper Rate = Division Value ÷ Formula Constant<br>
                                         <strong>{{ __('ui.step_4') }}</strong> Paper Rate × Layers = Multiplication Layer × Paper Rate<br>
-                                        <strong>{{ __('ui.step_5') }}</strong> 40% Work = Paper Rate × Layers × 0.40<br>
-                                        <strong>{{ __('ui.step_6') }}</strong> Row Net Rate = Print Cost + Paper Rate × Layers + 40% Work
+                                        <strong>{{ __('ui.step_5') }}</strong> Standard Work / Profit = Paper Rate × Layers × configured %<br>
+                                        <strong>{{ __('ui.step_6') }}</strong> Row Net Rate = Print Cost + Paper Rate × Layers + Standard Work / Profit
                                     </span>
                                 </div>
                             </div>
@@ -719,7 +730,7 @@
                                 <input type="number" class="form-control-sm-custom"
                                        name="items[${id}][length_inch]"
                                        id="length-${id}"
-                                       placeholder="17.32" step="0.01" min="0.01" required
+                                       placeholder="17.32" step="0.01" min="0.01"
                                        oninput="calculateFormulaBasedItem(${id})">
                             </div>
                             <div class="col-md-3">
@@ -727,7 +738,7 @@
                                 <input type="number" class="form-control-sm-custom"
                                        name="items[${id}][width_inch]"
                                        id="width-${id}"
-                                       placeholder="15.75" step="0.01" min="0.01" required
+                                       placeholder="15.75" step="0.01" min="0.01"
                                        oninput="calculateFormulaBasedItem(${id})">
                             </div>
                             <div class="col-md-3">
@@ -735,7 +746,7 @@
                                 <input type="number" class="form-control-sm-custom"
                                        name="items[${id}][height_inch]"
                                        id="height-${id}"
-                                       placeholder="12.20" step="0.01" min="0.01" required
+                                       placeholder="12.20" step="0.01" min="0.01"
                                        oninput="calculateFormulaBasedItem(${id})">
                             </div>
                             <div class="col-md-3">
@@ -747,12 +758,13 @@
                                        oninput="calculateFormulaBasedItem(${id})">
                             </div>
                             <div class="col-md-3">
-                                <div class="form-label-sm">{{ __('ui.per_gram_rate') }}</div>
+                                <div class="form-label-sm">Landed Paper Rate (AFN/kg)</div>
                                 <input type="number" class="form-control-sm-custom"
                                        name="items[${id}][per_gram_rate]"
                                        id="per-gram-rate-${id}"
-                                       placeholder="40" step="0.01" min="0.01" value="40"
-                                       oninput="calculateFormulaBasedItem(${id})">
+                                       placeholder="Auto" step="0.0001" min="0" value="0"
+                                       readonly>
+                                <small class="text-muted">Synced from the selected material's landed inventory cost.</small>
                             </div>
                             <div class="col-md-3">
                                 <div class="form-label-sm">{{ __('ui.layers') }}</div>
@@ -808,8 +820,8 @@
                                         <strong>{{ __('ui.step_1') }}</strong> Multiplication = (Cut Length × Cut Width × Constant) ÷ 1000 (or × Constant)<br>
                                         <strong>{{ __('ui.step_2') }}</strong> Paper Rate = (Multiplication × Per Gram Rate × GRH × Ply) ÷ Constant<br>
                                         <strong>{{ __('ui.step_3') }}</strong> Paper Rate × Layers = Multiplication Layer × Paper Rate<br>
-                                        <strong>{{ __('ui.step_4') }}</strong> 40% Work = Paper Rate × Layers × 0.40<br>
-                                        <strong>{{ __('ui.step_5') }}</strong> Row Net Rate = Print Cost + Paper Rate × Layers + 40% Work
+                                        <strong>{{ __('ui.step_4') }}</strong> Standard Work / Profit = Paper Rate × Layers × configured %<br>
+                                        <strong>{{ __('ui.step_5') }}</strong> Row Net Rate = Print Cost + Paper Rate × Layers + Standard Work / Profit
                                     </span>
                                 </div>
                             </div>
@@ -838,12 +850,12 @@
                                        oninput="calculateFormulaBasedItem(${id})">
                             </div>
                             <div class="col-md-2">
-                                <div class="form-label-sm">{{ __('ui.per_gram_rate') }}</div>
+                                <div class="form-label-sm">Landed Paper Rate (AFN/kg)</div>
                                 <input type="number" class="form-control-sm-custom"
                                        name="items[${id}][per_gram_rate]"
                                        id="per-gram-rate-cut-${id}"
-                                       placeholder="43" step="0.01" min="0.01" value="43"
-                                       oninput="calculateFormulaBasedItem(${id})">
+                                       placeholder="Auto" step="0.0001" min="0" value="0"
+                                       readonly>
                             </div>
                             <div class="col-md-2">
                                 <div class="form-label-sm">Ply</div>
@@ -992,7 +1004,7 @@
                             <span style="color: #1e293b; font-weight: 600;" id="paper-rate-by-layers-${id}">0.00000000</span>
                         </div>
                         <div class="col-4 detail-row">
-                            <span style="color: #475569; font-weight: 500;">{{ __('ui.work_40_label') }}</span>
+                            <span style="color: #475569; font-weight: 500;">Standard Work / Profit</span>
                             <span style="color: #1e293b; font-weight: 600;" id="work-amount-${id}">0.00000000</span>
                         </div>
                         <div class="col-12 detail-row" style="border-top: 1px dashed #e5e7eb; padding-top: 0.4rem; margin-top: 0.2rem;">
@@ -1005,7 +1017,7 @@
                 <!-- ─── COST & NOTES ─── -->
                 <div class="row g-3 mt-2">
                     <div class="col-md-4">
-                        <label class="form-label">{{ __('ui.cost_per_unit') }} <span class="currency-label usd">USD</span></label>
+                        <label class="form-label">Landed Inventory Cost <span class="currency-label usd" id="cost-basis-label-${id}">USD / unit</span></label>
                         <input type="number" class="form-control cost-input"
                                name="items[${id}][cost_per_unit_usd]"
                                id="cost-usd-${id}"
@@ -1013,7 +1025,7 @@
                                oninput="calculateItemCost(${id})">
                         <input type="hidden" name="items[${id}][cost_per_unit_afn]" id="cost-afn-${id}" value="0">
                         <small class="text-muted cost-hint" id="cost-hint-${id}">
-                            Auto-filled from the latest purchase cost
+                            Auto-filled from the latest arrived landed inventory cost
                         </small>
                     </div>
                     <div class="col-md-4">
@@ -1025,7 +1037,7 @@
                         </small>
                     </div>
                     <div class="col-md-4">
-                        <label class="form-label">{{ __('ui.purchase_currency') }}</label>
+                        <label class="form-label">Source Purchase Currency</label>
                         <input type="text" class="form-control" id="currency-display-${id}" value="AFN" readonly>
                         <small class="text-muted">
                             <i class="bi bi-info-circle me-1"></i>
