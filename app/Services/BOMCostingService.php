@@ -87,12 +87,31 @@ class BOMCostingService
         foreach ($bom->items as $item) {
             $latest = $this->latestInventoryCost((int) $item->material_id, $exchangeRate);
 
+            $basisUnit = $latest['found']
+                ? strtolower((string) ($latest['basis_unit'] ?? ''))
+                : strtolower((string) ($item->unit ?? ''));
+
+            if ($item->is_formula_based
+                && in_array($item->formula_type, ['carton_3d', 'cut_roll'], true)
+                && $basisUnit !== 'kg') {
+                throw new \RuntimeException(
+                    "Formula material [{$item->material?->name}] must have a kg inventory cost basis. "
+                    . 'Add an arrived roll batch with kg_per_roll/total_weight_kg before using a paper formula.'
+                );
+            }
+
             $costUsd = $latest['found']
                 ? (float) $latest['cost_usd']
                 : (float) ($item->cost_per_unit_usd ?? 0);
 
             if ($costUsd <= 0 && (float) ($item->cost_per_unit_afn ?? 0) > 0) {
                 $costUsd = (float) $item->cost_per_unit_afn / $exchangeRate;
+            }
+
+            if ($costUsd <= 0) {
+                throw new \RuntimeException(
+                    "No valid landed cost is available for material [{$item->material?->name}]."
+                );
             }
 
             $costAfn = $costUsd * $exchangeRate;
