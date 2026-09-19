@@ -99,6 +99,9 @@ jobs:
         run: |
           find app bootstrap config database routes tests -type f -name '*.php' -print0 | xargs -0 -n1 php -l
 
+      - name: Configure MySQL trigger permissions for CI
+        run: mysql -h127.0.0.1 -uroot -proot -e "SET GLOBAL log_bin_trust_function_creators = 1;"
+
       - name: Fresh MySQL migration
         run: php artisan migrate:fresh --force --no-interaction
 
