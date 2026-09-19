@@ -64,13 +64,13 @@ class BOMItem extends Model
     ];
 
     protected $casts = [
-        'quantity' => 'decimal:4',
+        'quantity' => 'decimal:8',
         'wastage_percentage' => 'decimal:2',
-        'cost_per_unit_usd' => 'decimal:4',
-        'cost_per_unit_afn' => 'decimal:4',
-        'total_cost_usd' => 'decimal:4',
-        'total_cost_afn' => 'decimal:4',
-        'roll_weight' => 'decimal:4',
+        'cost_per_unit_usd' => 'decimal:8',
+        'cost_per_unit_afn' => 'decimal:8',
+        'total_cost_usd' => 'decimal:8',
+        'total_cost_afn' => 'decimal:8',
+        'roll_weight' => 'decimal:8',
         'stock_consumption_override' => 'decimal:8',
         'formula_data' => 'array',
         'is_formula_based' => 'boolean',
@@ -87,12 +87,12 @@ class BOMItem extends Model
         'grh' => 'integer',
         'ply' => 'integer',
         'print' => 'decimal:4',
-        'per_gram_rate' => 'decimal:2',
+        'per_gram_rate' => 'decimal:8',
         'multiplication_layer' => 'integer',
         'formula_constant' => 'integer',
         'work_percentage' => 'decimal:2',
         'percentage_of_base' => 'decimal:2',
-        'rate_per_unit' => 'decimal:4',
+        'rate_per_unit' => 'decimal:8',
         'rate_base_units' => 'integer',
     ];
 
