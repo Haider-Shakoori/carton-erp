@@ -153,9 +153,8 @@ it('creates the canonical consumption schema exactly once with safe names', func
             'updated_at',
         ]))->toBeTrue();
 
-    $matchingTables = collect(DB::select(
-        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'production_material_consumptions'"
-    ));
+    $matchingTables = collect(Schema::getTables())
+        ->filter(fn (array $table) => ($table['name'] ?? null) === 'production_material_consumptions');
     expect($matchingTables)->toHaveCount(1);
 
     $indexes = collect(Schema::getIndexes('production_material_consumptions'));
@@ -197,7 +196,7 @@ it('preserves nullable fields defaults and production order cost columns', funct
         'wastage_cost_usd',
         'wastage_cost_afn',
     ] as $column) {
-        expect(trim((string) $columns[$column]['default'], "'"))->toBe('0');
+        expect((float) trim((string) $columns[$column]['default'], "'"))->toBe(0.0);
     }
 
     foreach (['sale_id', 'sale_item_id', 'purchase_item_id', 'created_by', 'unit', 'consumed_at'] as $column) {
