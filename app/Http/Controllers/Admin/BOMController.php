@@ -723,7 +723,8 @@ class BOMController extends Controller
                 $reelLength = (($length + $width) * 2) + 4;
                 $reelHeight = $width + $height + 1;
 
-                return $reelLength * $reelHeight * 0.00064516 * $gsm / 1000 * $layers;
+                $constant = max((float) ($itemData['formula_constant'] ?? 1550000), 0.000001);
+                return $reelLength * $reelHeight * $gsm * $layers / $constant;
             }
         }
 
@@ -735,7 +736,8 @@ class BOMController extends Controller
             $layers = max((float) ($itemData['multiplication_layer'] ?? 1), 1);
 
             if ($cutLength > 0 && $cutWidth > 0 && $grh > 0) {
-                return $cutLength * $cutWidth * 0.00064516 * $grh / 1000 * $ply * $layers;
+                $constant = max((float) ($itemData['formula_constant'] ?? 1550000), 0.000001);
+                return $cutLength * $cutWidth * $grh * $ply * $layers / $constant;
             }
         }
 
