@@ -1346,201 +1346,177 @@ class SaleController extends Controller
             }
 
             $qty = (float) $validated['qty'];
-            $exchangeRate = (float) ($validated['exchange_rate'] ?? $sale->exchange_rate ?? $bom->exchange_rate ?? 85);
-            $currencyCode = $validated['currency_code'] ?? ($sale->currency->code ?? 'AFN');
-            $isUSD = $currencyCode === 'USD';
+            $exchangeRate = max(
+                (float) ($validated['exchange_rate'] ?? $sale->exchange_rate ?? $bom->exchange_rate ?? 85),
+                0.000001
+            );
+
+            $saleCurrencyCode = $sale->currency?->code ?? 'AFN';
+            if (!empty($validated['currency_code']) && $validated['currency_code'] !== $saleCurrencyCode) {
+                throw new \RuntimeException('Quotation currency must match the sale currency.');
+            }
+
+            $isUSD = $saleCurrencyCode === 'USD';
             $pricingMode = $validated['pricing_mode'];
             $quotedUnitPrice = (float) ($validated['quoted_unit_price'] ?? 0);
+            $costing = app(\App\Services\BOMCostingService::class);
 
             $totalCostUsd = 0.0;
             $materialBreakdown = [];
-            $formulaSnapshot = [];
 
             if ($pricingMode === 'manual') {
-                // ─── MANUAL BOM MODE ───
                 $formulaSnapshot = json_decode($validated['formula_snapshot'] ?? '[]', true);
                 if (!is_array($formulaSnapshot) || count($formulaSnapshot) === 0) {
                     throw new \RuntimeException('Manual BOM calculation details are missing. Please recalculate the quotation.');
                 }
 
-                // ─── CALCULATE TOTAL COST PER UNIT ───
-                $totalCostPerUnitAfn = 0;
+                $commercialNetRateAfn = 0.0;
+                $physicalMaterialCostPerUnitUsd = 0.0;
+
                 foreach ($formulaSnapshot as $row) {
                     $materialId = (int) ($row['material_id'] ?? 0);
                     if ($materialId <= 0) {
                         throw new \RuntimeException('A material is missing from the manual calculation.');
                     }
 
-                    // ─── AUTHORITATIVE MATERIAL RATE (USD per kg → AFN per kg) ───
-                    // Material prices for a NEW manual BOM quotation must come
-                    // from the latest valid purchase for that material, never
-                    // from the stale per_gram_rate stored on the BOM template
-                    // or in old quotation snapshots. The client-sent rate is
-                    // deliberately ignored here.
-                    $materialName = optional(Product::find($materialId))->name ?? 'Unknown';
-                    $purchaseRateKg = $this->latestPurchaseRateKgForMaterial($materialId);
-                    if ($purchaseRateKg <= 0) {
-                        throw new \RuntimeException("No valid purchase price found for [{$materialName}]. Please check the material's purchase history.");
-                    }
-                    $perGramRate = $purchaseRateKg * $exchangeRate;
+                    $material = Product::find($materialId);
+                    $materialName = $material?->name ?? 'Unknown';
+                    $latest = $costing->latestInventoryCost($materialId, $exchangeRate);
 
-                    // ─── VALIDATE REQUIRED FIELDS ───
+                    if (!$latest['found'] || (float) $latest['cost_usd'] <= 0) {
+                        throw new \RuntimeException(
+                            "No valid landed purchase price found for [{$materialName}]. Please check the material purchase history."
+                        );
+                    }
+
+                    $landedUsdPerKg = (float) $latest['cost_usd'];
+                    $landedAfnPerKg = $landedUsdPerKg * $exchangeRate;
+
                     $length = (float) ($row['length'] ?? 0);
                     $width = (float) ($row['width'] ?? 0);
                     $height = (float) ($row['height'] ?? 0);
                     $paperGsm = (float) ($row['paper_gsm'] ?? 0);
-                    $multiplicationLayer = (float) ($row['multiplication_layer'] ?? 1);
+                    $multiplicationLayer = max((float) ($row['multiplication_layer'] ?? 1), 1);
                     $formulaConstant = (float) ($row['formula_constant'] ?? 1550000);
-                    $workPercentage = (float) ($row['work_percentage'] ?? 40);
+                    $workPercentage = (float) ($row['work_percentage'] ?? $bom->work_percentage ?? 40);
                     $wastage = (float) ($row['wastage'] ?? 0);
                     $printCost = (float) ($row['print_cost'] ?? 0);
 
-                    if ($length <= 0 || $width <= 0 || $height <= 0 || $paperGsm <= 0 || $perGramRate <= 0 || $formulaConstant <= 0) {
-                        throw new \RuntimeException('Carton dimensions, GSM, Per Gram Rate and Formula Constant must be greater than zero.');
+                    if ($length <= 0 || $width <= 0 || $height <= 0 || $paperGsm <= 0 || $formulaConstant <= 0) {
+                        throw new \RuntimeException(
+                            'Carton dimensions, GSM and Formula Constant must be greater than zero.'
+                        );
                     }
 
-                    // ─── CALCULATE USING THE EXCEL FORMULA ───
                     $reelLength = (($length + $width) * 2) + 4;
                     $reelHeight = $width + $height + 1;
-                    $divisionValue = $reelLength * $reelHeight * $paperGsm * $perGramRate;
+
+                    // Commercial Excel quotation. Wastage is intentionally excluded
+                    // from the quotation rate; it belongs to physical production cost.
+                    $divisionValue = $reelLength * $reelHeight * $paperGsm * $landedAfnPerKg;
                     $paperRate = $divisionValue / $formulaConstant;
                     $paperRateByLayers = $multiplicationLayer * $paperRate;
                     $workAmount = $paperRateByLayers * ($workPercentage / 100);
                     $rowNetRate = $printCost + $paperRateByLayers + $workAmount;
-                    // Wastage affects the physical production requirement, not the
-                    // first Excel section's commercial quotation/net rate.
-                    $finalRateAfn = $rowNetRate;
+                    $commercialNetRateAfn += $rowNetRate;
 
-                    $totalCostPerUnitAfn += $finalRateAfn;
+                    // Physical inventory requirement/cost, including wastage.
+                    $kgPerFinishedUnit = $reelLength * $reelHeight
+                        * 0.00064516 * $paperGsm / 1000 * $multiplicationLayer;
+                    $kgWithWastage = $kgPerFinishedUnit * (1 + ($wastage / 100));
+                    $physicalLineCostUsd = $kgWithWastage * $landedUsdPerKg;
+                    $physicalMaterialCostPerUnitUsd += $physicalLineCostUsd;
 
                     $materialBreakdown[] = [
                         'material_id' => $materialId,
                         'material_name' => $materialName,
+                        'purchase_item_id' => $latest['purchase_item_id'],
                         'length' => $length,
                         'width' => $width,
                         'height' => $height,
                         'paper_gsm' => $paperGsm,
-                        'per_gram_rate' => $perGramRate,
+                        'per_gram_rate' => $landedAfnPerKg,
+                        'landed_cost_usd_per_kg' => $landedUsdPerKg,
                         'multiplication_layer' => $multiplicationLayer,
                         'formula_constant' => $formulaConstant,
                         'work_percentage' => $workPercentage,
                         'wastage' => $wastage,
                         'print_cost' => $printCost,
+                        'kg_per_finished_unit' => $kgPerFinishedUnit,
+                        'kg_with_wastage' => $kgWithWastage,
+                        'physical_cost_usd' => $physicalLineCostUsd,
                         'row_net_rate' => $rowNetRate,
-                        'final_rate_afn' => $finalRateAfn,
+                        'final_rate_afn' => $rowNetRate,
                     ];
                 }
 
-                // ─── GET PROFIT MARGIN FROM BOM ───
-                $profitMarginPercent = (float) ($bom->profit_margin_percentage ?? 0);
+                $profitMargin = max((float) ($bom->profit_margin_percentage ?? 0), 0);
+                $calculatedSellingAfn = $commercialNetRateAfn * (1 + ($profitMargin / 100));
+                $calculatedUnitPrice = $isUSD
+                    ? $calculatedSellingAfn / $exchangeRate
+                    : $calculatedSellingAfn;
 
-                // ─── CALCULATE UNIT PRICE WITH PROFIT MARGIN ───
-                $totalCostPerUnitUsd = $totalCostPerUnitAfn / $exchangeRate;
+                $unitPrice = $quotedUnitPrice > 0
+                    ? $quotedUnitPrice
+                    : $calculatedUnitPrice;
 
-                // ─── Excel Net Rate is the final default selling rate ───
-                // The client's Excel Net Rate already includes the standard 40%
-                // work/profit (Net Rate = Print + Paper Rate by Layers + Work/Profit).
-                // Per the authoritative workflow, NO additional profit_margin_percentage
-                // markup is added after the Net Rate for Excel/BOM quotation sales.
-                $sellingPricePerUnitAfn = $totalCostPerUnitAfn;
-                $sellingPricePerUnitUsd = $sellingPricePerUnitAfn / $exchangeRate;
-
-                // ─── USE THE QUOTED PRICE IF PROVIDED, OTHERWISE USE CALCULATED SELLING PRICE ───
-                if ($quotedUnitPrice > 0) {
-                    $unitPrice = $quotedUnitPrice;
-                } else {
-                    $unitPrice = $isUSD ? $sellingPricePerUnitUsd : $sellingPricePerUnitAfn;
-                }
-
-                // ─── TOTAL COST FOR ALL QUANTITY ───
-                $totalCostUsd = $totalCostPerUnitUsd * $qty;
-
+                $totalCostUsd = $physicalMaterialCostPerUnitUsd * $qty;
             } else {
-                // ─── SAVED BOM MODE ───
-                // Get the selling price from the BOM
-                if ($isUSD) {
-                    $unitPrice = (float) ($bom->selling_price_usd ?? 0);
-                } else {
-                    $unitPrice = (float) ($bom->selling_price_afn ?? 0);
+                $summary = $costing->summarize($bom);
+
+                $savedPriceAfn = (float) ($bom->selling_price_afn ?? 0);
+                if ($savedPriceAfn <= 0) {
+                    $savedPriceAfn = (float) $summary['selling_price_afn'];
                 }
 
-                // A saved selling price does not replace the BOM cost basis.
-                foreach ($bom->items as $item) {
-                    $inventory = $this->latestInventoryCostForMaterial((int) $item->material_id, $exchangeRate);
-                    $costPerUnitUsd = (float) ($item->cost_per_unit_usd ?? 0);
-                    if ($costPerUnitUsd <= 0) {
-                        $costPerUnitUsd = $inventory['found'] ? (float) $inventory['cost_usd'] : 0;
-                    }
+                $unitPrice = $isUSD
+                    ? $savedPriceAfn / $exchangeRate
+                    : $savedPriceAfn;
 
-                    $requiredQty = (float) $item->quantity
-                        * (1 + ((float) ($item->wastage_percentage ?? 0) / 100));
-                    $itemTotalUsd = $requiredQty * $costPerUnitUsd * $qty;
-                    $totalCostUsd += $itemTotalUsd;
-
-                    $materialBreakdown[] = [
-                        'material_id' => $item->material_id,
-                        'material_name' => $item->material->name ?? 'Unknown',
-                        'purchase_item_id' => $inventory['purchase_item_id'],
-                        'required_qty' => $requiredQty * $qty,
-                        'cost_per_unit_usd' => $costPerUnitUsd,
-                        'total_cost_usd' => $itemTotalUsd,
-                    ];
-                }
-
-                // If no selling price set, calculate from material costs with profit margin
-                if ($unitPrice <= 0) {
-
-                    // Add labor and overhead
-                    $laborCostUsd = ((float) ($bom->labor_cost_per_unit ?? 0)) / $exchangeRate * $qty;
-                    $overheadCostUsd = ((float) ($bom->overhead_cost_per_unit ?? 0)) / $exchangeRate * $qty;
-                    $totalCostUsd += $laborCostUsd + $overheadCostUsd;
-
-                    // ─── CALCULATE SELLING PRICE WITH PROFIT MARGIN ───
-                    $costPerUnitUsd = $totalCostUsd / $qty;
-                    $profitMargin = (float) ($bom->profit_margin_percentage ?? 0) / 100;
-                    $sellingPriceUsd = $costPerUnitUsd * (1 + $profitMargin);
-
-                    if ($isUSD) {
-                        $unitPrice = $sellingPriceUsd;
-                    } else {
-                        $unitPrice = $sellingPriceUsd * $exchangeRate;
-                    }
-                }
-
-                // If still 0, use the quoted price or default
                 if ($unitPrice <= 0 && $quotedUnitPrice > 0) {
                     $unitPrice = $quotedUnitPrice;
                 }
 
                 if ($unitPrice <= 0) {
-                    throw new \RuntimeException('Could not determine unit price for the BOM. Please set a selling price on the BOM or use manual pricing.');
+                    throw new \RuntimeException(
+                        'Could not determine a selling price for the BOM. Recalculate the BOM or use manual pricing.'
+                    );
+                }
+
+                $totalCostUsd = (float) $summary['physical_production_cost_usd'] * $qty;
+
+                foreach ($bom->items as $item) {
+                    $requiredQty = $item->calculateStockRequirement($qty, true);
+                    $costPerUnitUsd = (float) ($item->cost_per_unit_usd ?? 0);
+                    $itemTotalUsd = $requiredQty * $costPerUnitUsd;
+
+                    $materialBreakdown[] = [
+                        'material_id' => $item->material_id,
+                        'material_name' => $item->material->name ?? 'Unknown',
+                        'required_qty' => $requiredQty,
+                        'unit' => $item->material?->is_roll_based ? 'kg' : $item->unit,
+                        'wastage_percentage' => (float) ($item->wastage_percentage ?? 0),
+                        'cost_per_unit_usd' => $costPerUnitUsd,
+                        'total_cost_usd' => $itemTotalUsd,
+                    ];
                 }
             }
 
-            // ─── CALCULATE FINAL TOTALS ───
             $totalPrice = $unitPrice * $qty;
             $usdUnitPrice = $isUSD ? $unitPrice : $unitPrice / $exchangeRate;
             $usdTotal = $usdUnitPrice * $qty;
-
-            // Cost per unit in USD
             $costPerUnitUsd = $qty > 0 ? $totalCostUsd / $qty : 0;
 
-            // ─── PROFIT CALCULATION ───
             $profitUsd = $usdTotal - $totalCostUsd;
             $profitAfn = $profitUsd * $exchangeRate;
             $profitPercentage = $usdTotal > 0 ? ($profitUsd / $usdTotal) * 100 : 0;
 
-            // ─── BUILD REMARKS ───
             $remarks = $validated['remarks'] ?? ($pricingMode === 'manual'
                 ? "Manual BOM quotation using {$bom->code}"
                 : "Saved BOM price: {$bom->code}");
             $remarks .= ' | Pricing mode: ' . strtoupper($pricingMode);
             $remarks .= ' | Materials: ' . count($materialBreakdown);
 
-            // ─── GUARD AGAINST ACCIDENTAL DUPLICATE ADD ───
-            // A retry/double-submit of the SAME add-item request must not create
-            // a second identical sale line. Two legitimate separate lines for the
-            // same product are still allowed (e.g. different qty/price/mode).
             $duplicate = SaleItem::where('sale_id', $sale->id)
                 ->where('product_id', $validated['product_id'])
                 ->where('bom_id', $bom->id)
@@ -1552,14 +1528,6 @@ class SaleController extends Controller
                 ->first();
 
             if ($duplicate) {
-                \Log::warning('Duplicate sale item add skipped', [
-                    'sale_id' => $sale->id,
-                    'sale_item_id' => $duplicate->id,
-                    'product_id' => $validated['product_id'],
-                    'bom_id' => $bom->id,
-                    'qty' => $qty,
-                ]);
-
                 $sale->recalculateTotals();
                 DB::commit();
 
@@ -1571,7 +1539,6 @@ class SaleController extends Controller
                 ]);
             }
 
-            // ─── CREATE SALE ITEM ───
             $saleItem = SaleItem::create([
                 'sale_id' => $sale->id,
                 'product_id' => $validated['product_id'],
@@ -1597,53 +1564,37 @@ class SaleController extends Controller
                 'manual_bom_snapshot' => $pricingMode === 'manual' ? $materialBreakdown : null,
             ]);
 
-            // ─── LOG THE CREATION ───
-            \Log::info('Sale item created with BOM', [
-                'sale_item_id' => $saleItem->id,
-                'sale_id' => $sale->id,
-                'bom_id' => $bom->id,
-                'pricing_mode' => $pricingMode,
-                'unit_price' => $unitPrice,
-                'total_price' => $totalPrice,
-                'cost_per_unit_usd' => $costPerUnitUsd,
-                'total_cost_usd' => $totalCostUsd,
-                'profit_usd' => $profitUsd,
-                'profit_afn' => $profitAfn,
-                'profit_percentage' => $profitPercentage,
-                'exchange_rate' => $exchangeRate,
-                'currency_code' => $currencyCode,
-                'material_breakdown' => $materialBreakdown,
-            ]);
-
-            // ─── RECALCULATE SALE TOTALS ───
             $sale->recalculateTotals();
+            $responseItem = $saleItem->load(['product', 'bom']);
+
             DB::commit();
 
             return response()->json([
                 'success' => true,
                 'message' => 'Item added successfully.',
-                'item' => $saleItem->load(['product', 'bom']),
+                'item' => $responseItem,
                 'sale_total' => $sale->grand_total,
                 'usd_total' => $sale->usd_grand_total,
                 'profit_afn' => $profitAfn,
                 'profit_usd' => $profitUsd,
                 'profit_percentage' => $profitPercentage,
             ]);
-
         } catch (\Throwable $e) {
             DB::rollBack();
+
             \Log::error('Error adding BOM item to sale', [
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
-                'request' => $request->except(['formula_snapshot']),
+                'request' => $request->all(),
             ]);
 
             return response()->json([
                 'success' => false,
-                'message' => $e->getMessage(),
-            ], 422);
+                'message' => 'Error adding item: ' . $e->getMessage(),
+            ], 500);
         }
     }
+
     /**
      * Get latest inventory cost for a material
      */
