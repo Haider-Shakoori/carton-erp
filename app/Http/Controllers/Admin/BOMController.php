@@ -309,7 +309,7 @@ class BOMController extends Controller
                 })
                 ->values();
 
-            $latest = $costing->latestInventoryCost((int) $material->id, $exchangeRate, true);
+            $latest = $costing->latestInventoryCost((int) $material->id, $exchangeRate, false);
             $latestCostUsd = (float) ($latest['cost_usd'] ?? 0);
             $latestCostAfn = (float) ($latest['cost_afn'] ?? 0);
             $basisUnit = $latest['basis_unit']
@@ -536,14 +536,16 @@ class BOMController extends Controller
                         'exchange_rate' => $exchangeRate,
                     ]);
 
-                    if ($purchaseCurrency === 'USD') {
-                        $costPerUnitUsd = $itemData['cost_per_unit_usd'] ?? ($material->weighted_avg_cost ?? 0);
-                        $costPerUnitAfn = $costPerUnitUsd * $exchangeRate;
-                    } else {
-                        // AFN
-                        $costPerUnitAfn = $itemData['cost_per_unit_afn'] ?? ($material->weighted_avg_cost ?? 0);
-                        $costPerUnitUsd = $costPerUnitAfn / $exchangeRate;
+                    $costPerUnitUsd = (float) ($itemData['cost_per_unit_usd'] ?? 0);
+                    $costPerUnitAfn = (float) ($itemData['cost_per_unit_afn'] ?? 0);
+
+                    if ($costPerUnitUsd <= 0 && $costPerUnitAfn > 0) {
+                        $costPerUnitUsd = $costPerUnitAfn / max($exchangeRate, 0.000001);
                     }
+                    if ($costPerUnitUsd <= 0) {
+                        $costPerUnitUsd = (float) ($material->weighted_avg_cost ?? 0);
+                    }
+                    $costPerUnitAfn = $costPerUnitUsd * $exchangeRate;
 
                     Log::info("BOM Store - Costs Calculated", [
                         'cost_per_unit_usd' => $costPerUnitUsd,
