@@ -979,13 +979,16 @@ class BOMController extends Controller
                 $costPerUnitUsd = 0;
                 $costPerUnitAfn = 0;
 
-                if ($purchaseCurrency === 'USD') {
-                    $costPerUnitUsd = $itemData['cost_per_unit_usd'] ?? ($material->weighted_avg_cost ?? 0);
-                    $costPerUnitAfn = $costPerUnitUsd * $exchangeRate;
-                } else {
-                    $costPerUnitAfn = $itemData['cost_per_unit_afn'] ?? ($material->weighted_avg_cost ?? 0);
-                    $costPerUnitUsd = $costPerUnitAfn / $exchangeRate;
+                $costPerUnitUsd = (float) ($itemData['cost_per_unit_usd'] ?? 0);
+                $costPerUnitAfn = (float) ($itemData['cost_per_unit_afn'] ?? 0);
+
+                if ($costPerUnitUsd <= 0 && $costPerUnitAfn > 0) {
+                    $costPerUnitUsd = $costPerUnitAfn / max($exchangeRate, 0.000001);
                 }
+                if ($costPerUnitUsd <= 0) {
+                    $costPerUnitUsd = (float) ($material->weighted_avg_cost ?? 0);
+                }
+                $costPerUnitAfn = $costPerUnitUsd * $exchangeRate;
 
                 $quantity = floatval($itemData['quantity']);
                 $wastage = floatval($itemData['wastage_percentage'] ?? 5);
