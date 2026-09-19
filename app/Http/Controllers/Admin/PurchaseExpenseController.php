@@ -222,33 +222,11 @@ class PurchaseExpenseController extends Controller
      */
     private function updatePurchaseTotals(Purchase $purchase)
     {
-        // Reload with items and expenses
-        $purchase->load(['items', 'expenses']);
-
-        // Calculate subtotals from items
-        $subtotal = $purchase->items->sum('total');
-        $usdSubtotal = $purchase->items->sum('usd_total');
-
-        // Calculate expenses
-        $expenseTotal = $purchase->expenses->sum('amount');
-        $usdExpenseTotal = $purchase->expenses->sum('usd_amount');
-
-        // Grand totals
-        $grandTotal = $subtotal;
-        $usdGrandTotal = $usdSubtotal + $usdExpenseTotal;
-
-        // Update purchase record with ALL totals
-        $purchase->update([
-            'subtotal' => $subtotal,
-            'usd_subtotal' => $usdSubtotal,
-            'expense_total' => $expenseTotal,
-            'usd_expense_total' => $usdExpenseTotal,
-            'grand_total' => $grandTotal,
-            'usd_grand_total' => $usdGrandTotal,
-        ]);
-
-        // Recalculate expense per item proportionally
-        $this->recalculateExpensePerItem($purchase);
+        // Keep one canonical mixed-currency implementation on the model.
+        // recalculateTotals() normalizes every expense through its USD amount,
+        // then converts the aggregate back to the purchase-order currency.
+        $purchase->recalculateTotals();
+        $purchase->distributeExpenses();
     }
 
     /**
