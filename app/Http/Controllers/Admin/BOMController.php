@@ -690,32 +690,18 @@ class BOMController extends Controller
                 'total_material_cost_usd' => $totalMaterialCostUsd,
             ]);
 
-            // ─── UPDATE BOM TOTALS ───
-            $bom->total_material_cost_usd = $totalMaterialCostUsd;
-            $bom->unsetRelation('items');
-            $bom->load('items');
+            // Reprice from the authoritative latest arrived inventory cost.
+            // Formula rows are converted to physical stock requirements first,
+            // so roll paper is costed in landed USD/kg, never USD/roll.
+            $bom = app(\App\Services\BOMCostingService::class)
+                ->refreshBomMaterialCosts($bom);
 
-            Log::info("BOM Store - Updating BOM Totals", [
-                'bom_id' => $bom->id,
-                'items_loaded' => $bom->items->count(),
-                'total_material_cost_usd' => $totalMaterialCostUsd,
-            ]);
-
-            // Calculate totals
-            $bom->calculateTotals();
-            $bom->saveQuietly();
-
-            Log::info("BOM Store - Totals Calculated", [
+            Log::info("BOM Store - Canonical Costs Calculated", [
                 'total_material_cost_usd' => $bom->total_material_cost_usd,
                 'total_material_cost_afn' => $bom->total_material_cost_afn,
-                'total_cost_afn' => $bom->total_cost_afn,
+                'physical_production_cost_afn' => $bom->total_cost_afn,
                 'selling_price_afn' => $bom->selling_price_afn,
             ]);
-
-            // Recalculate AFN values
-            $bom->recalculateAfnValues();
-
-            Log::info("BOM Store - AFN Values Recalculated");
 
             DB::commit();
             Log::info("BOM Store - Transaction Committed Successfully", [
@@ -1129,14 +1115,8 @@ class BOMController extends Controller
                 BOMItem::whereIn('id', $itemsToDelete)->delete();
             }
 
-            // ─── UPDATE BOM TOTALS ───
-            $bom->total_material_cost_usd = $totalMaterialCostUsd;
-            $bom->unsetRelation('items');
-            $bom->load('items');
-
-            $bom->calculateTotals();
-            $bom->saveQuietly();
-            $bom->recalculateAfnValues();
+            $bom = app(\App\Services\BOMCostingService::class)
+                ->refreshBomMaterialCosts($bom);
 
             DB::commit();
 
