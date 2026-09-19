@@ -99,19 +99,19 @@ class Purchase extends Model
      */
     public function recalculateTotals()
     {
-        // Calculate from items
-        $itemSubtotal = $this->items()->sum('total') ?? 0;
-        $itemUsdSubtotal = $this->items()->sum('usd_total') ?? 0;
+        $itemSubtotal = (float) ($this->items()->sum('total') ?? 0);
+        $itemUsdSubtotal = (float) ($this->items()->sum('usd_total') ?? 0);
+        $expenseUsdTotal = (float) ($this->expenses()->sum('usd_amount') ?? 0);
 
-        // Calculate from expenses
-        $expenseTotal = $this->expenses()->sum('amount') ?? 0;
-        $expenseUsdTotal = $this->expenses()->sum('usd_amount') ?? 0;
+        // "subtotal / expense_total / grand_total" are always stored in the
+        // purchase-order currency. Individual expenses may be USD, AFN, etc.,
+        // so raw expense.amount values must never be added together.
+        $purchaseCurrencyRate = $this->purchaseCurrencyRateToUsd();
+        $expenseTotal = $expenseUsdTotal * $purchaseCurrencyRate;
 
-        // Calculate grand totals
         $grandTotal = $itemSubtotal + $expenseTotal;
         $usdGrandTotal = $itemUsdSubtotal + $expenseUsdTotal;
 
-        // Update the purchase record
         $this->update([
             'subtotal' => $itemSubtotal,
             'usd_subtotal' => $itemUsdSubtotal,
@@ -122,6 +122,22 @@ class Purchase extends Model
         ]);
 
         return $this;
+    }
+
+    /**
+     * Number of purchase-currency units represented by one USD.
+     */
+    public function purchaseCurrencyRateToUsd(): float
+    {
+        $this->loadMissing('currency');
+
+        $rate = (float) ($this->currency?->exchange_rate ?? 0);
+        if ($rate > 0) {
+            return $rate;
+        }
+
+        $stored = (float) ($this->exchange_rate ?? 0);
+        return $stored > 0 ? $stored : 1.0;
     }
 
     /**
@@ -151,9 +167,9 @@ class Purchase extends Model
             return;
         }
 
-        // Get total expenses
-        $totalExpenseAmount = $this->expenses()->sum('amount') ?? 0;
-        $totalExpenseUsd = $this->expenses()->sum('usd_amount') ?? 0;
+        // Normalize mixed-currency expenses before allocating them.
+        $totalExpenseUsd = (float) ($this->expenses()->sum('usd_amount') ?? 0);
+        $totalExpenseAmount = $totalExpenseUsd * $this->purchaseCurrencyRateToUsd();
 
         foreach ($items as $item) {
             $qty = $item->qty > 0 ? $item->qty : 1;
