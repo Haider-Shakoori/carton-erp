@@ -1268,6 +1268,7 @@
                     const height = parseFloat($(`#height-${id}`).val()) || 0;
                     const gsm = parseFloat($(`#paper-gsm-${id}`).val()) || 0;
                     const multiplicationLayer = parseFloat($(`#multiplication-layer-${id}`).val()) || 1;
+                    const constant = parseFloat($(`#formula-constant-${id}`).val()) || 1550000;
                     const printCost = parseFloat($(`#print-${id}`).val()) || 0;
                     const workPercentage = parseFloat($(`#carton-work-percentage-${id}`).val());
                     const effectiveWorkPercentage = Number.isFinite(workPercentage)
@@ -1283,7 +1284,7 @@
                         reelHeight = width + height + 1;
 
                         // Square inches -> square metres -> kg, including layer count.
-                        quantity = reelLength * reelHeight * 0.00064516 * gsm / 1000 * multiplicationLayer;
+                        quantity = reelLength * reelHeight * gsm * multiplicationLayer / constant;
 
                         // Commercial paper rate excludes wastage by design.
                         paperRate = quantity * landedAfn;
@@ -1315,6 +1316,7 @@
                     const grh = parseFloat($(`#grh-${id}`).val()) || 0;
                     const ply = parseFloat($(`#ply-${id}`).val()) || 1;
                     const multiplicationLayer = parseFloat($(`#multiplication-layer-cut-${id}`).val()) || 1;
+                    const constant = parseFloat($(`#formula-constant-cut-${id}`).val()) || 1550000;
                     const printCost = parseFloat($(`#print-cut-${id}`).val()) || 0;
                     const workPercentage = parseFloat($(`#cut-work-percentage-${id}`).val());
                     const effectiveWorkPercentage = Number.isFinite(workPercentage)
@@ -1324,7 +1326,7 @@
                     $(`#per-gram-rate-cut-${id}`).val(landedAfn > 0 ? landedAfn.toFixed(4) : '0');
 
                     if (cutLength > 0 && cutWidth > 0 && grh > 0) {
-                        quantity = cutLength * cutWidth * 0.00064516 * grh / 1000 * ply * multiplicationLayer;
+                        quantity = cutLength * cutWidth * grh * ply * multiplicationLayer / constant;
                         paperRate = quantity * landedAfn;
                         paperRateByLayers = paperRate;
                         workCost = paperRate * (effectiveWorkPercentage / 100);
