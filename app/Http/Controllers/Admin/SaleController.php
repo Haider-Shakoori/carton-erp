@@ -521,175 +521,135 @@ class SaleController extends Controller
             DB::beginTransaction();
 
             $sale = Sale::with(['items', 'currency'])->findOrFail($request->sale_id);
-
             if ($sale->status !== 'draft') {
-                throw new \Exception('Cannot add items to a confirmed sale.');
+                throw new \RuntimeException('Cannot add items to a confirmed sale.');
             }
 
-            $itemsAdded = [];
+            $itemsAdded = collect();
+            $exchangeRate = max((float) ($sale->exchange_rate ?? 0), 0.000001);
+            if ($exchangeRate <= 0.000001) {
+                $exchangeRate = 85;
+            }
+            $saleCurrency = $sale->currency?->code ?? 'AFN';
 
             foreach ($request->items as $itemData) {
                 $bom = BOM::with(['items.material'])->findOrFail($itemData['bom_id']);
                 $qty = (float) $itemData['qty'];
 
-                // ─── 1. GET EXCHANGE RATE FROM BOM ───
-                $exchangeRate = $bom->getUSDtoAFNRate();
-                $rateSource = $bom->exchange_rate_source;
-                $rateUpdatedAt = $bom->exchange_rate_updated_at;
-
-                // ─── 2. CALCULATE MATERIAL COST IN USD ───
-                $totalMaterialCostUsd = 0;
-                $materialBreakdown = [];
-
-                foreach ($bom->items as $bomItem) {
-                    // Quantity with wastage
-                    $requiredQty = $bomItem->quantity * (1 + ($bomItem->wastage_percentage / 100));
-
-                    // Cost per unit in USD
-                    $costPerUnitUsd = $bomItem->cost_per_unit_usd ?? 0;
-
-                    // Total cost for this material
-                    $itemTotalUsd = $requiredQty * $costPerUnitUsd * $qty;
-                    $totalMaterialCostUsd += $itemTotalUsd;
-
-                    $materialBreakdown[] = [
-                        'material_id' => $bomItem->material_id,
-                        'material_name' => $bomItem->material->name ?? 'Unknown',
-                        'quantity_per_unit' => $bomItem->quantity,
-                        'wastage_percentage' => $bomItem->wastage_percentage,
-                        'required_qty' => $requiredQty * $qty,
-                        'cost_per_unit_usd' => $costPerUnitUsd,
-                        'total_cost_usd' => $itemTotalUsd,
-                        'total_cost_afn' => $itemTotalUsd * $exchangeRate,
-                    ];
+                if ((float) ($sale->exchange_rate ?? 0) <= 0) {
+                    $exchangeRate = max((float) $bom->getUSDtoAFNRate(), 0.000001);
                 }
 
-                // ─── 3. LABOR & OVERHEAD (Already in AFN) ───
-                $laborCostAfn = ($bom->labor_cost_per_unit ?? 0) * $qty;
-                $overheadCostAfn = ($bom->overhead_cost_per_unit ?? 0) * $qty;
-
-                // ─── 4. CONVERT MATERIAL COST TO AFN ───
-                $materialCostAfn = $totalMaterialCostUsd * $exchangeRate;
-
-                // ─── 5. TOTAL COST IN AFN ───
-                $totalCostAfn = $materialCostAfn + $laborCostAfn + $overheadCostAfn;
-
-                // ─── 6. SELLING PRICE WITH PROFIT (AFN) ───
-                $profitMargin = ($bom->profit_margin_percentage ?? 0) / 100;
-                $unitPriceAfn = ($totalCostAfn / $qty) * (1 + $profitMargin);
-                $totalAfn = $unitPriceAfn * $qty;
-
-                // ─── 7. USD EQUIVALENTS FOR TRACKING ───
-                $usdTotal = $totalAfn / $exchangeRate;
-                $usdUnitPrice = $unitPriceAfn / $exchangeRate;
-
-                // Cost per unit in USD (including labor and overhead converted)
-                $costPerUnitUsd = ($totalMaterialCostUsd / $qty) +
-                    (($laborCostAfn / $exchangeRate) / $qty) +
-                    (($overheadCostAfn / $exchangeRate) / $qty);
+                $summary = app(\App\Services\BOMCostingService::class)->summarize($bom);
+                $costPerUnitUsd = (float) $summary['physical_production_cost_usd'];
                 $totalCostUsd = $costPerUnitUsd * $qty;
 
-                // ─── 8. PROFIT CALCULATION (USD) ───
-                $profitUsd = $usdTotal - $totalCostUsd;
-                $profitPercentage = $totalCostUsd > 0 ? ($profitUsd / $totalCostUsd) * 100 : 0;
-
-                // ─── 9. BUILD REMARKS ───
-                $remarks = $itemData['remarks'] ?? "BOM: {$bom->code}";
-                $remarks .= " | Rate: 1 USD = {$exchangeRate} AFN ({$rateSource})";
-                if ($rateUpdatedAt) {
-                    $remarks .= " | Updated: " . $rateUpdatedAt->format('d M Y H:i');
+                $unitPriceAfn = (float) ($bom->selling_price_afn ?? 0);
+                if ($unitPriceAfn <= 0) {
+                    $unitPriceAfn = (float) $summary['selling_price_afn'];
                 }
+
+                if ($unitPriceAfn <= 0) {
+                    throw new \RuntimeException("BOM {$bom->code} has no valid selling price.");
+                }
+
+                $unitPrice = $saleCurrency === 'USD'
+                    ? $unitPriceAfn / $exchangeRate
+                    : $unitPriceAfn;
+                $total = $unitPrice * $qty;
+                $usdUnitPrice = $saleCurrency === 'USD'
+                    ? $unitPrice
+                    : $unitPrice / $exchangeRate;
+                $usdTotal = $usdUnitPrice * $qty;
+
+                $profitUsd = $usdTotal - $totalCostUsd;
+                $profitAfn = $profitUsd * $exchangeRate;
+                $profitPercentage = $usdTotal > 0
+                    ? ($profitUsd / $usdTotal) * 100
+                    : 0;
+
+                $materialBreakdown = $bom->items->map(function ($bomItem) use ($qty, $exchangeRate) {
+                    $requiredQty = $bomItem->calculateStockRequirement($qty, true);
+                    $costPerUnitUsd = (float) ($bomItem->cost_per_unit_usd ?? 0);
+                    $totalUsd = $requiredQty * $costPerUnitUsd;
+
+                    return [
+                        'material_id' => $bomItem->material_id,
+                        'material_name' => $bomItem->material->name ?? 'Unknown',
+                        'required_qty' => $requiredQty,
+                        'unit' => $bomItem->material?->is_roll_based ? 'kg' : $bomItem->unit,
+                        'wastage_percentage' => (float) ($bomItem->wastage_percentage ?? 0),
+                        'cost_per_unit_usd' => $costPerUnitUsd,
+                        'total_cost_usd' => $totalUsd,
+                        'total_cost_afn' => $totalUsd * $exchangeRate,
+                    ];
+                })->all();
+
+                $remarks = $itemData['remarks'] ?? "BOM: {$bom->code}";
+                $remarks .= " | Rate: 1 USD = {$exchangeRate} AFN";
                 $remarks .= " | Materials: " . count($materialBreakdown) . " items";
 
-                // ─── 10. CREATE SALE ITEM ───
                 $saleItem = SaleItem::create([
                     'sale_id' => $sale->id,
                     'product_id' => $bom->product_id,
                     'bom_id' => $bom->id,
                     'purchase_item_id' => null,
                     'sale_currency_id' => $sale->currency_id,
-
-                    // Quantity
                     'qty' => $qty,
-
-                    // Cost in USD
                     'cost_per_unit_usd' => $costPerUnitUsd,
                     'total_cost_usd' => $totalCostUsd,
-
-                    // Price in AFN
-                    'unit_price' => $unitPriceAfn,
-                    'total' => $totalAfn,
+                    'unit_price' => $unitPrice,
+                    'total' => $total,
                     'discount' => 0,
                     'tax' => 0,
-
-                    // USD equivalents
                     'usd_unit_price' => $usdUnitPrice,
                     'usd_total' => $usdTotal,
                     'usd_discount' => 0,
                     'usd_tax' => 0,
-
-                    // Exchange rate
                     'rate' => $exchangeRate,
-
-                    // Profit
                     'profit_usd' => $profitUsd,
+                    'profit_afn' => $profitAfn,
                     'profit_percentage' => $profitPercentage,
-
-                    // Remarks
                     'remarks' => $remarks,
                 ]);
 
-                // ─── 11. LOG MATERIAL BREAKDOWN ───
-                \Log::info('Sale Item Created with BOM', [
-                    'sale_item_id' => $saleItem->id,
-                    'sale_id' => $sale->id,
-                    'bom_id' => $bom->id,
-                    'bom_code' => $bom->code,
-                    'exchange_rate' => $exchangeRate,
-                    'rate_source' => $rateSource,
-                    'qty' => $qty,
-                    'unit_price_afn' => $unitPriceAfn,
-                    'total_afn' => $totalAfn,
-                    'cost_per_unit_usd' => $costPerUnitUsd,
-                    'total_cost_usd' => $totalCostUsd,
-                    'profit_usd' => $profitUsd,
-                    'profit_percentage' => $profitPercentage,
-                    'material_breakdown' => $materialBreakdown,
-                    'labor_cost_afn' => $laborCostAfn,
-                    'overhead_cost_afn' => $overheadCostAfn,
-                ]);
-
-                $itemsAdded[] = $saleItem;
+                $itemsAdded->push($saleItem);
             }
 
-            // ─── 12. RECALCULATE SALE TOTALS ───
             $sale->recalculateTotals();
+
+            // Build the response while the transaction is still open so any
+            // unexpected serialization/relationship error cannot leave the user
+            // with a committed item and a failed HTTP response.
+            $responseItems = $itemsAdded->map(function ($item) {
+                $item->loadMissing('product');
+
+                return [
+                    'id' => $item->id,
+                    'product_name' => $item->product->name ?? 'N/A',
+                    'qty' => $item->qty,
+                    'unit_price' => $item->unit_price,
+                    'total' => $item->total,
+                    'cost_per_unit_usd' => $item->cost_per_unit_usd,
+                    'profit_usd' => $item->profit_usd,
+                    'exchange_rate' => $item->rate,
+                ];
+            })->values();
 
             DB::commit();
 
             return response()->json([
                 'success' => true,
-                'message' => count($itemsAdded) . ' item(s) added successfully',
-                'items' => $itemsAdded->map(function($item) {
-                    return [
-                        'id' => $item->id,
-                        'product_name' => $item->product->name ?? 'N/A',
-                        'qty' => $item->qty,
-                        'unit_price_afn' => $item->unit_price,
-                        'total_afn' => $item->total,
-                        'cost_per_unit_usd' => $item->cost_per_unit_usd,
-                        'profit_usd' => $item->profit_usd,
-                        'exchange_rate' => $item->rate,
-                    ];
-                }),
+                'message' => $itemsAdded->count() . ' item(s) added successfully',
+                'items' => $responseItems,
                 'exchange_rate' => $exchangeRate,
-                'currency' => 'AFN',
-                'sale_total_afn' => $sale->grand_total,
+                'currency' => $saleCurrency,
+                'sale_total' => $sale->grand_total,
                 'sale_total_usd' => $sale->usd_grand_total,
             ]);
-
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             DB::rollBack();
+
             \Log::error('Error adding items to sale', [
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
@@ -698,7 +658,7 @@ class SaleController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => 'Error adding items: ' . $e->getMessage()
+                'message' => 'Error adding items: ' . $e->getMessage(),
             ], 500);
         }
     }
