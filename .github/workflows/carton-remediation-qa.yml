@@ -81,5 +81,25 @@ jobs:
       - name: Verify clean MySQL install
         run: php artisan migrate:fresh --seed --force
 
+      - name: Compile Laravel views
+        run: php artisan view:cache
+
       - name: Run real-world remediation golden path
-        run: php artisan test tests/Feature/GoldenPath/RealWorldCartonWorkflowRemediationTest.php
+        run: php artisan test tests/Feature/GoldenPath/RealWorldCartonWorkflowRemediationTest.php tests/Feature/GoldenPath/BOMCreateUiContractTest.php
+
+      - name: Run complete PHP test suite
+        run: php artisan test
+
+      - name: Composer security audit
+        run: composer audit --no-interaction
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Build frontend assets
+        run: |
+          npm ci
+          npm run build
