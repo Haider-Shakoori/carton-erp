@@ -191,8 +191,10 @@ class BOMItem extends Model
                 return 0.0;
             }
 
-            // square inches -> square metres (0.00064516), GSM -> kg
-            return $reelLength * $reelHeight * 0.00064516 * $gsm / 1000 * $layers;
+            $constant = max((float) ($this->formula_constant ?? 1550000), 0.000001);
+
+            // Client Excel conversion: area(in²) × GSM × layers ÷ constant = kg.
+            return $reelLength * $reelHeight * $gsm * $layers / $constant;
         }
 
         if ($this->formula_type === 'cut_roll') {
@@ -206,7 +208,9 @@ class BOMItem extends Model
                 return 0.0;
             }
 
-            return $length * $width * 0.00064516 * $gsm / 1000 * $ply * $layers;
+            $constant = max((float) ($this->formula_constant ?? 1550000), 0.000001);
+
+            return $length * $width * $gsm * $ply * $layers / $constant;
         }
 
         return (float) $this->quantity;
