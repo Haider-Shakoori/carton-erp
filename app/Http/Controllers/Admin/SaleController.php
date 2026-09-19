@@ -1422,7 +1422,7 @@ class SaleController extends Controller
 
                     // Physical inventory requirement/cost, including wastage.
                     $kgPerFinishedUnit = $reelLength * $reelHeight
-                        * 0.00064516 * $paperGsm / 1000 * $multiplicationLayer;
+                        * $paperGsm * $multiplicationLayer / $formulaConstant;
                     $kgWithWastage = $kgPerFinishedUnit * (1 + ($wastage / 100));
                     $physicalLineCostUsd = $kgWithWastage * $landedUsdPerKg;
                     $physicalMaterialCostPerUnitUsd += $physicalLineCostUsd;
