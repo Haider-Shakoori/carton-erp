@@ -1649,38 +1649,53 @@
             // ─── EXCHANGE RATE CHANGE ───
             $('#mainExchangeRate').on('input', function() {
                 const exchangeRate = parseFloat($(this).val()) || defaultExchangeRate;
+
                 $('.bom-item-row').each(function() {
                     const id = $(this).attr('id').replace('item-', '');
-                    const currency = $(`#purchase-currency-${id}`).val() || 'AFN';
                     const costUsd = parseFloat($(`#cost-usd-${id}`).val()) || 0;
+                    const costAfn = costUsd * exchangeRate;
 
-                    if (currency === 'USD') {
-                        const costAfn = costUsd * exchangeRate;
-                        $(`#cost-afn-${id}`).val(costAfn.toFixed(2));
-                        $(`#cost-afn-display-${id}`).val(costAfn.toFixed(2));
+                    $(`#cost-afn-${id}`).val(costAfn.toFixed(4));
+                    $(`#cost-afn-display-${id}`).val(costAfn.toFixed(4));
+
+                    if ($(`#formula-type-${id}`).val() === 'carton_3d') {
+                        $(`#per-gram-rate-${id}`).val(costAfn.toFixed(4));
+                        calculateFormulaBasedItem(id);
+                    } else if ($(`#formula-type-${id}`).val() === 'cut_roll') {
+                        $(`#per-gram-rate-cut-${id}`).val(costAfn.toFixed(4));
+                        calculateFormulaBasedItem(id);
                     } else {
-                        const costAfn = parseFloat($(`#cost-afn-${id}`).val()) || 0;
-                        if (costAfn > 0) {
-                            const newCostUsd = costAfn / exchangeRate;
-                            $(`#cost-usd-${id}`).val(newCostUsd.toFixed(4));
-                        }
+                        calculateItemCost(id);
                     }
-                    calculateItemCost(id);
                 });
+
                 checkUsdMaterialExists();
+                updateTotalCost();
             });
 
 
             // ─── WORK PERCENTAGE CHANGE ───
             $('input[name="work_percentage"]').on('input', function() {
                 const value = parseFloat($(this).val()) || 0;
+
                 $('.bom-item-row').each(function() {
                     const id = $(this).attr('id').replace('item-', '');
-                    if ($(`#formula-type-${id}`).val() === 'carton_3d') {
+                    const type = $(`#formula-type-${id}`).val();
+
+                    if (type === 'carton_3d') {
                         $(`#carton-work-percentage-${id}`).val(value);
+                        calculateFormulaBasedItem(id);
+                    } else if (type === 'cut_roll') {
+                        $(`#cut-work-percentage-${id}`).val(value);
                         calculateFormulaBasedItem(id);
                     }
                 });
+
+                updateTotalCost();
+            });
+
+            $('input[name="profit_margin_percentage"]').on('input', function() {
+                updateTotalCost();
             });
 
             // ─── FORM SUBMIT ───
@@ -1698,22 +1713,51 @@
                 }
 
                 let valid = true;
-                $('.bom-item-row').each(function() {
-                    const select = $(this).find('select[name*="[material_id]"]');
-                    const quantity = $(this).find('input[name*="[quantity]"]');
-                    const cost = $(this).find('input[name*="[cost_per_unit_usd]"]');
+                let validationMessage = 'Please fix all highlighted fields.';
 
-                    if (!select.val()) {
+                $('.bom-item-row').each(function() {
+                    const row = $(this);
+                    const id = row.attr('id').replace('item-', '');
+                    const select = row.find('select[name*="[material_id]"]');
+                    const quantity = parseFloat($(`#quantity-${id}`).val()) || 0;
+                    const cost = parseFloat($(`#cost-usd-${id}`).val());
+                    const formulaType = $(`#formula-type-${id}`).val();
+                    const unit = ($(`#unit-${id}`).val() || '').toLowerCase();
+
+                    row.removeClass('border-danger');
+
+                    if (!select.val() || quantity <= 0 || !Number.isFinite(cost) || cost < 0) {
                         valid = false;
-                        $(this).addClass('border-danger');
+                        row.addClass('border-danger');
                     }
-                    if (!quantity.val() || parseFloat(quantity.val()) <= 0) {
+
+                    if ((formulaType === 'carton_3d' || formulaType === 'cut_roll') && unit !== 'kg') {
                         valid = false;
-                        $(this).addClass('border-danger');
+                        row.addClass('border-danger');
+                        validationMessage = 'Paper formula materials must have an arrived roll batch with a valid landed USD/kg cost.';
                     }
-                    if (parseFloat(cost.val()) < 0) {
-                        valid = false;
-                        $(this).addClass('border-danger');
+
+                    if (formulaType === 'carton_3d') {
+                        const length = parseFloat($(`#length-${id}`).val()) || 0;
+                        const width = parseFloat($(`#width-${id}`).val()) || 0;
+                        const height = parseFloat($(`#height-${id}`).val()) || 0;
+                        const gsm = parseFloat($(`#paper-gsm-${id}`).val()) || 0;
+                        if (length <= 0 || width <= 0 || height <= 0 || gsm <= 0) {
+                            valid = false;
+                            row.addClass('border-danger');
+                            validationMessage = '3D carton rows require positive length, width, height and GSM.';
+                        }
+                    }
+
+                    if (formulaType === 'cut_roll') {
+                        const length = parseFloat($(`#cut-length-${id}`).val()) || 0;
+                        const width = parseFloat($(`#cut-width-${id}`).val()) || 0;
+                        const grh = parseFloat($(`#grh-${id}`).val()) || 0;
+                        if (length <= 0 || width <= 0 || grh <= 0) {
+                            valid = false;
+                            row.addClass('border-danger');
+                            validationMessage = 'Cut/Roll rows require positive cut length, cut width and GRH.';
+                        }
                     }
                 });
 
@@ -1722,7 +1766,7 @@
                     Swal.fire({
                         icon: 'error',
                         title: 'Validation Errors',
-                        text: 'Please fix all highlighted fields.',
+                        text: validationMessage,
                         confirmButtonColor: '#4f46e5'
                     });
                     return false;
@@ -1736,7 +1780,7 @@
             // ─── INITIAL LOAD ───
             setTimeout(function() {
                 checkUsdMaterialExists();
-                updateCostSummary(0, 0);
+                updateTotalCost();
             }, 500);
         });
     </script>
