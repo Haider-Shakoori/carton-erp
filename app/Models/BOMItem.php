@@ -86,7 +86,7 @@ class BOMItem extends Model
         'cut_width_inch' => 'decimal:2',
         'grh' => 'integer',
         'ply' => 'integer',
-        'print' => 'integer',
+        'print' => 'decimal:4',
         'per_gram_rate' => 'decimal:2',
         'multiplication_layer' => 'integer',
         'formula_constant' => 'integer',
