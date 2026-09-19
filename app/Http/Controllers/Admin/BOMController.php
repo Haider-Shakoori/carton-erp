@@ -120,172 +120,154 @@ class BOMController extends Controller
     public function calculate(Request $request)
     {
         try {
-            $bom = BOM::with('items.material')->findOrFail($request->bom_id);
-            $quantity = $request->quantity ?? 1;
+            $bom = BOM::with(['items.material.category'])->findOrFail($request->bom_id);
+            $quantity = max((float) ($request->quantity ?? 1), 0.000001);
+            $exchangeRate = max(
+                (float) ($request->exchange_rate ?? $bom->exchange_rate ?? $this->getDefaultExchangeRate()),
+                0.000001
+            );
 
-            // ─── GET EXCHANGE RATE ───
-            $exchangeRate = $request->exchange_rate ?? $bom->exchange_rate ?? 85;
-
-            // ─── GET DIMENSIONS FROM FIRST BOM ITEM ───
-            $firstItem = $bom->items->first();
-            $length = $firstItem ? ($firstItem->length_inch ?? 0) : 0;
-            $width = $firstItem ? ($firstItem->width_inch ?? 0) : 0;
-            $height = $firstItem ? ($firstItem->height_inch ?? 0) : 0;
-
-            // ─── Step 1: Reel Length ───
-            $reelLength = (($length + $width) * 2) + 4;
-
-            // ─── Step 2: Reel Height ───
-            $reelHeight = $width + $height + 1;
-
-            // ─── CALCULATE EACH MATERIAL ROW ───
-            $rowNetRates = [];
-            $totalCartonNetRate = 0;
-            $totalMaterialCostUsd = 0;
             $requirements = [];
+            $rowNetRates = [];
             $hasShortage = false;
 
+            $baseMaterialUsd = 0.0;
+            $physicalMaterialUsd = 0.0;
+            $standardWorkAfn = 0.0;
+            $printAfn = 0.0;
+
             foreach ($bom->items as $item) {
-                // Get material-specific values
-                $gsm = $item->paper_gsm ?? 0;
-                $perGramRate = $item->per_gram_rate ?? 0;
-                $multiplicationLayer = $item->multiplication_layer ?? 1;
-                $printCost = $item->print ?? 0;
-                $constant = $item->formula_constant ?? 1550000;
-                $workPercentage = $item->work_percentage ?? 40;
+                $basePerUnit = $item->calculateStockRequirement(1, false);
+                $withWastePerUnit = $item->calculateStockRequirement(1, true);
+                $totalRequired = $withWastePerUnit * $quantity;
 
-                // ─── Step 3: Division Value ───
-                $divisionValue = $reelLength * $reelHeight * $gsm * $perGramRate;
+                $costPerUnitUsd = (float) ($item->cost_per_unit_usd ?? 0);
+                if ($costPerUnitUsd <= 0) {
+                    $latest = app(\App\Services\BOMCostingService::class)
+                        ->latestInventoryCost((int) $item->material_id, $exchangeRate, true);
+                    $costPerUnitUsd = (float) ($latest['cost_usd'] ?? 0);
+                }
 
-                // ─── Step 4: Paper Rate ───
-                $paperRate = $constant > 0 ? $divisionValue / $constant : 0;
+                $lineBaseUsdPerUnit = $basePerUnit * $costPerUnitUsd;
+                $linePhysicalUsdPerUnit = $withWastePerUnit * $costPerUnitUsd;
+                $workPercentage = (float) ($item->work_percentage ?? $bom->work_percentage ?? 40);
+                $lineWorkAfnPerUnit = ($lineBaseUsdPerUnit * $exchangeRate) * ($workPercentage / 100);
+                $printCostAfnPerUnit = (float) ($item->print ?? 0);
+                $rowNetRate = ($lineBaseUsdPerUnit * $exchangeRate)
+                    + $lineWorkAfnPerUnit
+                    + $printCostAfnPerUnit;
 
-                // ─── Step 5: Paper Rate × Layers ───
-                $paperRateByLayers = $multiplicationLayer * $paperRate;
+                $baseMaterialUsd += $lineBaseUsdPerUnit * $quantity;
+                $physicalMaterialUsd += $linePhysicalUsdPerUnit * $quantity;
+                $standardWorkAfn += $lineWorkAfnPerUnit * $quantity;
+                $printAfn += $printCostAfnPerUnit * $quantity;
 
-                // ─── Step 6: Work Amount ───
-                $workAmount = $paperRateByLayers * ((float) $workPercentage / 100);
+                $materialIsRoll = (bool) ($item->material?->is_roll_based ?? false);
+                $availableStock = $materialIsRoll
+                    ? (float) ($item->material?->current_stock_kg ?? 0)
+                    : (float) ($item->material?->current_stock ?? 0);
+                $shortage = max(0, $totalRequired - $availableStock);
+                $hasShortage = $hasShortage || $shortage > 0.000001;
 
-                // ─── Step 7: Row Net Rate ───
-                $rowNetRate = $printCost + $paperRateByLayers + $workAmount;
+                $reelLength = null;
+                $reelHeight = null;
+                if ($item->formula_type === 'carton_3d') {
+                    $length = (float) ($item->length_inch ?? 0);
+                    $width = (float) ($item->width_inch ?? 0);
+                    $height = (float) ($item->height_inch ?? 0);
+                    $reelLength = (($length + $width) * 2) + 4;
+                    $reelHeight = $width + $height + 1;
+                }
 
                 $rowNetRates[] = [
-                    'material_name' => $item->material->name ?? 'Unknown',
+                    'material_name' => $item->material?->name ?? 'Unknown',
                     'reel_length' => $reelLength,
                     'reel_height' => $reelHeight,
-                    'division_value' => $divisionValue,
-                    'paper_rate' => $paperRate,
-                    'paper_rate_by_layers' => $paperRateByLayers,
-                    'work_amount' => $workAmount,
+                    'paper_rate' => $lineBaseUsdPerUnit * $exchangeRate,
+                    'paper_rate_by_layers' => $lineBaseUsdPerUnit * $exchangeRate,
+                    'work_amount' => $lineWorkAfnPerUnit,
                     'row_net_rate' => $rowNetRate,
-                    'gsm' => $gsm,
-                    'per_gram_rate' => $perGramRate,
-                    'multiplication_layer' => $multiplicationLayer,
-                    'print_cost' => $printCost,
-                    'constant' => $constant,
+                    'gsm' => (float) ($item->paper_gsm ?? 0),
+                    'per_gram_rate' => $costPerUnitUsd * $exchangeRate,
+                    'multiplication_layer' => (float) ($item->multiplication_layer ?? 1),
+                    'print_cost' => $printCostAfnPerUnit,
+                    'constant' => (float) ($item->formula_constant ?? 1550000),
                     'work_percentage' => $workPercentage,
                 ];
 
-                // ─── SUM all rows for final carton net rate ───
-                $totalCartonNetRate += $rowNetRate;
-
-                // ─── Material Requirements for Stock Check ───
-                $requiredQty = $item->quantity * (1 + ($item->wastage_percentage / 100));
-
-                $purchaseCurrency = $item->purchase_currency ?? 'AFN';
-                $costPerUnitUsd = $item->cost_per_unit_usd ?? 0;
-
-                if ($purchaseCurrency === 'AFN' && $item->cost_per_unit_afn > 0) {
-                    $costPerUnitUsd = $item->cost_per_unit_afn / $exchangeRate;
-                }
-
-                $totalCostUsd = $requiredQty * $costPerUnitUsd * $quantity;
-                $totalMaterialCostUsd += $totalCostUsd;
-
-                $availableStock = $item->material->current_stock ?? 0;
-                $shortage = max(0, $totalCostUsd - $availableStock);
-
-                if ($shortage > 0) {
-                    $hasShortage = true;
-                }
-
                 $requirements[] = [
                     'material_id' => $item->material_id,
-                    'material_name' => $item->material->name ?? 'Unknown',
-                    'category' => $item->material->category->name ?? 'Uncategorized',
-                    'total_required' => $requiredQty * $quantity,
-                    'unit' => $item->unit,
+                    'material_name' => $item->material?->name ?? 'Unknown',
+                    'category' => $item->material?->category?->name ?? 'Uncategorized',
+                    'total_required' => $totalRequired,
+                    'unit' => $materialIsRoll ? 'kg' : ($item->unit ?? 'unit'),
                     'cost_per_unit_usd' => $costPerUnitUsd,
                     'cost_per_unit_afn' => $costPerUnitUsd * $exchangeRate,
-                    'total_cost_usd' => $totalCostUsd,
-                    'total_cost_afn' => $totalCostUsd * $exchangeRate,
+                    'total_cost_usd' => $linePhysicalUsdPerUnit * $quantity,
+                    'total_cost_afn' => $linePhysicalUsdPerUnit * $quantity * $exchangeRate,
                     'available_stock' => $availableStock,
                     'shortage' => $shortage,
-                    'is_available' => $shortage == 0,
-                    'purchase_currency' => $purchaseCurrency,
+                    'is_available' => $shortage <= 0.000001,
+                    'purchase_currency' => $item->purchase_currency ?? 'USD',
                     'row_net_rate' => $rowNetRate,
                 ];
             }
 
-            // ─── WORK PERCENTAGE COST ───
-            $workPercentage = ($bom->work_percentage ?? 40) / 100;
-            $workCostUsd = $totalMaterialCostUsd * $workPercentage;
-            $workCostAfn = $workCostUsd * $exchangeRate;
-
-            // ─── TOTAL COST ───
-            $totalCostUsd = $totalMaterialCostUsd + $workCostUsd;
-            $totalCostAfn = $totalCostUsd * $exchangeRate;
-
-            // ─── SELLING PRICE ───
-            $profitMargin = ($bom->profit_margin_percentage ?? 0) / 100;
-            $sellingPriceUsd = $totalCostUsd * (1 + $profitMargin);
-            $sellingPriceAfn = $sellingPriceUsd * $exchangeRate;
-            $profitAfn = $sellingPriceAfn - $totalCostAfn;
+            $physicalMaterialAfn = $physicalMaterialUsd * $exchangeRate;
+            $commercialBaseAfn = ($baseMaterialUsd * $exchangeRate) + $standardWorkAfn + $printAfn;
+            $profitMargin = max((float) ($bom->profit_margin_percentage ?? 0), 0);
+            $sellingPriceAfn = $commercialBaseAfn * (1 + ($profitMargin / 100));
+            $sellingPriceUsd = $sellingPriceAfn / $exchangeRate;
+            $profitAfn = $sellingPriceAfn - $physicalMaterialAfn;
 
             return response()->json([
                 'success' => true,
                 'requirements' => $requirements,
                 'has_shortage' => $hasShortage,
                 'row_net_rates' => $rowNetRates,
-                'total_carton_net_rate' => $totalCartonNetRate,
-                'reel_length' => $reelLength,
-                'reel_height' => $reelHeight,
+                'total_carton_net_rate' => $commercialBaseAfn / $quantity,
+                'reel_length' => $rowNetRates[0]['reel_length'] ?? null,
+                'reel_height' => $rowNetRates[0]['reel_height'] ?? null,
                 'summary' => [
-                    'material_cost_usd' => $totalMaterialCostUsd,
-                    'material_cost_afn' => $totalMaterialCostUsd * $exchangeRate,
-                    'work_cost_usd' => $workCostUsd,
-                    'work_cost_afn' => $workCostAfn,
-                    'total_cost_usd' => $totalCostUsd,
-                    'total_cost_afn' => $totalCostAfn,
+                    'material_cost_usd' => $physicalMaterialUsd,
+                    'material_cost_afn' => $physicalMaterialAfn,
+                    'base_material_cost_usd' => $baseMaterialUsd,
+                    'base_material_cost_afn' => $baseMaterialUsd * $exchangeRate,
+                    'wastage_cost_usd' => max($physicalMaterialUsd - $baseMaterialUsd, 0),
+                    'wastage_cost_afn' => max(($physicalMaterialUsd - $baseMaterialUsd) * $exchangeRate, 0),
+                    'work_cost_usd' => $standardWorkAfn / $exchangeRate,
+                    'work_cost_afn' => $standardWorkAfn,
+                    'print_cost_afn' => $printAfn,
+                    'commercial_base_afn' => $commercialBaseAfn,
+                    'total_cost_usd' => $physicalMaterialUsd,
+                    'total_cost_afn' => $physicalMaterialAfn,
                     'selling_price_usd' => $sellingPriceUsd,
                     'selling_price_afn' => $sellingPriceAfn,
-                    'profit_usd' => $sellingPriceUsd - $totalCostUsd,
+                    'profit_usd' => $profitAfn / $exchangeRate,
                     'profit_afn' => $profitAfn,
-                    'profit_margin_percentage' => $bom->profit_margin_percentage ?? 0,
+                    'profit_margin_percentage' => $profitMargin,
                     'work_percentage' => $bom->work_percentage ?? 40,
                     'exchange_rate' => $exchangeRate,
-                    'cost_per_unit_usd' => $totalCostUsd / $quantity,
-                    'cost_per_unit_afn' => $totalCostAfn / $quantity,
-                    'carton_net_rate' => $totalCartonNetRate,
-                    'reel_length' => $reelLength,
-                    'reel_height' => $reelHeight,
+                    'cost_per_unit_usd' => $physicalMaterialUsd / $quantity,
+                    'cost_per_unit_afn' => $physicalMaterialAfn / $quantity,
+                    'carton_net_rate' => $commercialBaseAfn / $quantity,
                     'row_count' => count($rowNetRates),
-                ]
+                ],
             ]);
-
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             Log::error('BOM calculation failed', [
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
-                'request' => $request->all()
+                'request' => $request->all(),
             ]);
 
             return response()->json([
                 'success' => false,
-                'message' => 'Error calculating BOM: ' . $e->getMessage()
+                'message' => 'Error calculating BOM: ' . $e->getMessage(),
             ], 500);
         }
     }
+
     public function getMaterialCost($materialId)
     {
         try {
