@@ -48,6 +48,35 @@ return new class extends Migration
 
     public function down(): void
     {
+        // MySQL may discard a narrower FK-supporting index once a wider
+        // composite index with the same leading FK column exists. Recreate a
+        // conventional support index before dropping the performance index so
+        // rollback never requires disabling or rebuilding foreign keys.
+        $this->ensureForeignKeySupportIndex(
+            'remittances',
+            'account_id',
+            'remittances_account_id_index',
+            'remittance_report_idx'
+        );
+        $this->ensureForeignKeySupportIndex(
+            'exchanges',
+            'customer_account_id',
+            'exchanges_customer_account_id_index',
+            'exchange_report_idx'
+        );
+        $this->ensureForeignKeySupportIndex(
+            'transactions',
+            'account_id',
+            'transactions_account_id_index',
+            'txn_account_curr_stat_date_idx'
+        );
+        $this->ensureForeignKeySupportIndex(
+            'sales',
+            'customer_id',
+            'sales_customer_id_index',
+            'sales_cust_stat_date_idx'
+        );
+
         Schema::table('remittances', function (Blueprint $table) {
             $table->dropIndex('remittance_report_idx');
         });
@@ -64,5 +93,25 @@ return new class extends Migration
         Schema::table('sales', function (Blueprint $table) {
             $table->dropIndex('sales_cust_stat_date_idx');
         });
+    }
+
+    private function ensureForeignKeySupportIndex(
+        string $table,
+        string $column,
+        string $indexName,
+        string $performanceIndex
+    ): void {
+        $hasAlternative = collect(Schema::getIndexes($table))
+            ->filter(fn (array $index) => ($index['name'] ?? null) !== $performanceIndex)
+            ->contains(function (array $index) use ($column) {
+                $columns = array_values($index['columns'] ?? []);
+                return ($columns[0] ?? null) === $column;
+            });
+
+        if (! $hasAlternative) {
+            Schema::table($table, function (Blueprint $blueprint) use ($column, $indexName) {
+                $blueprint->index([$column], $indexName);
+            });
+        }
     }
 };
