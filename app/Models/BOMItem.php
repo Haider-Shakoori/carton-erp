@@ -151,23 +151,9 @@ class BOMItem extends Model
      */
     public function calculateRequiredQuantity($productionQuantity)
     {
-        if (!$this->is_formula_based) {
-            return $this->quantity * $productionQuantity;
-        }
-
-        switch ($this->formula_type) {
-            case 'carton_3d':
-                return $this->calculateCarton3D($productionQuantity);
-            case 'cut_roll':
-                return $this->calculateCutRoll($productionQuantity);
-            case 'fixed_percentage':
-                return $this->calculateFixedPercentage($productionQuantity);
-            case 'fixed_rate':
-                return $this->calculateFixedRate($productionQuantity);
-            default:
-                return $this->quantity * $productionQuantity;
-        }
+        return $this->calculateStockRequirement((float) $productionQuantity, true);
     }
+
 
     /**
      * 3D Carton Formula - CORRECTED based on client's Excel
@@ -188,24 +174,44 @@ class BOMItem extends Model
             return (float) $this->stock_consumption_override;
         }
 
-        if (!$this->is_formula_based || $this->formula_type !== 'carton_3d') {
+        if (!$this->is_formula_based) {
             return (float) $this->quantity;
         }
 
-        $length = (float) ($this->length_inch ?? 0);
-        $width = (float) ($this->width_inch ?? 0);
-        $height = (float) ($this->height_inch ?? 0);
-        $reelLength = (float) ($this->reel_length_inch ?: ((($length + $width) * 2) + 4));
-        $reelHeight = (float) ($this->reel_height_inch ?: ($width + $height + 1));
-        $gsm = (float) ($this->paper_gsm ?? 0);
-        $layers = (float) ($this->multiplication_layer ?? $this->layers ?? 1);
+        if ($this->formula_type === 'carton_3d') {
+            $length = (float) ($this->length_inch ?? 0);
+            $width = (float) ($this->width_inch ?? 0);
+            $height = (float) ($this->height_inch ?? 0);
+            $reelLength = (float) ($this->reel_length_inch ?: ((($length + $width) * 2) + 4));
+            $reelHeight = (float) ($this->reel_height_inch ?: ($width + $height + 1));
+            $gsm = (float) ($this->paper_gsm ?? 0);
+            $layers = (float) ($this->multiplication_layer ?? $this->layers ?? 1);
 
-        if ($reelLength <= 0 || $reelHeight <= 0 || $gsm <= 0 || $layers <= 0) {
-            return 0.0;
+            if ($reelLength <= 0 || $reelHeight <= 0 || $gsm <= 0 || $layers <= 0) {
+                return 0.0;
+            }
+
+            // square inches -> square metres (0.00064516), GSM -> kg
+            return $reelLength * $reelHeight * 0.00064516 * $gsm / 1000 * $layers;
         }
 
-        return $reelLength * $reelHeight * 0.00064516 * $gsm / 1000 * $layers;
+        if ($this->formula_type === 'cut_roll') {
+            $length = (float) ($this->cut_length_inch ?? 0);
+            $width = (float) ($this->cut_width_inch ?? 0);
+            $gsm = (float) ($this->grh ?? 0);
+            $ply = max((float) ($this->ply ?? 1), 1);
+            $layers = max((float) ($this->multiplication_layer ?? 1), 1);
+
+            if ($length <= 0 || $width <= 0 || $gsm <= 0) {
+                return 0.0;
+            }
+
+            return $length * $width * 0.00064516 * $gsm / 1000 * $ply * $layers;
+        }
+
+        return (float) $this->quantity;
     }
+
 
     /**
      * Calculate roll weight for display
@@ -240,11 +246,42 @@ class BOMItem extends Model
 
     public function calculateStockRequirement(float $productionQuantity, bool $includeWastage = true): float
     {
-        $required = $this->calculateStockKgPerUnit() * $productionQuantity;
-        return $includeWastage
-            ? $required * (1 + ((float) $this->wastage_percentage / 100))
-            : $required;
+        if ($productionQuantity <= 0) {
+            return 0.0;
+        }
+
+        if ($this->stock_consumption_override !== null && (float) $this->stock_consumption_override > 0) {
+            $required = (float) $this->stock_consumption_override * $productionQuantity;
+        } elseif ($this->is_formula_based && in_array($this->formula_type, ['carton_3d', 'cut_roll'], true)) {
+            $required = $this->calculateStockKgPerUnit() * $productionQuantity;
+        } elseif ($this->is_formula_based && $this->formula_type === 'fixed_percentage') {
+            $baseItem = $this->base_material_id
+                ? BOMItem::where('bom_id', $this->bom_id)
+                    ->where('material_id', $this->base_material_id)
+                    ->where('id', '!=', $this->id ?? 0)
+                    ->first()
+                : null;
+
+            $baseRequired = $baseItem
+                ? $baseItem->calculateStockRequirement($productionQuantity, false)
+                : ((float) $this->quantity * $productionQuantity);
+
+            $required = $baseRequired * ((float) ($this->percentage_of_base ?? 0) / 100);
+        } elseif ($this->is_formula_based && $this->formula_type === 'fixed_rate') {
+            $rate = (float) ($this->rate_per_unit ?? 0);
+            $baseUnits = max((float) ($this->rate_base_units ?? 100), 0.000001);
+            $required = ($productionQuantity / $baseUnits) * $rate;
+        } else {
+            $required = (float) $this->quantity * $productionQuantity;
+        }
+
+        if (!$includeWastage) {
+            return max($required, 0.0);
+        }
+
+        return max($required, 0.0) * (1 + ((float) $this->wastage_percentage / 100));
     }
+
 
     /**
      * Cut/Roll Formula
