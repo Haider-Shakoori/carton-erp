@@ -293,10 +293,16 @@ function rwCreateBom(array $fx): BOM
 
     expect($response->getStatusCode())->toBe(302);
 
-    return BOM::where('product_id', $fx['finished']->id)
+    $bom = BOM::where('product_id', $fx['finished']->id)
         ->where('name', '120ml Syrup Carton 5-Layer - Real World QA')
         ->with('items')
-        ->firstOrFail();
+        ->first();
+
+    if (!$bom) {
+        throw new RuntimeException('BOM store failed: '.($response->getSession()->get('error') ?? 'unknown error'));
+    }
+
+    return $bom;
 }
 
 it('runs a real-world purchase order through arrival and produces usable stock with landed kg costing', function () {
