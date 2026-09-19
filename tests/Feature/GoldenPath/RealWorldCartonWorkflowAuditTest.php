@@ -305,6 +305,117 @@ function rwCreateBom(array $fx): BOM
     return $bom;
 }
 
+
+function rwCreateOperationalBom(array $fx): BOM
+{
+    // QA-only continuation fixture. The real BOMController path is tested separately
+    // and currently fails on a clean MySQL schema because formula columns are missing.
+    // This fixture stores the physically calculated kg/carton as fixed quantities so
+    // downstream Sales -> Production -> FIFO -> Payment can still be audited.
+    $reelLength = ((17.32 + 15.75) * 2) + 4;
+    $reelHeight = 15.75 + 12.20 + 1;
+
+    $kraftKg = $reelLength * $reelHeight * 0.00064516 * 150 / 1000 * 2;
+    $flutingKg = $reelLength * $reelHeight * 0.00064516 * 120 / 1000 * 3;
+
+    $bom = BOM::create([
+        'name' => '120ml Syrup Carton 5-Layer - Downstream QA',
+        'product_id' => $fx['finished']->id,
+        'version' => '1.0',
+        'status' => 'active',
+        'description' => 'QA continuation BOM using physical kg quantities because fresh-schema formula columns are missing.',
+        'is_active' => true,
+        'work_percentage' => 40,
+        'profit_margin_percentage' => 15,
+        'exchange_rate' => 66,
+        'exchange_rate_updated_at' => now(),
+        'created_by' => $fx['user']->id,
+    ]);
+
+    $bom->items()->create([
+        'material_id' => $fx['kraft']->id,
+        'quantity' => $kraftKg,
+        'unit' => 'kg',
+        'wastage_percentage' => 5,
+        'cost_per_unit_usd' => $fx['kraftItem']->landedCostPerKg(),
+        'cost_per_unit_afn' => $fx['kraftItem']->landedCostPerKg() * 66,
+        'total_cost_usd' => $kraftKg * 1.05 * $fx['kraftItem']->landedCostPerKg(),
+        'total_cost_afn' => $kraftKg * 1.05 * $fx['kraftItem']->landedCostPerKg() * 66,
+        'purchase_currency' => 'USD',
+        'purchase_currency_id' => $fx['usd']->id,
+        'formula_type' => 'fixed',
+        'is_formula_based' => false,
+        'stock_consumption_override' => $kraftKg,
+        'stock_consumption_unit' => 'kg',
+        'work_percentage' => 40,
+        'formula_constant' => 1550000,
+        'multiplication_layer' => 2,
+        'multiplication_method' => 'multiply',
+        'rate_base_units' => 100,
+        'sort_order' => 0,
+    ]);
+
+    $bom->items()->create([
+        'material_id' => $fx['fluting']->id,
+        'quantity' => $flutingKg,
+        'unit' => 'kg',
+        'wastage_percentage' => 5,
+        'cost_per_unit_usd' => $fx['flutingItem']->landedCostPerKg(),
+        'cost_per_unit_afn' => $fx['flutingItem']->landedCostPerKg() * 66,
+        'total_cost_usd' => $flutingKg * 1.05 * $fx['flutingItem']->landedCostPerKg(),
+        'total_cost_afn' => $flutingKg * 1.05 * $fx['flutingItem']->landedCostPerKg() * 66,
+        'purchase_currency' => 'USD',
+        'purchase_currency_id' => $fx['usd']->id,
+        'formula_type' => 'fixed',
+        'is_formula_based' => false,
+        'stock_consumption_override' => $flutingKg,
+        'stock_consumption_unit' => 'kg',
+        'work_percentage' => 40,
+        'formula_constant' => 1550000,
+        'multiplication_layer' => 3,
+        'multiplication_method' => 'multiply',
+        'rate_base_units' => 100,
+        'sort_order' => 1,
+    ]);
+
+    $bom->unsetRelation('items');
+    $bom->load('items');
+    $bom->calculateTotals();
+    $bom->saveQuietly();
+    $bom->recalculateAfnValues();
+
+    return $bom->fresh('items');
+}
+
+function rwCreateSaleWithBom(array $fx, BOM $bom, string $saleNo): Sale
+{
+    $saleController = new SaleController();
+    $saleController->store(rwRequest('/admin/sales', 'POST', [
+        'sale_no' => $saleNo,
+        'customer_id' => $fx['customer']->id,
+        'currency_id' => $fx['afn']->id,
+        'sale_date' => '2026-09-19',
+        'exchange_rate' => 66,
+        'shipping_address' => 'Kabul Industrial Park, Afghanistan',
+        'notes' => 'QA order for 100 pieces of 120ml syrup cartons.',
+    ]));
+
+    $sale = Sale::where('sale_no', $saleNo)->firstOrFail();
+
+    $response = $saleController->addItem(rwRequest('/admin/sales/add-item', 'POST', [
+        'sale_id' => $sale->id,
+        'items' => [[
+            'bom_id' => $bom->id,
+            'qty' => 100,
+            'remarks' => '100 pcs production order from QA BOM',
+        ]],
+    ]));
+
+    expect($response->getStatusCode())->toBe(200);
+
+    return $sale->fresh(['items', 'currency']);
+}
+
 it('runs a real-world purchase order through arrival and produces usable stock with landed kg costing', function () {
     $fx = rwCreatePurchaseFlow();
 
@@ -377,34 +488,25 @@ it('creates a real 5-layer BOM and reconciles saved material cost with physical 
         ->toBeLessThan(0.0001);
 });
 
-it('continues the realistic BOM into sale, production, completion, and linked customer payment', function () {
+it('keeps BOM pricing and sale quotation pricing consistent for the same 100-carton order', function () {
     $fx = rwCreatePurchaseFlow();
-    $bom = rwCreateBom($fx);
+    $bom = rwCreateOperationalBom($fx);
+    $sale = rwCreateSaleWithBom($fx, $bom, 'SO-RW-PRICE-001');
 
-    $saleController = new SaleController();
-    $saleController->store(rwRequest('/admin/sales', 'POST', [
-        'sale_no' => 'SO-RW-20260919-001',
-        'customer_id' => $fx['customer']->id,
-        'currency_id' => $fx['afn']->id,
-        'sale_date' => '2026-09-19',
-        'exchange_rate' => 66,
-        'shipping_address' => 'Kabul Industrial Park, Afghanistan',
-        'notes' => 'QA order for 100 pieces of 120ml syrup cartons.',
-    ]));
+    $saleItem = $sale->items->firstOrFail();
+    $expectedUnitAfn = (float) $bom->selling_price_afn;
 
-    $sale = Sale::where('sale_no', 'SO-RW-20260919-001')->firstOrFail();
+    expect(abs((float) $saleItem->unit_price - $expectedUnitAfn))
+        ->toBeLessThan(0.01);
+});
 
-    $addItemResponse = $saleController->addItem(rwRequest('/admin/sales/add-item', 'POST', [
-        'sale_id' => $sale->id,
-        'items' => [[
-            'bom_id' => $bom->id,
-            'qty' => 100,
-            'remarks' => '100 pcs production order from approved QA BOM',
-        ]],
-    ]));
-    expect($addItemResponse->getStatusCode())->toBe(200);
+it('continues real imported stock through sale confirmation, production creation, FIFO start, and completion', function () {
+    $fx = rwCreatePurchaseFlow();
+    $bom = rwCreateOperationalBom($fx);
+    $sale = rwCreateSaleWithBom($fx, $bom, 'SO-RW-PROD-001');
 
-    $confirmResponse = $saleController->confirmSale(
+    $controller = new SaleController();
+    $confirmResponse = $controller->confirmSale(
         rwRequest('/admin/sales/'.$sale->id.'/confirm', 'POST', [
             'discount_amount' => 0,
             'advance_payment' => 500,
@@ -423,13 +525,30 @@ it('continues the realistic BOM into sale, production, completion, and linked cu
         ->and((float) $sale->advance_payment)->toBe(500.0);
 
     $production = $sale->productionOrder()->firstOrFail();
-    expect($production->status)->toBe('pending');
+    expect($production->status)->toBe('pending')
+        ->and($production->materials()->count())->toBe(2);
+
+    $kraftKgBefore = (float) $fx['kraftItem']->fresh()->qty_kg_available;
+    $flutingKgBefore = (float) $fx['flutingItem']->fresh()->qty_kg_available;
 
     $startResponse = (new ProductionOrderController())->startProduction($production);
     $production->refresh();
 
     expect($startResponse->getSession()->get('success'))->not->toBeNull()
         ->and($production->status)->toBe('in_progress');
+
+    $kraftAfter = $fx['kraftItem']->fresh();
+    $flutingAfter = $fx['flutingItem']->fresh();
+
+    expect((float) $kraftAfter->qty_kg_available)->toBeLessThan($kraftKgBefore)
+        ->and((float) $flutingAfter->qty_kg_available)->toBeLessThan($flutingKgBefore);
+
+    $consumptions = DB::table('production_material_consumptions')
+        ->where('production_order_id', $production->id)
+        ->get();
+
+    expect($consumptions->count())->toBeGreaterThanOrEqual(2)
+        ->and((float) $consumptions->sum('total_cost_usd'))->toBeGreaterThan(0);
 
     (new ProductionOrderController())->completeProduction($production);
     $production->refresh();
@@ -438,24 +557,47 @@ it('continues the realistic BOM into sale, production, completion, and linked cu
     expect($production->status)->toBe('completed')
         ->and((float) $production->quantity_produced)->toBe((float) $production->quantity_ordered)
         ->and($sale->is_produced)->toBeTrue();
+});
 
+it('applies a linked customer payment to the exact confirmed sale and reduces its due balance', function () {
+    $fx = rwCreatePurchaseFlow();
+    $bom = rwCreateOperationalBom($fx);
+    $sale = rwCreateSaleWithBom($fx, $bom, 'SO-RW-PAY-001');
+
+    $confirmResponse = (new SaleController())->confirmSale(
+        rwRequest('/admin/sales/'.$sale->id.'/confirm', 'POST', [
+            'discount_amount' => 0,
+            'advance_payment' => 500,
+            'start_production' => 0,
+        ]),
+        $sale->id
+    );
+    expect($confirmResponse->getData(true)['success'])->toBeTrue();
+
+    $sale->refresh();
     $dueBefore = (float) $sale->due_amount;
-    if ($dueBefore > 0.01) {
-        $payment = min(1000.0, $dueBefore);
-        $paymentRequest = rwRequest('/admin/transactions', 'POST', [
-            'account_id' => $fx['customer']->id,
-            'currency_id' => $fx['afn']->id,
-            'amount' => $payment,
-            'transaction_type' => 'credit',
-            'sale_id' => $sale->id,
-            'description' => 'Linked QA customer payment against SO-RW-20260919-001',
-        ]);
-        $paymentRequest->headers->set('X-Requested-With', 'XMLHttpRequest');
+    expect($dueBefore)->toBeGreaterThan(1000);
 
-        $paymentResponse = (new TransactionsController())->store($paymentRequest);
-        expect($paymentResponse->getStatusCode())->toBe(200);
+    $paymentRequest = rwRequest('/admin/transactions', 'POST', [
+        'account_id' => $fx['customer']->id,
+        'currency_id' => $fx['afn']->id,
+        'amount' => 1000,
+        'transaction_type' => 'credit',
+        'sale_id' => $sale->id,
+        'description' => 'Linked QA customer payment against SO-RW-PAY-001',
+    ]);
+    $paymentRequest->headers->set('X-Requested-With', 'XMLHttpRequest');
 
-        $sale->refresh();
-        expect((float) $sale->due_amount)->toBeLessThan($dueBefore);
-    }
+    $paymentResponse = (new TransactionsController())->store($paymentRequest);
+    expect($paymentResponse->getStatusCode())->toBe(200);
+
+    $sale->refresh();
+
+    expect(abs((float) $sale->due_amount - ($dueBefore - 1000)))->toBeLessThan(0.01)
+        ->and((float) $sale->advance_payment)->toBe(1500.0)
+        ->and(Transaction::where('table_name', 'sales')
+            ->where('table_row_id', $sale->id)
+            ->where('transaction_type', 'credit')
+            ->where('amount', 1000)
+            ->exists())->toBeTrue();
 });
