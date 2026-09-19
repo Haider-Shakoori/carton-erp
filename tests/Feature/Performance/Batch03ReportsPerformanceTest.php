@@ -144,7 +144,7 @@ it('preserves exchange report response totals filters pagination ordering and pr
         ->and($all['recordsFiltered'])->toBe(3)
         ->and($all['data'])->toHaveCount(3)
         ->and($all['data'][0]['base_currency'])->toBe('AFN')
-        ->and($all['data'][0]['rate'])->toBe(0.015)
+        ->and((float) $all['data'][0]['rate'])->toBe(0.015)
         ->and($all['totals_by_currency'])->toBe([
             'AFN' => ['amount' => '330.00', 'received' => '5.00', 'profit' => '-0.25', 'symbol' => '؋', 'profit_symbol' => '$'],
             'USD' => ['amount' => '30.30', 'received' => '686.03', 'profit' => '7.25', 'symbol' => '$', 'profit_symbol' => '€'],
