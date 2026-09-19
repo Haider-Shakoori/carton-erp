@@ -58,8 +58,19 @@ jobs:
           extensions: mbstring, dom, fileinfo, mysql, pdo_mysql, sqlite3, pdo_sqlite, bcmath, intl, curl
           coverage: none
 
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
       - name: Install PHP dependencies
         run: composer install --no-interaction --prefer-dist --no-progress
+
+      - name: Build frontend assets
+        run: |
+          npm ci
+          npm run build
 
       - name: Prepare application
         run: |
@@ -81,6 +92,7 @@ jobs:
           php -l app/Http/Controllers/Admin/BOMController.php
           php -l app/Http/Controllers/Admin/SaleController.php
           php -l database/migrations/2026_09_19_210000_repair_bom_item_formula_schema.php
+          php -l database/migrations/2026_09_19_211000_increase_bom_cost_precision.php
 
       - name: Verify clean MySQL install
         run: php artisan migrate:fresh --seed --force
@@ -96,14 +108,3 @@ jobs:
 
       - name: Composer security audit
         run: composer audit --no-interaction
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: npm
-
-      - name: Build frontend assets
-        run: |
-          npm ci
-          npm run build
