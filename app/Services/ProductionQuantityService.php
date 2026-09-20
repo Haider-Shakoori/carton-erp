@@ -24,9 +24,12 @@ class ProductionQuantityService
      * Start production using as much of the original order quantity as current
      * raw material can support. A shortage no longer blocks production entirely.
      */
-    public function start(ProductionOrder $order, ?Sale $sale = null): array
-    {
-        return DB::transaction(function () use ($order, $sale): array {
+    public function start(
+        ProductionOrder $order,
+        ?Sale $sale = null,
+        ?float $plannedQuantity = null
+    ): array {
+        return DB::transaction(function () use ($order, $sale, $plannedQuantity): array {
             $order->refresh()->load(['materials.product', 'bom.items.material', 'product']);
 
             if ($order->status !== ProductionOrder::STATUS_PENDING) {
@@ -42,16 +45,27 @@ class ProductionQuantityService
                 throw new RuntimeException('Production order quantity must be greater than zero.');
             }
 
-            $maxProducible = $this->maxProducibleQuantity($order);
-            $allocationQty = min($orderedQty, $maxProducible);
+            $plannedQty = $plannedQuantity ?? $orderedQty;
+            if ($plannedQty <= self::EPSILON) {
+                throw new RuntimeException('Planned production quantity must be greater than zero.');
+            }
 
-            if ($allocationQty <= self::EPSILON) {
+            $maxProducible = $this->maxProducibleQuantity($order);
+            if ($maxProducible <= self::EPSILON) {
                 throw new RuntimeException(
                     'Production cannot start because the available raw material cannot produce any finished quantity.'
                 );
             }
 
-            $requirements = $this->requirementsForQuantity($order, $allocationQty);
+            if ($plannedQty > $maxProducible + self::EPSILON) {
+                throw new RuntimeException(sprintf(
+                    'Requested production quantity %.2f exceeds the %.2f units supported by current raw material.',
+                    $plannedQty,
+                    $maxProducible
+                ));
+            }
+
+            $requirements = $this->requirementsForQuantity($order, $plannedQty);
             $saleItem = $sale ? $this->resolveSaleItem($sale, $order) : null;
 
             if ($saleItem) {
@@ -85,7 +99,13 @@ class ProductionQuantityService
             );
 
             $materialCostUsd = (float) $consumptions->sum('total_cost_usd');
+            $laborPerUnitUsd = (float) $order->total_labor_cost / max($orderedQty, self::EPSILON);
+            $overheadPerUnitUsd = (float) $order->total_overhead_cost / max($orderedQty, self::EPSILON);
+
+            $order->quantity_planned = $plannedQty;
             $order->total_material_cost = $materialCostUsd;
+            $order->total_labor_cost = $laborPerUnitUsd * $plannedQty;
+            $order->total_overhead_cost = $overheadPerUnitUsd * $plannedQty;
             $order->total_cost = $materialCostUsd
                 + (float) $order->total_labor_cost
                 + (float) $order->total_overhead_cost;
@@ -94,10 +114,13 @@ class ProductionQuantityService
             $order->save();
 
             return [
-                'allocation_quantity' => $allocationQty,
+                'allocation_quantity' => $plannedQty,
+                'planned_quantity' => $plannedQty,
                 'ordered_quantity' => $orderedQty,
                 'max_producible_quantity' => $maxProducible,
-                'partial_start' => $allocationQty + self::EPSILON < $orderedQty,
+                'partial_start' => $plannedQty + self::EPSILON < $orderedQty,
+                'over_order_start' => $plannedQty > $orderedQty + self::EPSILON,
+                'variance_quantity' => $plannedQty - $orderedQty,
                 'material_cost_usd' => $materialCostUsd,
                 'consumption_count' => $consumptions->count(),
             ];
@@ -138,9 +161,12 @@ class ProductionQuantityService
                 $saleItem
             );
 
-            $orderedQty = max((float) $order->quantity_ordered, self::EPSILON);
-            $labourPerUnit = (float) $order->total_labor_cost / $orderedQty;
-            $overheadPerUnit = (float) $order->total_overhead_cost / $orderedQty;
+            $costBasisQty = max(
+                (float) ($order->quantity_planned ?: $order->quantity_ordered),
+                self::EPSILON
+            );
+            $labourPerUnit = (float) $order->total_labor_cost / $costBasisQty;
+            $overheadPerUnit = (float) $order->total_overhead_cost / $costBasisQty;
 
             $order->quantity_produced = $actualQuantity;
             $order->total_material_cost = $materialResult['material_cost_usd'];
