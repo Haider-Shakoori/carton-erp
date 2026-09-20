@@ -447,6 +447,19 @@ class ProductionOrderController extends Controller
             'approvedBy',
         ]);
 
+        $maxProducibleQuantity = null;
+        if ($productionOrder->status === ProductionOrder::STATUS_PENDING) {
+            try {
+                $maxProducibleQuantity = app(\App\Services\ProductionQuantityService::class)
+                    ->maxProducibleQuantity($productionOrder);
+            } catch (\Throwable $e) {
+                Log::warning('Could not calculate max producible quantity', [
+                    'production_order_id' => $productionOrder->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
         // ─── GET LINKED SALE ───
         $sale = Sale::where('production_order_id', $productionOrder->id)
             ->with(['currency', 'items', 'items.bom'])
@@ -576,6 +589,7 @@ class ProductionOrderController extends Controller
 
             return view('admin.production-orders.show', compact(
                 'productionOrder',
+                'maxProducibleQuantity',
                 'progress',
                 'sale',
                 'currencyCode',
@@ -653,6 +667,7 @@ class ProductionOrderController extends Controller
 
         return view('admin.production-orders.show', compact(
             'productionOrder',
+            'maxProducibleQuantity',
             'progress',
             'sale',
             'currencyCode',
@@ -685,41 +700,63 @@ class ProductionOrderController extends Controller
      * Start production (consume materials).
      * ✅ COMPLETE FIX
      */
-    public function startProduction(ProductionOrder $productionOrder)
-    {
+    public function startProduction(
+        ProductionOrder $productionOrder,
+        ?Request $request = null
+    ) {
+        $request ??= request();
+
+        $plannedInput = $request->input('quantity_planned');
+        $plannedQuantity = $plannedInput === null
+            ? (float) $productionOrder->quantity_ordered
+            : (float) $plannedInput;
+
+        if ($plannedInput !== null) {
+            $request->validate([
+                'quantity_planned' => 'required|numeric|min:0.01|max:999999999.99',
+            ]);
+        }
+
         try {
             $sale = Sale::where('production_order_id', $productionOrder->id)
                 ->with('items')
                 ->first();
 
             $result = app(\App\Services\ProductionQuantityService::class)
-                ->start($productionOrder, $sale);
+                ->start($productionOrder, $sale, $plannedQuantity);
 
             $message = sprintf(
-                'Production started. Raw material allocated for %s finished units.',
-                number_format($result['allocation_quantity'], 2)
+                'Production started for %s units. Raw material and production cost were calculated for this manually entered quantity.',
+                number_format($result['planned_quantity'], 2)
             );
 
-            if ($result['partial_start']) {
+            $variance = (float) $result['variance_quantity'];
+            if ($variance > 0.000001) {
                 $message .= sprintf(
-                    ' Ordered quantity is %s, but current raw material supports only %s. Enter the real quantity produced when production ends.',
-                    number_format($result['ordered_quantity'], 2),
-                    number_format($result['allocation_quantity'], 2)
+                    ' Planned production is %s units above the customer order.',
+                    number_format($variance, 2)
                 );
-            } else {
-                $message .= ' Enter the real quantity produced when production ends; it may be lower or higher than the order quantity.';
+            } elseif ($variance < -0.000001) {
+                $message .= sprintf(
+                    ' Planned production is %s units below the customer order.',
+                    number_format(abs($variance), 2)
+                );
             }
+
+            $message .= ' Enter the real finished quantity when production ends.';
 
             return redirect()->route('production-orders.show', $productionOrder)
                 ->with('success', $message);
         } catch (\Throwable $e) {
             Log::error('Start production failed', [
                 'production_order_id' => $productionOrder->id,
+                'planned_quantity' => $plannedQuantity,
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
             ]);
 
             return redirect()->route('production-orders.show', $productionOrder)
+                ->withInput()
                 ->with('error', 'Failed to start production: ' . $e->getMessage());
         }
     }
