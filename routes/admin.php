@@ -167,6 +167,8 @@ Route::middleware(['auth'])->prefix('admin')->group(function () {
         // Price Adjustment Routes
         Route::post('/item/{item}/apply-discount', [SaleController::class, 'applyDiscount'])
             ->name('item.apply-discount')->middleware('permission.feedback:update sales');
+        Route::patch('/item/{item}/manual-price', [SaleController::class, 'updateManualPrice'])
+            ->name('item.manual-price')->middleware('permission.feedback:update sales');
 
         Route::post('/item/{item}/reset-price', [SaleController::class, 'resetPrice'])
             ->name('item.reset-price')->middleware('permission.feedback:update sales');
