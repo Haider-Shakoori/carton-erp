@@ -369,6 +369,7 @@ class SaleController extends Controller
                             'grh' => (float) ($item->grh ?? 0),
                             'ply' => (float) ($item->ply ?? 1),
                             'multiplication_method' => $item->multiplication_method ?? 'multiply',
+                'formula_type' => $item->formula_type ?? 'carton_3d',
                             'formula_type' => $item->formula_type ?? 'carton_3d',
                         ];
                     }
@@ -516,6 +517,8 @@ class SaleController extends Controller
             'items' => 'required|array|min:1',
             'items.*.bom_id' => 'required|exists:boms,id',
             'items.*.qty' => 'required|numeric|min:0.01',
+            'items.*.unit_price' => 'nullable|numeric|min:0.0001',
+            'items.*.quotation_description' => 'nullable|string|max:2000',
             'items.*.remarks' => 'nullable|string',
         ]);
 
@@ -555,9 +558,11 @@ class SaleController extends Controller
                     throw new \RuntimeException("BOM {$bom->code} has no valid selling price.");
                 }
 
-                $unitPrice = $saleCurrency === 'USD'
+                $baseUnitPrice = $saleCurrency === 'USD'
                     ? $unitPriceAfn / $exchangeRate
                     : $unitPriceAfn;
+                $manualUnitPrice = (float) ($itemData['unit_price'] ?? 0);
+                $unitPrice = $manualUnitPrice > 0 ? $manualUnitPrice : $baseUnitPrice;
                 $total = $unitPrice * $qty;
                 $usdUnitPrice = $saleCurrency === 'USD'
                     ? $unitPrice
@@ -602,6 +607,10 @@ class SaleController extends Controller
                     'cost_per_unit_usd' => $costPerUnitUsd,
                     'total_cost_usd' => $totalCostUsd,
                     'unit_price' => $unitPrice,
+                    'base_price' => $baseUnitPrice,
+                    'original_unit_price' => $baseUnitPrice,
+                    'final_price' => $unitPrice,
+                    'price_adjustment_type' => $manualUnitPrice > 0 ? 'manual' : 'none',
                     'total' => $total,
                     'discount' => 0,
                     'tax' => 0,
@@ -614,6 +623,7 @@ class SaleController extends Controller
                     'profit_afn' => $profitAfn,
                     'profit_percentage' => $profitPercentage,
                     'remarks' => $remarks,
+                    'quotation_description' => trim((string) ($itemData['quotation_description'] ?? '')) ?: null,
                 ]);
 
                 $itemsAdded->push($saleItem);
@@ -1002,6 +1012,14 @@ class SaleController extends Controller
             $costPerUnitUsd = $costPerUnitAfn / $exchangeRate;
 
             $totalCostUsd = $costPerUnitUsd * $qty;
+            $baseUnitPrice = $unitPrice;
+            $manualUnitPrice = (float) ($validated['manual_unit_price'] ?? 0);
+            $hasManualPrice = $manualUnitPrice > 0;
+
+            if ($hasManualPrice) {
+                $unitPrice = $manualUnitPrice;
+            }
+
             $totalPrice = $unitPrice * $qty;
             $usdUnitPrice = $isUSD ? $unitPrice : $unitPrice / $exchangeRate;
             $usdTotal = $usdUnitPrice * $qty;
@@ -1024,9 +1042,14 @@ class SaleController extends Controller
                 'purchase_item_id' => null,
                 'sale_currency_id' => $sale->currency_id,
                 'qty' => $qty,
+                'ordered_qty' => $qty,
                 'cost_per_unit_usd' => $costPerUnitUsd,
                 'total_cost_usd' => $totalCostUsd,
                 'unit_price' => $unitPrice,
+                'base_price' => $baseUnitPrice,
+                'original_unit_price' => $baseUnitPrice,
+                'final_price' => $unitPrice,
+                'price_adjustment_type' => $hasManualPrice ? 'manual' : 'none',
                 'total' => $totalPrice,
                 'discount' => 0,
                 'tax' => 0,
@@ -1331,6 +1354,8 @@ class SaleController extends Controller
             'currency_code' => 'nullable|string|in:USD,AFN',
             'pricing_mode' => 'required|in:saved,manual',
             'quoted_unit_price' => 'nullable|numeric|min:0',
+            'manual_unit_price' => 'nullable|numeric|min:0.0001',
+            'quotation_description' => 'nullable|string|max:2000',
             'formula_snapshot' => 'nullable|string',
             'remarks' => 'nullable|string|max:1000',
         ]);
@@ -1564,6 +1589,7 @@ class SaleController extends Controller
                 'profit_afn' => $profitAfn,
                 'profit_percentage' => $profitPercentage,
                 'remarks' => $remarks,
+                'quotation_description' => trim((string) ($validated['quotation_description'] ?? '')) ?: null,
                 'manual_bom_snapshot' => $pricingMode === 'manual' ? $materialBreakdown : null,
             ]);
 
