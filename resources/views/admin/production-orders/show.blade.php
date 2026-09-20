@@ -1354,11 +1354,18 @@
             }
             @endif
 
+            @error('quantity_produced')
+            const completionModalElement = document.getElementById('completeProductionModal');
+            if (completionModalElement && window.bootstrap) {
+                new bootstrap.Modal(completionModalElement).show();
+            }
+            @enderror
+
             // ─── CONFIRM DIALOG FOR START PRODUCTION ───
             const startForm = document.getElementById('startProductionForm');
             if (startForm) {
                 startForm.addEventListener('submit', function(e) {
-                    const confirmMessage = '⚠️ Start Production?\n\nThis will:\n• Consume raw materials from inventory\n• Update stock quantities\n• Mark production as in progress\n\nAre you sure you want to continue?';
+                    const confirmMessage = '⚠️ Start Production?\n\nThis will:\n• Allocate and consume the raw material currently available\n• Allow partial production if stock cannot cover the full order\n• Mark production as in progress\n\nYou will enter the real finished quantity when production ends. Continue?';
 
                     if (!confirm(confirmMessage)) {
                         e.preventDefault();
