@@ -1013,7 +1013,7 @@
                                     </svg>
                                     <div class="progress-ring-center">
                                         <div class="percentage">{{ round($progress) }}%</div>
-                                        <div class="label">{{ __('ui.progress') }}</div>
+                                        <div class="label">Order Fulfillment</div>
                                     </div>
                                 </div>
                                 <div class="progress-stats">
@@ -1026,8 +1026,13 @@
                                         <span class="value">{{ number_format($productionOrder->quantity_produced) }}</span>
                                     </div>
                                     <div class="progress-stat-item">
-                                        <span class="label">{{ __('ui.remaining') }}</span>
-                                        <span class="value">{{ number_format(max(0, $productionOrder->quantity_ordered - $productionOrder->quantity_produced)) }}</span>
+                                        <span class="label">Production Variance</span>
+                                        @php
+                                            $productionVariance = (float) $productionOrder->quantity_produced - (float) $productionOrder->quantity_ordered;
+                                        @endphp
+                                        <span class="value {{ $productionVariance > 0 ? 'text-success' : ($productionVariance < 0 ? 'text-warning' : '') }}">
+                                            {{ $productionVariance > 0 ? '+' : '' }}{{ number_format($productionVariance, 2) }}
+                                        </span>
                                     </div>
                                 </div>
                             </div>
