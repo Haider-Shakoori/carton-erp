@@ -706,12 +706,12 @@
                     @endif
 
                     @if($productionOrder->status === 'in_progress')
-                        <form action="{{ route('production-orders.complete', $productionOrder) }}" method="POST" class="d-inline">
-                            @csrf
-                            <button type="submit" class="action-btn action-btn-success" onclick="return confirm('Complete production? This will add finished goods to inventory.')">
-                                <i class="bi bi-check2"></i> {{ __('ui.complete_production') }}
-                            </button>
-                        </form>
+                        <button type="button"
+                                class="action-btn action-btn-success"
+                                data-bs-toggle="modal"
+                                data-bs-target="#completeProductionModal">
+                            <i class="bi bi-check2"></i> {{ __('ui.complete_production') }}
+                        </button>
                     @endif
 
                     @if(in_array($productionOrder->status, ['pending', 'in_progress']))
@@ -729,6 +729,74 @@
                 </div>
             </div>
         </div>
+
+        @if($productionOrder->status === 'in_progress')
+            <div class="modal fade" id="completeProductionModal" tabindex="-1" aria-labelledby="completeProductionModalLabel" aria-hidden="true">
+                <div class="modal-dialog modal-dialog-centered">
+                    <div class="modal-content border-0 shadow-lg">
+                        <form action="{{ route('production-orders.complete', $productionOrder) }}" method="POST">
+                            @csrf
+                            <div class="modal-header border-0 pb-0">
+                                <div>
+                                    <h5 class="modal-title fw-bold" id="completeProductionModalLabel">
+                                        Complete Production
+                                    </h5>
+                                    <div class="text-muted small">
+                                        Record the real finished quantity produced.
+                                    </div>
+                                </div>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="{{ __('ui.close') }}"></button>
+                            </div>
+
+                            <div class="modal-body pt-3">
+                                <div class="rounded-3 p-3 mb-3" style="background:#eff6ff;border:1px solid #bfdbfe;">
+                                    <div class="d-flex justify-content-between mb-1">
+                                        <span class="text-muted">Customer ordered</span>
+                                        <strong>{{ number_format((float) $productionOrder->quantity_ordered, 2) }}</strong>
+                                    </div>
+                                    <div class="small text-muted">
+                                        Actual production may be lower or higher depending on raw-material availability.
+                                    </div>
+                                </div>
+
+                                <label for="quantity_produced" class="form-label fw-semibold">
+                                    Actual Quantity Produced <span class="text-danger">*</span>
+                                </label>
+                                <input type="number"
+                                       class="form-control form-control-lg @error('quantity_produced') is-invalid @enderror"
+                                       id="quantity_produced"
+                                       name="quantity_produced"
+                                       value="{{ old('quantity_produced', $productionOrder->quantity_ordered) }}"
+                                       min="0.01"
+                                       max="999999999.99"
+                                       step="0.01"
+                                       required
+                                       autofocus>
+                                @error('quantity_produced')
+                                    <div class="invalid-feedback">{{ $message }}</div>
+                                @enderror
+
+                                <div class="alert alert-warning mt-3 mb-0 small">
+                                    <i class="bi bi-exclamation-triangle me-1"></i>
+                                    Completing production will reconcile raw-material consumption to this actual quantity.
+                                    If linked to a sale, the final invoice quantity, invoice amount, customer balance and profit will also be recalculated.
+                                </div>
+                            </div>
+
+                            <div class="modal-footer border-0 pt-0">
+                                <button type="button" class="btn btn-light" data-bs-dismiss="modal">
+                                    {{ __('ui.cancel') }}
+                                </button>
+                                <button type="submit" class="btn btn-success">
+                                    <i class="bi bi-check-circle me-1"></i>
+                                    Save Actual Output & Complete
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        @endif
 
         {{-- ─── FLASH MESSAGES ─── --}}
         @if(session('error'))
