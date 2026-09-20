@@ -232,17 +232,14 @@ class ProductionOrderController extends Controller
             }
 
             if ($availability['has_shortage']) {
-                $shortageMessage = 'The following materials have shortages:<br>';
-                foreach ($availability['shortages'] as $shortage) {
-                    $shortageMessage .= "- {$shortage['material_name']}: Need {$shortage['total_required']} {$shortage['unit']}, Available: {$shortage['available_stock']} {$shortage['unit']}<br>";
-                }
-
-                \Log::warning('Production Order Store - Material shortages detected', [
-                    'shortages' => $availability['shortages']
+                // A shortage no longer blocks creation. The production order keeps
+                // the customer's requested quantity as the plan, while Start
+                // Production allocates only the quantity current raw material can
+                // support. The real finished quantity is entered at completion.
+                \Log::warning('Production Order Store - Material shortages recorded for partial production', [
+                    'shortages' => $availability['shortages'],
+                    'quantity_ordered' => $request->quantity_ordered,
                 ]);
-
-                DB::rollBack();
-                return back()->with('error', $shortageMessage)->withInput();
             }
 
             // ─── LOG 6: Calculating costs ───
