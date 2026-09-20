@@ -2519,6 +2519,67 @@ class SaleController extends Controller
 
 
     /**
+     * Update the customer-facing unit price of one draft invoice line.
+     * The physical/BOM cost remains untouched.
+     */
+    public function updateManualPrice(Request $request, SaleItem $item)
+    {
+        $validated = $request->validate([
+            'unit_price' => 'required|numeric|min:0.0001',
+        ]);
+
+        $item->loadMissing(['sale.currency']);
+        $sale = $item->sale;
+
+        if (! $sale || $sale->status !== 'draft') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Manual line price can only be changed while the invoice is in draft.',
+            ], 422);
+        }
+
+        return DB::transaction(function () use ($item, $sale, $validated) {
+            $newPrice = (float) $validated['unit_price'];
+            $rate = max((float) ($item->rate ?: $sale->exchange_rate ?: 1), 0.000001);
+            $isUsd = $sale->currency?->code === 'USD';
+
+            if ((float) ($item->base_price ?? 0) <= 0) {
+                $item->base_price = (float) $item->unit_price;
+            }
+            if ((float) ($item->original_unit_price ?? 0) <= 0) {
+                $item->original_unit_price = (float) $item->unit_price;
+            }
+
+            $item->final_price = $newPrice;
+            $item->unit_price = $newPrice;
+            $item->price_adjustment_type = 'manual';
+            $item->total = $newPrice * (float) $item->qty;
+            $item->usd_unit_price = $isUsd ? $newPrice : $newPrice / $rate;
+            $item->usd_total = (float) $item->usd_unit_price * (float) $item->qty;
+
+            $basePrice = (float) ($item->base_price ?: $item->original_unit_price ?: $newPrice);
+            $item->discount_amount = $basePrice - $newPrice;
+            $item->discount_percentage = $basePrice > 0
+                ? (($basePrice - $newPrice) / $basePrice) * 100
+                : 0;
+
+            $item->calculateProfitUsd();
+            $item->save();
+
+            $sale->unsetRelation('items');
+            $sale->load('items');
+            $sale->recalculateTotals();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Manual unit price updated.',
+                'item' => $item->fresh(),
+                'sale_total' => (float) $sale->fresh()->grand_total,
+            ]);
+        });
+    }
+
+    /**
      * Apply discount to a sale item.
      */
     public function applyDiscount(Request $request, SaleItem $item)
