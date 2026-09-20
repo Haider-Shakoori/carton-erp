@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: actual-production-${{ github.ref }}
-  cancel-in-progress: true
+  group: actual-production-${{ github.sha }}
+  cancel-in-progress: false
 
 jobs:
   qa:
