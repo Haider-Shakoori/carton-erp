@@ -9,15 +9,40 @@
             <h1 class="h3 mb-1"><i class="bi bi-clipboard-check me-2"></i>Stock Reconciliation</h1>
             <p class="text-muted mb-0">Cycle counts compare ERP batch balances with physical warehouse stock.</p>
         </div>
-        @can('create stock reconciliations')
-            <a href="{{ route('admin.stock-reconciliations.create') }}" class="btn btn-primary">
-                <i class="bi bi-plus-circle me-1"></i> New Cycle Count
+        <div class="d-flex gap-2 flex-wrap">
+            <a href="{{ route('admin.stock-reconciliations.report') }}" class="btn btn-outline-primary">
+                <i class="bi bi-bar-chart me-1"></i> Variance Report
             </a>
-        @endcan
+            @can('create stock reconciliations')
+                <a href="{{ route('admin.stock-reconciliations.create') }}" class="btn btn-primary">
+                    <i class="bi bi-plus-circle me-1"></i> New Cycle Count
+                </a>
+            @endcan
+        </div>
     </div>
 
     @if(session('success'))<div class="alert alert-success">{{ session('success') }}</div>@endif
     @if(session('error'))<div class="alert alert-danger">{{ session('error') }}</div>@endif
+
+    <div class="row g-3 mb-4">
+        <div class="col-lg-3 col-md-6"><div class="card border-0 shadow-sm"><div class="card-body">
+            <div class="text-muted small">Counting In Progress</div>
+            <div class="fs-3 fw-bold">{{ $stats['counting'] }}</div>
+        </div></div></div>
+        <div class="col-lg-3 col-md-6"><div class="card border-0 shadow-sm"><div class="card-body">
+            <div class="text-muted small">Awaiting Approval</div>
+            <div class="fs-3 fw-bold text-warning">{{ $stats['awaiting_approval'] }}</div>
+        </div></div></div>
+        <div class="col-lg-3 col-md-6"><div class="card border-0 shadow-sm"><div class="card-body">
+            <div class="text-muted small">Approved / Awaiting Post</div>
+            <div class="fs-3 fw-bold text-primary">{{ $stats['awaiting_post'] }}</div>
+        </div></div></div>
+        <div class="col-lg-3 col-md-6"><div class="card border-0 shadow-sm"><div class="card-body">
+            <div class="text-muted small">30-Day Negative Variance</div>
+            <div class="fs-3 fw-bold text-danger">${{ number_format($stats['negative_variance_30d_usd'], 2) }}</div>
+            <div class="small text-muted">Last posted: {{ $stats['last_posted_at'] ? \Carbon\Carbon::parse($stats['last_posted_at'])->format('d M Y H:i') : 'Never' }}</div>
+        </div></div></div>
+    </div>
 
     <div class="card shadow-sm border-0 mb-4">
         <div class="card-body">
