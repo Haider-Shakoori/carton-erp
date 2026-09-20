@@ -1618,9 +1618,21 @@
 
                 <div class="action-divider"></div>
 
+                @if($sale->items->isNotEmpty())
+                    <a href="{{ route('admin.sales.quotation', $sale->id) }}" target="_blank" class="btn btn-outline-primary btn-action">
+                        <i class="bi bi-file-earmark-text"></i> Quotation
+                    </a>
+                @endif
+
                 <a href="{{ route('admin.sales.print', $sale->id) }}" target="_blank" class="btn btn-print btn-action">
                     <i class="bi bi-printer"></i> {{ __('ui.print_invoice') }}
                 </a>
+
+                @if($sale->status === 'delivered' && $sale->gatePass)
+                    <a href="{{ route('admin.sales.gate-pass', $sale->id) }}" target="_blank" class="btn btn-outline-success btn-action">
+                        <i class="bi bi-door-open"></i> Gate Pass
+                    </a>
+                @endif
 
                 @if($sale->is_produced && $sale->productionOrder)
                     <a href="{{ route('production-orders.show', $sale->productionOrder) }}" class="btn btn-outline-info btn-action">
@@ -2066,12 +2078,23 @@
                         </div>
                     </div>
 
-                    {{-- ─── Exchange Rate ─── --}}
+                    {{-- ─── Pricing Overrides & Quotation Description ─── --}}
                     <div class="row g-3 mt-2">
                         <div class="col-md-3">
                             <label class="form-label">{{ __('ui.exchange_rate') }}</label>
                             <input type="number" id="exchangeRate" class="form-control" value="{{ $exchangeRate ?? 1 }}" step="0.000001" min="0.000001" oninput="recalculateLiveEstimate();">
                             <small class="text-muted">1 {{ $currencyCode }} = ? USD</small>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Manual Unit Price <span class="currency-badge">{{ $currencyCode }}</span></label>
+                            <input type="number" id="manualUnitPrice" class="form-control" min="0" step="0.0001" placeholder="Optional override">
+                            <small class="text-muted">Leave blank to use the calculated/BOM price.</small>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Quotation Description</label>
+                            <input type="text" id="quotationDescription" class="form-control" maxlength="2000"
+                                   placeholder="Description to print on the quotation for this line item">
+                            <small class="text-muted">This is customer-facing; BOM/internal details are never printed.</small>
                         </div>
                     </div>
 
@@ -2170,7 +2193,6 @@
                         <thead>
                         <tr>
                             <th style="min-width: 150px;">{{ __('ui.product') }}</th>
-                            <th style="min-width: 100px;">{{ __('ui.bom') }}</th>
                             <th class="text-center" style="min-width: 60px;">{{ __('ui.qty') }}</th>
                             <th class="text-end" style="min-width: 115px;">{{ $actualAvailable ? __('ui.actual_cost_unit') : __('ui.quotation_cost_unit') }}</th>
                             <th class="text-end" style="min-width: 115px;">{{ $actualAvailable ? __('ui.actual_cost_total') : __('ui.quotation_cost_total') }}</th>
@@ -2231,18 +2253,16 @@
                                 <td>
                                     <div class="product-cell">
                                         <div class="name">{{ $item->product->name ?? '-' }}</div>
-                                        @if ($item->remarks)
-                                            <div class="meta"><i class="bi bi-journal-text"></i> {{ $item->remarks }}</div>
+                                        @if ($sale->status === 'draft')
+                                            <textarea class="form-control form-control-sm quotation-description-input mt-1"
+                                                      data-id="{{ $item->id }}"
+                                                      maxlength="2000"
+                                                      rows="2"
+                                                      placeholder="Quotation description">{{ $item->quotation_description }}</textarea>
+                                        @elseif($item->quotation_description)
+                                            <div class="meta"><i class="bi bi-card-text"></i> {{ $item->quotation_description }}</div>
                                         @endif
                                     </div>
-                                </td>
-                                <td>
-                                    @if($item->bom)
-                                        <span class="badge bg-primary">{{ $item->bom->code ?? 'N/A' }}</span>
-                                        <div style="font-size: 0.65rem; color: var(--sale-gray-400);">v{{ $item->bom->version ?? '1.0' }}</div>
-                                    @else
-                                        <span class="text-muted">N/A</span>
-                                    @endif
                                 </td>
                                 <td class="text-center fw-bold">{{ number_format($item->qty, 2) }}</td>
                                 <td class="text-end">
@@ -2284,7 +2304,7 @@
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="{{ $sale->status === 'draft' ? '10' : '9' }}">
+                                <td colspan="{{ $sale->status === 'draft' ? '9' : '8' }}">
                                     <div class="empty-state">
                                         <i class="bi bi-box-seam icon"></i>
                                         <div class="title">{{ __('ui.no_items_added') }}</div>
@@ -2827,9 +2847,15 @@
             return currencySymbol + ' ' + parseFloat(value).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
         }
 
+        function effectiveUnitPrice() {
+            const manual = parseFloat($('#manualUnitPrice').val()) || 0;
+            const automatic = parseFloat($('#unitPrice').val()) || 0;
+            return manual > 0 ? manual : automatic;
+        }
+
         function updateAddTotals() {
             const qty = parseFloat($('#itemQty').val()) || 0;
-            const unitPrice = parseFloat($('#unitPrice').val()) || 0;
+            const unitPrice = effectiveUnitPrice();
             const total = qty * unitPrice;
             const symbol = currencySymbol || '$';
 
@@ -3320,7 +3346,8 @@
                 var reelLengthCalc = ((f.length + f.width) * 2) + 4;
                 var reelHeightCalc = f.width + f.height + 1;
 
-                html += '<div class="manual-material-card ' + (missing ? 'border border-danger' : '') + '" data-estimate-row="' + i + '" data-latest-rate="' + f.latestRate + '">' +
+                var formulaType = material.formula_type || 'carton_3d';
+                html += '<div class="manual-material-card ' + (missing ? 'border border-danger' : '') + '" data-estimate-row="' + i + '" data-formula-type="' + formulaType + '" data-latest-rate="' + f.latestRate + '">' +
                     '<div class="manual-material-header">' +
                     '<div class="manual-material-title">' +
                     '<div class="manual-material-name"><i class="bi bi-layers me-2 text-primary"></i>' + materialName + '</div>' +
@@ -3334,7 +3361,7 @@
                     '<div class="manual-field"><label>{{ __('ui.carton_width_in') }}</label><input class="est-width" type="number" min="0" step="0.01" value="' + f.width + '"></div>' +
                     '<div class="manual-field"><label>{{ __('ui.carton_height_in') }}</label><input class="est-height" type="number" min="0" step="0.01" value="' + f.height + '"></div>' +
                     '<div class="manual-field"><label>{{ __('ui.paper_gsm') }}</label><input class="est-paper-gsm" type="number" min="0" step="1" value="' + f.paperGsm + '"></div>' +
-                    '<div class="manual-field"><label>{{ __('ui.per_gram_rate') }}</label><input class="est-per-gram-rate" type="number" min="0" step="0.01" value="' + f.perGramRate + '"></div>' +
+                    '<div class="manual-field"><label>PO Rate (AFN/kg)</label><input class="est-per-gram-rate" type="number" min="0" step="0.0001" value="' + f.perGramRate + '" readonly style="background:#f1f5f9;cursor:not-allowed;"><small class="text-muted d-block mt-1">Auto-populated from latest arrived purchase order.</small></div>' +
                     '<div class="manual-field"><label>{{ __('ui.multiplication_layer') }}</label><input class="est-multiplication-layer" type="number" min="1" step="1" value="' + f.multiplicationLayer + '"></div>' +
                     '<div class="manual-field"><label>{{ __('ui.print_cost') }}</label><input class="est-print-cost" type="number" min="0" step="0.01" value="' + f.printCost + '"></div>' +
                     '<div class="manual-field"><label>{{ __('ui.formula_constant') }}</label><input class="est-formula-constant" type="number" min="0.0001" step="1" value="' + f.formulaConstant + '"></div>' +
@@ -3372,8 +3399,35 @@
             $('#bomMaterialsTableBody').html(html);
 
             $('#bomMaterialsTableBody input, #bomMaterialsTableBody select').on('input change', function() {
+                var $input = $(this);
+                var $sourceRow = $input.closest('.manual-material-card');
+
+                if ($sourceRow.data('formula-type') === 'carton_3d'
+                    && ($input.hasClass('est-length') || $input.hasClass('est-width') || $input.hasClass('est-height'))) {
+                    var fieldClass = $input.hasClass('est-length')
+                        ? '.est-length'
+                        : ($input.hasClass('est-width') ? '.est-width' : '.est-height');
+
+                    $('#bomMaterialsTableBody .manual-material-card[data-formula-type="carton_3d"]')
+                        .not($sourceRow)
+                        .find(fieldClass)
+                        .val($input.val());
+                }
+
                 recalculateLiveEstimate();
             });
+
+            // A 3D carton has one set of finished dimensions shared by every
+            // paper layer. Normalize existing template rows to the first 3D row.
+            var $first3d = $('#bomMaterialsTableBody .manual-material-card[data-formula-type="carton_3d"]').first();
+            if ($first3d.length) {
+                ['.est-length', '.est-width', '.est-height'].forEach(function(selector) {
+                    var value = $first3d.find(selector).val();
+                    $('#bomMaterialsTableBody .manual-material-card[data-formula-type="carton_3d"]')
+                        .find(selector)
+                        .val(value);
+                });
+            }
 
             if (hasMissingCost) {
                 $('#unitPrice').val(0);
@@ -3523,7 +3577,9 @@
             var selectedPricingValue = $('#bomSelect').val();
             var bomId = pricingMode === 'manual' ? manualTemplateBomId : selectedPricingValue;
             var qty = parseFloat($('#itemQty').val()) || 0;
-            var unitPrice = parseFloat($('#unitPrice').val()) || 0;
+            var autoUnitPrice = parseFloat($('#unitPrice').val()) || 0;
+            var manualUnitPrice = parseFloat($('#manualUnitPrice').val()) || 0;
+            var unitPrice = manualUnitPrice > 0 ? manualUnitPrice : autoUnitPrice;
             var exchangeRateVal = parseFloat($('#exchangeRate').val()) || 1;
 
             if (!productId) {
@@ -3576,7 +3632,9 @@
                     qty: qty,
                     exchange_rate: exchangeRateVal,
                     currency_code: currencyCode,
-                    quoted_unit_price: unitPrice,
+                    quoted_unit_price: autoUnitPrice,
+                    manual_unit_price: manualUnitPrice > 0 ? manualUnitPrice : null,
+                    quotation_description: $('#quotationDescription').val(),
                     pricing_mode: pricingMode || 'saved',
                     formula_snapshot: pricingMode === 'manual' ? JSON.stringify(currentQuoteSnapshot) : null,
                     remarks: pricingMode === 'manual'
@@ -5196,6 +5254,7 @@
                     currentProductId = productId;
                     loadBomsForProduct(productId);
                     $('#unitPrice').val(0);
+                    $('#manualUnitPrice').val('');
                     $('#priceSource').text(@json(__('ui.select_pricing_method_plain')));
                     $('#addItemBtn').prop('disabled', true);
                     updateAddTotals();
@@ -5205,6 +5264,7 @@
                     pricingMode = null;
                     manualTemplateBomId = null;
                     $('#unitPrice').val(0);
+                    $('#manualUnitPrice').val('');
                     $('#priceSource').text(@json(__('ui.select_bom_auto')));
                     $('#addItemBtn').prop('disabled', true);
                     updateAddTotals();
@@ -5221,6 +5281,7 @@
                     currentBOMData = null;
                     $('#bomDetailsPreview, #pricingModeNotice').hide();
                     $('#unitPrice').val(0);
+                    $('#manualUnitPrice').val('');
                     $('#priceSource').text(@json(__('ui.select_pricing_method_no_dots')));
                     $('#addItemBtn').prop('disabled', true);
                     updateAddTotals();
@@ -5230,6 +5291,7 @@
                 if (selectedOption.prop('disabled')) {
                     $('#bomDetailsPreview, #pricingModeNotice').hide();
                     $('#unitPrice').val(0);
+                    $('#manualUnitPrice').val('');
                     $('#priceSource').text(@json(__('ui.no_bom_available')));
                     $('#addItemBtn').prop('disabled', true);
                     updateAddTotals();
@@ -5262,6 +5324,30 @@
                 } else {
                     updateAddTotals();
                 }
+            });
+
+            $('#manualUnitPrice').on('input', function() {
+                updateAddTotals();
+            });
+
+            $(document).on('change blur', '.quotation-description-input', function() {
+                var $field = $(this);
+                var itemId = $field.data('id');
+
+                $.ajax({
+                    url: '{{ url('admin/sales/item') }}/' + itemId + '/quotation-description',
+                    method: 'PATCH',
+                    data: {
+                        _token: '{{ csrf_token() }}',
+                        quotation_description: $field.val()
+                    }
+                }).fail(function(xhr) {
+                    Swal.fire({
+                        icon: 'error',
+                        title: @json(__('ui.error')),
+                        text: xhr.responseJSON?.message || 'Could not save quotation description.'
+                    });
+                });
             });
 
             // ─── EXCHANGE RATE CHANGE ───
