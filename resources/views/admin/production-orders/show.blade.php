@@ -763,7 +763,7 @@
                                     Actual Quantity Produced <span class="text-danger">*</span>
                                 </label>
                                 <input type="number"
-                                       class="form-control form-control-lg @error('quantity_produced') is-invalid @enderror"
+                                       class="form-control form-control-lg {{ isset($errors) && $errors->has('quantity_produced') ? 'is-invalid' : '' }}"
                                        id="quantity_produced"
                                        name="quantity_produced"
                                        value="{{ old('quantity_produced', $productionOrder->quantity_ordered) }}"
@@ -772,9 +772,9 @@
                                        step="0.01"
                                        required
                                        autofocus>
-                                @error('quantity_produced')
-                                    <div class="invalid-feedback">{{ $message }}</div>
-                                @enderror
+                                @if(isset($errors) && $errors->has('quantity_produced'))
+                                    <div class="invalid-feedback">{{ $errors->first('quantity_produced') }}</div>
+                                @endif
 
                                 <div class="alert alert-warning mt-3 mb-0 small">
                                     <i class="bi bi-exclamation-triangle me-1"></i>
@@ -1354,12 +1354,12 @@
             }
             @endif
 
-            @error('quantity_produced')
+            @if(isset($errors) && $errors->has('quantity_produced'))
             const completionModalElement = document.getElementById('completeProductionModal');
             if (completionModalElement && window.bootstrap) {
                 new bootstrap.Modal(completionModalElement).show();
             }
-            @enderror
+            @endif
 
             // ─── CONFIRM DIALOG FOR START PRODUCTION ───
             const startForm = document.getElementById('startProductionForm');
