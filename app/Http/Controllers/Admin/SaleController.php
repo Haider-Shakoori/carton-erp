@@ -985,6 +985,7 @@ class SaleController extends Controller
             'currency_code' => 'nullable|string|in:USD,AFN',
             'formula_type' => 'required|string|in:carton_3d,cut_roll',
             'formula_params' => 'required|json',
+            'quotation_description' => 'nullable|string|max:2000',
             'remarks' => 'nullable|string',
         ]);
 
@@ -1013,13 +1014,6 @@ class SaleController extends Controller
 
             $totalCostUsd = $costPerUnitUsd * $qty;
             $baseUnitPrice = $unitPrice;
-            $manualUnitPrice = (float) ($validated['manual_unit_price'] ?? 0);
-            $hasManualPrice = $manualUnitPrice > 0;
-
-            if ($hasManualPrice) {
-                $unitPrice = $manualUnitPrice;
-            }
-
             $totalPrice = $unitPrice * $qty;
             $usdUnitPrice = $isUSD ? $unitPrice : $unitPrice / $exchangeRate;
             $usdTotal = $usdUnitPrice * $qty;
@@ -1049,7 +1043,7 @@ class SaleController extends Controller
                 'base_price' => $baseUnitPrice,
                 'original_unit_price' => $baseUnitPrice,
                 'final_price' => $unitPrice,
-                'price_adjustment_type' => $hasManualPrice ? 'manual' : 'none',
+                'price_adjustment_type' => 'none',
                 'total' => $totalPrice,
                 'discount' => 0,
                 'tax' => 0,
@@ -1062,6 +1056,7 @@ class SaleController extends Controller
                 'profit_afn' => $profitAfn,
                 'profit_percentage' => $profitPercentage,
                 'remarks' => $remarks,
+                'quotation_description' => trim((string) $request->quotation_description) ?: null,
                 'formula_snapshot' => $request->formula_params,
             ]);
 
