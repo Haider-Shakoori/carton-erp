@@ -189,6 +189,9 @@ Route::middleware(['auth'])->prefix('admin')->group(function () {
         Route::patch('/{id}/status', [SaleController::class, 'updateStatus'])->name('update-status')->middleware('permission.feedback:update sales');
         Route::post('/{sale}/start-production', [SaleController::class, 'startProductionFromSale'])->name('start-production')->middleware('permission.feedback:update sales');
         Route::post('/{sale}/deliver', [SaleController::class, 'deliver'])->name('deliver')->middleware('permission.feedback:update sales');
+        Route::get('/{id}/quotation', [SaleController::class, 'quotation'])->name('quotation')->middleware('permission.feedback:view sales');
+        Route::patch('/item/{item}/quotation-description', [SaleController::class, 'updateQuotationDescription'])->name('item.quotation-description')->middleware('permission.feedback:update sales');
+        Route::get('/{id}/gate-pass', [SaleController::class, 'gatePass'])->name('gate-pass')->middleware('permission.feedback:view sales');
         Route::get('/{id}/print', [SaleController::class, 'printInvoice'])->name('print')->middleware('permission.feedback:view sales');
         Route::get('/deleted', [SaleController::class, 'deleted'])->name('deleted')->middleware('permission.feedback:delete sales');
         Route::post('/{id}/restore', [SaleController::class, 'restore'])->name('restore')->middleware('permission.feedback:delete sales');
