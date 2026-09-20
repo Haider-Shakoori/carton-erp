@@ -120,6 +120,12 @@ Route::middleware(['auth'])->prefix('admin')->group(function () {
             ->name('items.update')->middleware('permission.feedback:update stock reconciliations');
         Route::post('/{stockReconciliation}/submit', [StockReconciliationController::class, 'submit'])
             ->name('submit')->middleware('permission.feedback:submit stock reconciliations');
+        Route::post('/{stockReconciliation}/approve', [StockReconciliationController::class, 'approve'])
+            ->name('approve')->middleware('permission.feedback:approve stock reconciliations');
+        Route::post('/{stockReconciliation}/reject', [StockReconciliationController::class, 'reject'])
+            ->name('reject')->middleware('permission.feedback:approve stock reconciliations');
+        Route::post('/{stockReconciliation}/post', [StockReconciliationController::class, 'post'])
+            ->name('post')->middleware('permission.feedback:post stock reconciliations');
     });
 
     // ==================== ACCOUNTS ROUTES ====================
