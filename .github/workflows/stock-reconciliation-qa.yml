@@ -5,6 +5,7 @@ on:
     branches:
       - feat/stock-reconciliation-foundation
       - feat/stock-reconciliation-posting
+      - feat/stock-reconciliation-reporting
   workflow_dispatch:
 
 permissions:
@@ -100,7 +101,9 @@ jobs:
         run: php artisan view:cache
 
       - name: Focused stock reconciliation tests
-        run: php artisan test tests/Feature/Inventory/StockReconciliationFoundationTest.php
+        run: |
+          php artisan test tests/Feature/Inventory/StockReconciliationFoundationTest.php
+          php artisan test tests/Feature/Inventory/StockReconciliationUiContractTest.php
 
       - name: Complete PHP test suite
         run: php artisan test
