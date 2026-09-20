@@ -1,0 +1,106 @@
+name: Actual Production Quantity QA
+
+on:
+  push:
+    branches:
+      - feat/actual-production-quantity-20260920
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: actual-production-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      APP_ENV: testing
+      APP_DEBUG: "true"
+      DB_CONNECTION: mysql
+      DB_HOST: 127.0.0.1
+      DB_PORT: 3306
+      DB_DATABASE: carton_erp_test
+      DB_USERNAME: laravel
+      DB_PASSWORD: laravel
+      CACHE_STORE: array
+      SESSION_DRIVER: array
+      QUEUE_CONNECTION: sync
+      MAIL_MAILER: array
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_DATABASE: carton_erp_test
+          MYSQL_USER: laravel
+          MYSQL_PASSWORD: laravel
+          MYSQL_ROOT_PASSWORD: root
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup PHP 8.3
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, dom, fileinfo, mysql, pdo_mysql, sqlite3, pdo_sqlite, bcmath, intl, curl
+          coverage: none
+
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install PHP dependencies
+        run: composer install --no-interaction --prefer-dist --no-progress
+
+      - name: Build frontend assets
+        run: |
+          npm ci
+          npm run build
+
+      - name: Prepare application
+        run: |
+          cp .env.example .env
+          php artisan key:generate --force
+          php artisan config:clear
+          mysql -h127.0.0.1 -uroot -proot -e "SET GLOBAL log_bin_trust_function_creators = 1;"
+
+      - name: PHP syntax check
+        run: |
+          php -l app/Services/ProductionQuantityService.php
+          php -l app/Services/StockDeductionService.php
+          php -l app/Services/ProductionService.php
+          php -l app/Http/Controllers/Admin/ProductionOrderController.php
+          php -l app/Http/Controllers/Admin/SaleController.php
+          php -l app/Models/ProductionOrder.php
+          php -l app/Models/SaleItem.php
+          php -l database/migrations/2026_09_20_073000_add_ordered_qty_to_sale_items.php
+
+      - name: Fresh MySQL install
+        run: php artisan migrate:fresh --seed --force
+
+      - name: Compile views
+        run: php artisan view:cache
+
+      - name: Focused actual production quantity tests
+        run: php artisan test tests/Feature/GoldenPath/RealWorldCartonWorkflowRemediationTest.php
+
+      - name: Complete PHP test suite
+        run: php artisan test
+
+      - name: Composer security audit
+        run: composer audit --no-interaction
