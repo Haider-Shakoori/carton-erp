@@ -84,12 +84,6 @@ class ProductionQuantityService
                 $requirements
             );
 
-            $ratio = $allocationQty / $orderedQty;
-            foreach ($order->materials as $material) {
-                $material->consumed_quantity = (float) $material->required_quantity * $ratio;
-                $material->save();
-            }
-
             $materialCostUsd = (float) $consumptions->sum('total_cost_usd');
             $order->total_material_cost = $materialCostUsd;
             $order->total_cost = $materialCostUsd
@@ -365,12 +359,6 @@ class ProductionQuantityService
                 $sale?->id,
                 $additional
             );
-        }
-
-        $ratio = $actualQuantity / max((float) $order->quantity_ordered, self::EPSILON);
-        foreach ($order->materials as $material) {
-            $material->consumed_quantity = (float) $material->required_quantity * $ratio;
-            $material->save();
         }
 
         return [
