@@ -580,3 +580,213 @@ it('applies a linked customer payment to the exact confirmed sale and reduces it
             ->where('amount', 1000)
             ->exists())->toBeTrue();
 });
+
+it('completes below the customer order, restores unused raw material, and invoices only actual output', function () {
+    $fx = rwCreatePurchaseFlow();
+    $bom = rwCreateBom($fx);
+    $sale = rwCreateSaleWithBom($fx, $bom, 'SO-RW-ACTUAL-UNDER-001');
+
+    $confirm = (new SaleController())->confirmSale(
+        rwRequest('/admin/sales/'.$sale->id.'/confirm', 'POST', [
+            'discount_amount' => 0,
+            'advance_payment' => 0,
+            'start_production' => 1,
+        ]),
+        $sale->id
+    );
+    expect($confirm->getData(true)['success'])->toBeTrue();
+
+    $sale->refresh();
+    $production = $sale->productionOrder()->firstOrFail();
+
+    $start = (new ProductionOrderController())->startProduction($production);
+    expect($start->getSession()->get('success'))->not->toBeNull();
+
+    $production->refresh();
+    $sale->refresh();
+
+    $consumedBefore = (float) DB::table('production_material_consumptions')
+        ->where('production_order_id', $production->id)
+        ->sum('actual_quantity');
+    $kraftAfterStart = (float) $fx['kraftItem']->fresh()->qty_kg_available;
+    $flutingAfterStart = (float) $fx['flutingItem']->fresh()->qty_kg_available;
+
+    $completeRequest = rwRequest(
+        '/admin/production-orders/'.$production->id.'/complete',
+        'POST',
+        ['quantity_produced' => 80]
+    );
+    $complete = (new ProductionOrderController())->completeProduction($production, $completeRequest);
+    expect($complete->getSession()->get('success'))->toContain('actual output of 80.00');
+
+    $production->refresh();
+    $sale->refresh()->load(['items', 'currency']);
+
+    $saleItem = $sale->items->firstOrFail();
+    $consumedAfter = (float) DB::table('production_material_consumptions')
+        ->where('production_order_id', $production->id)
+        ->sum('actual_quantity');
+
+    expect((float) $production->quantity_ordered)->toBe(100.0)
+        ->and((float) $production->quantity_produced)->toBe(80.0)
+        ->and($production->status)->toBe('completed')
+        ->and($production->is_completed)->toBeTrue()
+        ->and($consumedAfter)->toBeLessThan($consumedBefore)
+        ->and(abs($consumedAfter - ($consumedBefore * 0.8)))->toBeLessThan(0.01)
+        ->and((float) $fx['kraftItem']->fresh()->qty_kg_available)->toBeGreaterThan($kraftAfterStart)
+        ->and((float) $fx['flutingItem']->fresh()->qty_kg_available)->toBeGreaterThan($flutingAfterStart)
+        ->and((float) $saleItem->ordered_qty)->toBe(100.0)
+        ->and((float) $saleItem->qty)->toBe(80.0)
+        ->and(abs((float) $saleItem->total - ((float) $saleItem->unit_price * 80)))->toBeLessThan(0.01)
+        ->and(abs((float) $sale->grand_total - (float) $saleItem->total))->toBeLessThan(0.01);
+
+    $invoiceDebit = Transaction::query()
+        ->where('type', 'sale')
+        ->where('table_name', 'sales')
+        ->where('table_row_id', $sale->id)
+        ->where('transaction_type', 'debit')
+        ->where('is_cash', false)
+        ->firstOrFail();
+
+    expect(abs((float) $invoiceDebit->amount - (float) $sale->grand_total))->toBeLessThan(0.01);
+
+    $profit = app(\App\Services\SaleProfitService::class)->calculate($sale);
+    expect(abs((float) $profit['gross_sales_afn'] - (float) $sale->grand_total))->toBeLessThan(0.01);
+});
+
+it('completes above the customer order, consumes extra FIFO stock, and expands the final invoice', function () {
+    $fx = rwCreatePurchaseFlow();
+    $bom = rwCreateBom($fx);
+    $sale = rwCreateSaleWithBom($fx, $bom, 'SO-RW-ACTUAL-OVER-001');
+
+    $confirm = (new SaleController())->confirmSale(
+        rwRequest('/admin/sales/'.$sale->id.'/confirm', 'POST', [
+            'discount_amount' => 0,
+            'advance_payment' => 0,
+            'start_production' => 1,
+        ]),
+        $sale->id
+    );
+    expect($confirm->getData(true)['success'])->toBeTrue();
+
+    $sale->refresh();
+    $production = $sale->productionOrder()->firstOrFail();
+
+    $start = (new ProductionOrderController())->startProduction($production);
+    expect($start->getSession()->get('success'))->not->toBeNull();
+
+    $consumedBefore = (float) DB::table('production_material_consumptions')
+        ->where('production_order_id', $production->id)
+        ->sum('actual_quantity');
+    $kraftAfterStart = (float) $fx['kraftItem']->fresh()->qty_kg_available;
+    $flutingAfterStart = (float) $fx['flutingItem']->fresh()->qty_kg_available;
+
+    $completeRequest = rwRequest(
+        '/admin/production-orders/'.$production->id.'/complete',
+        'POST',
+        ['quantity_produced' => 120]
+    );
+    $complete = (new ProductionOrderController())->completeProduction($production, $completeRequest);
+    expect($complete->getSession()->get('success'))->toContain('above the original order');
+
+    $production->refresh();
+    $sale->refresh()->load('items');
+
+    $saleItem = $sale->items->firstOrFail();
+    $consumedAfter = (float) DB::table('production_material_consumptions')
+        ->where('production_order_id', $production->id)
+        ->sum('actual_quantity');
+
+    expect((float) $production->quantity_ordered)->toBe(100.0)
+        ->and((float) $production->quantity_produced)->toBe(120.0)
+        ->and($consumedAfter)->toBeGreaterThan($consumedBefore)
+        ->and(abs($consumedAfter - ($consumedBefore * 1.2)))->toBeLessThan(0.01)
+        ->and((float) $fx['kraftItem']->fresh()->qty_kg_available)->toBeLessThan($kraftAfterStart)
+        ->and((float) $fx['flutingItem']->fresh()->qty_kg_available)->toBeLessThan($flutingAfterStart)
+        ->and((float) $saleItem->ordered_qty)->toBe(100.0)
+        ->and((float) $saleItem->qty)->toBe(120.0)
+        ->and(abs((float) $saleItem->total - ((float) $saleItem->unit_price * 120)))->toBeLessThan(0.01)
+        ->and(abs((float) $sale->grand_total - (float) $saleItem->total))->toBeLessThan(0.01);
+
+    $invoiceDebit = Transaction::query()
+        ->where('type', 'sale')
+        ->where('table_name', 'sales')
+        ->where('table_row_id', $sale->id)
+        ->where('transaction_type', 'debit')
+        ->where('is_cash', false)
+        ->firstOrFail();
+
+    expect(abs((float) $invoiceDebit->amount - (float) $sale->grand_total))->toBeLessThan(0.01);
+});
+
+it('starts partial production when raw material cannot support the full ordered quantity', function () {
+    $fx = rwCreatePurchaseFlow();
+    $bom = rwCreateBom($fx);
+    $sale = rwCreateSaleWithBom($fx, $bom, 'SO-RW-ACTUAL-LIMITED-001');
+
+    $confirm = (new SaleController())->confirmSale(
+        rwRequest('/admin/sales/'.$sale->id.'/confirm', 'POST', [
+            'discount_amount' => 0,
+            'advance_payment' => 0,
+            'start_production' => 1,
+        ]),
+        $sale->id
+    );
+    expect($confirm->getData(true)['success'])->toBeTrue();
+
+    $sale->refresh();
+    $production = $sale->productionOrder()->with('materials')->firstOrFail();
+
+    $kraftRequirement = (float) $production->materials
+        ->firstWhere('product_id', $fx['kraft']->id)
+        ->required_quantity;
+    $flutingRequirement = (float) $production->materials
+        ->firstWhere('product_id', $fx['fluting']->id)
+        ->required_quantity;
+
+    // Limit both materials to exactly 60% of the 100-unit production plan.
+    foreach ([
+        [$fx['kraftItem'], $kraftRequirement * 0.60],
+        [$fx['flutingItem'], $flutingRequirement * 0.60],
+    ] as [$batch, $kg]) {
+        $batch = $batch->fresh();
+        $batch->qty_kg_available = $kg;
+        $batch->qty_available = $kg / max((float) $batch->kg_per_roll, 0.000001);
+        $batch->save();
+    }
+
+    $result = app(\App\Services\ProductionQuantityService::class)
+        ->start($production->fresh(), $sale);
+
+    expect($result['partial_start'])->toBeTrue()
+        ->and(abs((float) $result['allocation_quantity'] - 60.0))->toBeLessThan(0.01);
+
+    $production->refresh();
+    expect($production->status)->toBe('in_progress');
+
+    $consumedAtStart = (float) DB::table('production_material_consumptions')
+        ->where('production_order_id', $production->id)
+        ->sum('actual_quantity');
+
+    $complete = app(\App\Services\ProductionQuantityService::class)
+        ->complete($production, 58.0, $sale);
+
+    $production->refresh();
+    $sale->refresh()->load('items');
+
+    $consumedAtEnd = (float) DB::table('production_material_consumptions')
+        ->where('production_order_id', $production->id)
+        ->sum('actual_quantity');
+
+    $saleItem = $sale->items->firstOrFail();
+
+    expect((float) $production->quantity_ordered)->toBe(100.0)
+        ->and((float) $production->quantity_produced)->toBe(58.0)
+        ->and($production->status)->toBe('completed')
+        ->and($consumedAtEnd)->toBeLessThan($consumedAtStart)
+        ->and(abs($consumedAtEnd - ($consumedAtStart * (58 / 60))))->toBeLessThan(0.01)
+        ->and((float) $saleItem->ordered_qty)->toBe(100.0)
+        ->and((float) $saleItem->qty)->toBe(58.0)
+        ->and((float) data_get($complete, 'invoice.invoice_quantity'))->toBe(58.0);
+});
+
