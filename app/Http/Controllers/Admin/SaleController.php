@@ -20,6 +20,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
 use App\Services\ProductionService;
 use App\Services\SaleProfitService;
+use App\Services\GatePassService;
 
 class SaleController extends Controller
 {
@@ -234,6 +235,7 @@ class SaleController extends Controller
             'items.purchaseItem.purchase',
             'items.purchaseItem.purchase.currency',
             'productionOrder',
+            'gatePass.items',
         ])->findOrFail($id);
 
         // ─── CALCULATE COGS AND PROFIT ───
@@ -259,6 +261,11 @@ class SaleController extends Controller
 
         // ─── EXACT PROFIT ───
         $profitSummary = app(\App\Services\SaleProfitService::class)->calculate($sale);
+
+        // ─── PLANNED VS ACTUAL MATERIAL VARIANCE (only after real consumption) ───
+        $productionVariance = ($profitSummary['actual_available'] ?? false)
+            ? app(\App\Services\ProductionVarianceService::class)->forSale($sale)
+            : null;
 
         // ─── ONLY FINISHED GOODS FOR SALES ───
         $products = Product::finishedGoods()
@@ -367,7 +374,11 @@ class SaleController extends Controller
                             'grh' => (float) ($item->grh ?? 0),
                             'ply' => (float) ($item->ply ?? 1),
                             'multiplication_method' => $item->multiplication_method ?? 'multiply',
+                'formula_type' => $item->formula_type ?? 'carton_3d',
                             'formula_type' => $item->formula_type ?? 'carton_3d',
+                            'adhesive' => ($item->is_formula_based && $item->formula_type === 'adhesive_mix')
+                                ? $item->adhesiveParameters()
+                                : null,
                         ];
                     }
 
@@ -422,7 +433,8 @@ class SaleController extends Controller
             'isUSD',
             'exchangeRate',
             'productBoms',
-            'profitSummary'
+            'profitSummary',
+            'productionVariance'
         ));
     }
 
@@ -514,6 +526,8 @@ class SaleController extends Controller
             'items' => 'required|array|min:1',
             'items.*.bom_id' => 'required|exists:boms,id',
             'items.*.qty' => 'required|numeric|min:0.01',
+            'items.*.unit_price' => 'nullable|numeric|min:0.0001',
+            'items.*.quotation_description' => 'nullable|string|max:2000',
             'items.*.remarks' => 'nullable|string',
         ]);
 
@@ -553,9 +567,11 @@ class SaleController extends Controller
                     throw new \RuntimeException("BOM {$bom->code} has no valid selling price.");
                 }
 
-                $unitPrice = $saleCurrency === 'USD'
+                $baseUnitPrice = $saleCurrency === 'USD'
                     ? $unitPriceAfn / $exchangeRate
                     : $unitPriceAfn;
+                $manualUnitPrice = (float) ($itemData['unit_price'] ?? 0);
+                $unitPrice = $manualUnitPrice > 0 ? $manualUnitPrice : $baseUnitPrice;
                 $total = $unitPrice * $qty;
                 $usdUnitPrice = $saleCurrency === 'USD'
                     ? $unitPrice
@@ -596,9 +612,14 @@ class SaleController extends Controller
                     'purchase_item_id' => null,
                     'sale_currency_id' => $sale->currency_id,
                     'qty' => $qty,
+                    'ordered_qty' => $qty,
                     'cost_per_unit_usd' => $costPerUnitUsd,
                     'total_cost_usd' => $totalCostUsd,
                     'unit_price' => $unitPrice,
+                    'base_price' => $baseUnitPrice,
+                    'original_unit_price' => $baseUnitPrice,
+                    'final_price' => $unitPrice,
+                    'price_adjustment_type' => $manualUnitPrice > 0 ? 'manual' : 'none',
                     'total' => $total,
                     'discount' => 0,
                     'tax' => 0,
@@ -611,6 +632,7 @@ class SaleController extends Controller
                     'profit_afn' => $profitAfn,
                     'profit_percentage' => $profitPercentage,
                     'remarks' => $remarks,
+                    'quotation_description' => trim((string) ($itemData['quotation_description'] ?? '')) ?: null,
                 ]);
 
                 $itemsAdded->push($saleItem);
@@ -972,6 +994,7 @@ class SaleController extends Controller
             'currency_code' => 'nullable|string|in:USD,AFN',
             'formula_type' => 'required|string|in:carton_3d,cut_roll',
             'formula_params' => 'required|json',
+            'quotation_description' => 'nullable|string|max:2000',
             'remarks' => 'nullable|string',
         ]);
 
@@ -999,6 +1022,7 @@ class SaleController extends Controller
             $costPerUnitUsd = $costPerUnitAfn / $exchangeRate;
 
             $totalCostUsd = $costPerUnitUsd * $qty;
+            $baseUnitPrice = $unitPrice;
             $totalPrice = $unitPrice * $qty;
             $usdUnitPrice = $isUSD ? $unitPrice : $unitPrice / $exchangeRate;
             $usdTotal = $usdUnitPrice * $qty;
@@ -1021,9 +1045,14 @@ class SaleController extends Controller
                 'purchase_item_id' => null,
                 'sale_currency_id' => $sale->currency_id,
                 'qty' => $qty,
+                'ordered_qty' => $qty,
                 'cost_per_unit_usd' => $costPerUnitUsd,
                 'total_cost_usd' => $totalCostUsd,
                 'unit_price' => $unitPrice,
+                'base_price' => $baseUnitPrice,
+                'original_unit_price' => $baseUnitPrice,
+                'final_price' => $unitPrice,
+                'price_adjustment_type' => 'none',
                 'total' => $totalPrice,
                 'discount' => 0,
                 'tax' => 0,
@@ -1036,6 +1065,7 @@ class SaleController extends Controller
                 'profit_afn' => $profitAfn,
                 'profit_percentage' => $profitPercentage,
                 'remarks' => $remarks,
+                'quotation_description' => trim((string) $request->quotation_description) ?: null,
                 'formula_snapshot' => $request->formula_params,
             ]);
 
@@ -1286,6 +1316,14 @@ class SaleController extends Controller
                 'purchase_rate_afn_kg' => $purchaseRateKg > 0 ? round($purchaseRateKg * $saleRate, 6) : 0.0,
                 'purchase_rate_found' => $purchaseRateKg > 0,
                 'material_is_roll_based' => (bool) ($item->material->is_roll_based ?? false),
+
+                // ─── ADHESIVE MIX (DIMENSION DRIVEN) ───
+                // Only adhesive rows opt out of the paper estimator; every other
+                // formula type keeps its existing estimator behaviour.
+                'formula_type' => $item->formula_type === 'adhesive_mix' ? 'adhesive_mix' : null,
+                'adhesive' => ($item->is_formula_based && $item->formula_type === 'adhesive_mix')
+                    ? $item->adhesiveParameters()
+                    : null,
             ];
         })->values();
 
@@ -1328,6 +1366,8 @@ class SaleController extends Controller
             'currency_code' => 'nullable|string|in:USD,AFN',
             'pricing_mode' => 'required|in:saved,manual',
             'quoted_unit_price' => 'nullable|numeric|min:0',
+            'manual_unit_price' => 'nullable|numeric|min:0.0001',
+            'quotation_description' => 'nullable|string|max:2000',
             'formula_snapshot' => 'nullable|string',
             'remarks' => 'nullable|string|max:1000',
         ]);
@@ -1392,6 +1432,73 @@ class SaleController extends Controller
                     $landedUsdPerKg = (float) $latest['cost_usd'];
                     $landedAfnPerKg = $landedUsdPerKg * $exchangeRate;
 
+                    // Dimension-driven adhesive (mixing) rows: physical cost only.
+                    if (($row['formula_type'] ?? 'carton_3d') === 'adhesive_mix') {
+                        $adhesiveCalculator = app(\App\Services\AdhesiveMixCalculator::class);
+                        $adhesiveLength = (float) ($row['length'] ?? 0);
+                        $adhesiveWidth = (float) ($row['width'] ?? 0);
+                        $adhesiveHeight = (float) ($row['height'] ?? 0);
+
+                        if ($adhesiveLength <= 0 || $adhesiveWidth <= 0 || $adhesiveHeight <= 0) {
+                            throw new \RuntimeException(
+                                'Adhesive Mix rows require carton length, width and height greater than zero.'
+                            );
+                        }
+
+                        $adhesiveOverrides = [
+                            'sq_inch_to_m2' => $row['sq_inch_to_m2'] ?? null,
+                            'glue_lines' => $row['glue_lines'] ?? null,
+                            'dry_glue_gsm_per_line' => $row['dry_glue_gsm_per_line'] ?? null,
+                            'glue_wastage_percentage' => $row['glue_wastage_percentage'] ?? null,
+                            'adhesive_solids_percentage' => $row['adhesive_solids_percentage'] ?? null,
+                            'recipe_percentage' => $row['recipe_percentage'] ?? null,
+                        ];
+                        $adhesiveRecipeKey = $row['recipe_key']
+                            ?? $adhesiveCalculator->resolveRecipeKey($materialName);
+                        $adhesiveBreakdown = $adhesiveCalculator->breakdown(
+                            $adhesiveLength,
+                            $adhesiveWidth,
+                            $adhesiveHeight,
+                            $adhesiveRecipeKey,
+                            $adhesiveOverrides
+                        );
+
+                        $kgPerUnit = (float) $adhesiveBreakdown['ingredient_kg'];
+                        $physicalLineCostUsd = $kgPerUnit * $landedUsdPerKg;
+                        // Mixing materials are physical material cost only; they do
+                        // not contribute to the paper commercial quotation rate.
+                        $physicalMaterialCostPerUnitUsd += $physicalLineCostUsd;
+
+                        $materialBreakdown[] = [
+                            'material_id' => $materialId,
+                            'material_name' => $materialName,
+                            'formula_type' => 'adhesive_mix',
+                            'purchase_item_id' => $latest['purchase_item_id'],
+                            'length' => $adhesiveLength,
+                            'width' => $adhesiveWidth,
+                            'height' => $adhesiveHeight,
+                            'sq_inch_to_m2' => $adhesiveBreakdown['parameters']['sq_inch_to_m2'],
+                            'glue_lines' => $adhesiveBreakdown['parameters']['glue_lines'],
+                            'dry_glue_gsm_per_line' => $adhesiveBreakdown['parameters']['dry_glue_gsm_per_line'],
+                            'glue_wastage_percentage' => $adhesiveBreakdown['parameters']['glue_wastage_percentage'],
+                            'adhesive_solids_percentage' => $adhesiveBreakdown['parameters']['adhesive_solids_percentage'],
+                            'recipe_key' => $adhesiveRecipeKey,
+                            'recipe_percentage' => $adhesiveBreakdown['recipe_fraction'],
+                            'per_gram_rate' => $landedAfnPerKg,
+                            'landed_cost_usd_per_kg' => $landedUsdPerKg,
+                            'wastage' => 0,
+                            'work_percentage' => 0,
+                            'print_cost' => 0,
+                            'kg_per_finished_unit' => $kgPerUnit,
+                            'kg_with_wastage' => $kgPerUnit,
+                            'physical_cost_usd' => $physicalLineCostUsd,
+                            'row_net_rate' => 0,
+                            'final_rate_afn' => 0,
+                        ];
+
+                        continue;
+                    }
+
                     $length = (float) ($row['length'] ?? 0);
                     $width = (float) ($row['width'] ?? 0);
                     $height = (float) ($row['height'] ?? 0);
@@ -1430,6 +1537,7 @@ class SaleController extends Controller
                     $materialBreakdown[] = [
                         'material_id' => $materialId,
                         'material_name' => $materialName,
+                        'formula_type' => $row['formula_type'] ?? 'carton_3d',
                         'purchase_item_id' => $latest['purchase_item_id'],
                         'length' => $length,
                         'width' => $width,
@@ -1502,6 +1610,14 @@ class SaleController extends Controller
                 }
             }
 
+            $baseUnitPrice = $unitPrice;
+            $manualUnitPrice = (float) ($validated['manual_unit_price'] ?? 0);
+            $hasManualPrice = $manualUnitPrice > 0;
+
+            if ($hasManualPrice) {
+                $unitPrice = $manualUnitPrice;
+            }
+
             $totalPrice = $unitPrice * $qty;
             $usdUnitPrice = $isUSD ? $unitPrice : $unitPrice / $exchangeRate;
             $usdTotal = $usdUnitPrice * $qty;
@@ -1524,6 +1640,7 @@ class SaleController extends Controller
                 ->where('unit_price', $unitPrice)
                 ->where('rate', $exchangeRate)
                 ->where('remarks', $remarks)
+                ->where('quotation_description', trim((string) ($validated['quotation_description'] ?? '')) ?: null)
                 ->where('created_at', '>', now()->subMinutes(2))
                 ->first();
 
@@ -1546,9 +1663,14 @@ class SaleController extends Controller
                 'purchase_item_id' => null,
                 'sale_currency_id' => $sale->currency_id,
                 'qty' => $qty,
+                'ordered_qty' => $qty,
                 'cost_per_unit_usd' => $costPerUnitUsd,
                 'total_cost_usd' => $totalCostUsd,
                 'unit_price' => $unitPrice,
+                'base_price' => $baseUnitPrice,
+                'original_unit_price' => $baseUnitPrice,
+                'final_price' => $unitPrice,
+                'price_adjustment_type' => $hasManualPrice ? 'manual' : 'none',
                 'total' => $totalPrice,
                 'discount' => 0,
                 'tax' => 0,
@@ -1561,6 +1683,7 @@ class SaleController extends Controller
                 'profit_afn' => $profitAfn,
                 'profit_percentage' => $profitPercentage,
                 'remarks' => $remarks,
+                'quotation_description' => trim((string) ($validated['quotation_description'] ?? '')) ?: null,
                 'manual_bom_snapshot' => $pricingMode === 'manual' ? $materialBreakdown : null,
             ]);
 
@@ -1799,6 +1922,22 @@ class SaleController extends Controller
                 }
             }
 
+            // ─── Freeze accepted carton specifications ───
+            // The agreed technical and commercial assumptions are frozen now so
+            // the invoice, production and historical reporting never depend on
+            // today's board profile, config or landed rates.
+            $cartonSpecification = app(\App\Services\CartonSpecificationService::class);
+            foreach ($sale->items as $item) {
+                $cartonSpecification->freezeAccepted($item, [
+                    'unit_price' => (float) $item->unit_price,
+                    'total' => (float) $item->total,
+                    'currency' => strtoupper((string) ($sale->currency->code ?? 'AFN')),
+                    'exchange_rate' => (float) $sale->exchange_rate,
+                    'quantity' => (float) $item->qty,
+                    'is_manual_price' => $item->price_adjustment_type === 'manual',
+                ]);
+            }
+
             // ─── Update stock ───
             foreach ($sale->items as $item) {
                 if ($item->purchase_item_id) {
@@ -1995,6 +2134,12 @@ class SaleController extends Controller
 
             $sale->save();
 
+            if ($newStatus === 'delivered') {
+                app(GatePassService::class)->createOrRefreshForSale(
+                    $sale->loadMissing('items.product')
+                );
+            }
+
             DB::commit();
 
             return redirect()->back()->with('success', "Sale status changed from {$oldStatus} to {$newStatus}");
@@ -2166,6 +2311,83 @@ class SaleController extends Controller
     /**
      * Print sale invoice.
      */
+    public function quotation($id)
+    {
+        $sale = Sale::with(['customer', 'currency', 'items.product'])->findOrFail($id);
+        $settings = Setting::first();
+
+        $currencySymbol = $sale->currency->symbol ?? '؋';
+        $currencyCode = $sale->currency->code ?? 'AFN';
+        $companyName = $settings->company_name ?? config('app.name', 'Your Company');
+        $companyAddress = $settings->address ?? '';
+        $companyPhone = $settings->contact ?? '';
+        $companyEmail = $settings->email ?? '';
+        $companyLogo = $settings->logo ?? null;
+
+        return view('admin.sales.quotation', compact(
+            'sale',
+            'currencySymbol',
+            'currencyCode',
+            'companyName',
+            'companyAddress',
+            'companyPhone',
+            'companyEmail',
+            'companyLogo'
+        ));
+    }
+
+    public function updateQuotationDescription(Request $request, SaleItem $item)
+    {
+        $validated = $request->validate([
+            'quotation_description' => 'nullable|string|max:2000',
+        ]);
+
+        $item->loadMissing('sale');
+
+        if ($item->sale && $item->sale->status === 'delivered') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Quotation description cannot be changed after delivery.',
+            ], 422);
+        }
+
+        $item->quotation_description = trim((string) ($validated['quotation_description'] ?? '')) ?: null;
+        $item->save();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Quotation description updated.',
+            'quotation_description' => $item->quotation_description,
+        ]);
+    }
+
+    public function gatePass($id)
+    {
+        $sale = Sale::with([
+            'customer',
+            'gatePass.items',
+            'gatePass.createdBy',
+        ])->findOrFail($id);
+
+        if ($sale->status !== 'delivered') {
+            return back()->with('error', 'Gate pass is available after the invoice is delivered.');
+        }
+
+        $gatePass = $sale->gatePass
+            ?: app(GatePassService::class)->createOrRefreshForSale($sale->loadMissing('items.product'));
+
+        $settings = Setting::first();
+
+        return view('admin.sales.gate-pass', [
+            'sale' => $sale,
+            'gatePass' => $gatePass,
+            'companyName' => $settings->company_name ?? config('app.name', 'Your Company'),
+            'companyAddress' => $settings->address ?? '',
+            'companyPhone' => $settings->contact ?? '',
+            'companyLogo' => $settings->logo ?? null,
+        ]);
+    }
+
     public function printInvoice($id)
     {
         $sale = Sale::with([
@@ -2225,14 +2447,21 @@ class SaleController extends Controller
                 return back()->with('error', 'No items found in this sale.');
             }
 
-            // Create production order from sale
+            // Create the production order, then start it. Completion is now
+            // intentionally separate because the operator must enter the real
+            // quantity produced at the end of the run.
             $productionOrder = $productionService->createProductionFromSale($sale);
 
-            // Start and complete production (consume materials, deliver to customer)
-            $productionService->startAndCompleteProduction($productionOrder, $sale);
+            $result = app(\App\Services\ProductionQuantityService::class)
+                ->start($productionOrder, $sale);
 
-            return redirect()->route('admin.sales.show', $sale)
-                ->with('success', 'Production completed and order ready for delivery!');
+            $message = sprintf(
+                'Production started with raw material allocated for %s units. Enter the real quantity produced when the run ends.',
+                number_format($result['allocation_quantity'], 2)
+            );
+
+            return redirect()->route('production-orders.show', $productionOrder)
+                ->with('success', $message);
 
         } catch (\Exception $e) {
             \Log::error('Production failed', [
@@ -2252,24 +2481,26 @@ class SaleController extends Controller
     public function deliver($id)
     {
         try {
-            $sale = Sale::findOrFail($id);
+            $gatePass = DB::transaction(function () use ($id) {
+                $sale = Sale::with(['items.product'])->findOrFail($id);
 
-            if (!$sale->is_produced) {
-                return back()->with('error', 'Please complete production first.');
-            }
+                if (! $sale->is_produced) {
+                    throw new \RuntimeException('Please complete production first.');
+                }
 
-            if ($sale->status === 'delivered') {
-                return back()->with('error', 'This sale is already delivered.');
-            }
+                if ($sale->status !== 'delivered') {
+                    $sale->status = 'delivered';
+                    $sale->delivery_date = now();
+                    $sale->save();
+                }
 
-            $sale->status = 'delivered';
-            $sale->delivery_date = now();
-            $sale->save();
+                return app(GatePassService::class)->createOrRefreshForSale($sale);
+            });
 
-            return redirect()->route('admin.sales.show', $sale)
-                ->with('success', 'Order delivered successfully!');
+            return redirect()->route('admin.sales.show', $id)
+                ->with('success', "Order delivered successfully. Gate Pass {$gatePass->gate_pass_no} was created.");
 
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             return back()->with('error', 'Failed to deliver: ' . $e->getMessage());
         }
     }
@@ -2348,150 +2579,25 @@ class SaleController extends Controller
     public function startProductionFromSale($id)
     {
         try {
-            \Log::info('Starting production from sale', ['sale_id' => $id]);
+            $sale = Sale::with('productionOrder')->findOrFail($id);
 
-            DB::beginTransaction();
-
-            $sale = Sale::with(['productionOrder', 'items', 'items.product'])->findOrFail($id);
-
-            // ─── Validation checks ───
             if ($sale->is_produced) {
-                throw new \Exception('This sale has already been produced.');
+                return back()->with('error', 'This sale has already been produced.');
             }
 
-            if (!$sale->productionOrder) {
-                throw new \Exception('No production order found for this sale. Please create a production order first.');
+            if (! $sale->productionOrder) {
+                return back()->with('error', 'No production order found for this sale.');
             }
 
-            $productionOrder = $sale->productionOrder;
-
-            if ($productionOrder->status !== 'pending') {
-                throw new \Exception('Production order is not in pending status. Current status: ' . $productionOrder->status);
+            if ($sale->productionOrder->status !== 'pending') {
+                return redirect()->route('production-orders.show', $sale->productionOrder)
+                    ->with('error', 'Production is not pending. Current status: ' . $sale->productionOrder->status);
             }
 
-            // ─── Check material availability before starting ───
-            $bom = $productionOrder->bom;
-            $quantity = $productionOrder->quantity_ordered;
-
-            if (!$bom) {
-                throw new \Exception('No BOM found for this production order.');
-            }
-
-            // Check if BOM has items
-            if ($bom->items->count() === 0) {
-                throw new \Exception('BOM has no items defined.');
-            }
-
-            // ─── Use the production material snapshot as the authoritative requirement ───
-            $stockService = new \App\Services\StockDeductionService();
-            $materials = [];
-
-            $materialSnapshots = $productionOrder->materials()->get();
-            $bomItemsByMaterial = $bom->items->groupBy('material_id')->map->values();
-            $materialOccurrences = [];
-
-            foreach ($materialSnapshots as $snapshot) {
-                $materialId = (int) $snapshot->product_id;
-                $occurrence = $materialOccurrences[$materialId] ?? 0;
-                $bomItem = $bomItemsByMaterial->get($materialId)?->get($occurrence);
-                $materialOccurrences[$materialId] = $occurrence + 1;
-
-                $totalRequired = (float) $snapshot->required_quantity;
-                $wastagePercent = (float) ($bomItem->wastage_percentage ?? 0);
-                $requiredQty = $wastagePercent > 0
-                    ? $totalRequired / (1 + ($wastagePercent / 100))
-                    : $totalRequired;
-                $wastageQty = $totalRequired - $requiredQty;
-
-                $materials[] = [
-                    'material_id' => $materialId,
-                    'quantity' => $totalRequired,
-                    'planned_quantity' => $requiredQty,
-                    'wastage_quantity' => $wastageQty,
-                    'unit' => $snapshot->unit ?? 'unit',
-                    'material_name' => $snapshot->product->name ?? 'Unknown Material',
-                ];
-            }
-
-            if (empty($materials)) {
-                throw new \Exception('Production order has no material requirement snapshot.');
-            }
-
-            \Log::info('Checking material availability', [
-                'bom_id' => $bom->id,
-                'quantity' => $quantity,
-                'materials' => $materials
-            ]);
-
-            $availability = $stockService->checkAvailability($materials);
-
-            if (!$availability['available']) {
-                // ─── FIX: Use a helper variable to avoid complex expression in string ───
-                $shortageMessages = [];
-                foreach ($availability['materials'] as $material) {
-                    if (!$material['available']) {
-                        $materialName = $material['material_name'] ?? 'Material';
-                        $shortageMessages[] = $materialName . ': Shortage of ' . $material['shortage_quantity'] . ' ' . $material['unit'] . ' (Available: ' . $material['available_quantity'] . ')';
-                    }
-                }
-                $shortages = implode("\n", $shortageMessages);
-
-                throw new \Exception("Cannot start production. Material shortages:\n" . $shortages);
-            }
-
-            // ─── Start the production order using the service ───
-            \Log::info('Starting production order', ['production_order_id' => $productionOrder->id]);
-
-            // Update production order status to 'in_progress' BEFORE consuming materials
-            $productionOrder->update([
-                'status' => 'in_progress',
-                'started_at' => now(),
-            ]);
-
-            $deductionResult = $stockService->deductMaterials(
-                $productionOrder->id,
-                $sale->id,
-                $materials
-            );
-
-            \Log::info('Materials consumed', [
-                'production_order_id' => $productionOrder->id,
-                'deduction_count' => count($deductionResult),
-                'total_cost' => $deductionResult->sum('total_cost_usd')
-            ]);
-
-            DB::commit();
-
-            // ─── Return success response ───
-            if (request()->ajax() || request()->wantsJson()) {
-                return response()->json([
-                    'success' => true,
-                    'message' => 'Production started successfully! Materials have been consumed.',
-                    'production_order_id' => $productionOrder->id,
-                    'redirect' => route('production-orders.show', $productionOrder->id)
-                ]);
-            }
-
-            return redirect()->route('admin.sales.show', $sale)
-                ->with('success', 'Production started successfully! Materials have been consumed.');
-
-        } catch (\Exception $e) {
-            DB::rollBack();
-
-            \Log::error('Start production from sale failed', [
-                'sale_id' => $id ?? 'unknown',
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
-            ]);
-
-            if (request()->ajax() || request()->wantsJson()) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Failed to start production: ' . $e->getMessage()
-                ], 422);
-            }
-
-            return back()->with('error', 'Failed to start production: ' . $e->getMessage());
+            return redirect()->route('production-orders.show', $sale->productionOrder)
+                ->with('success', 'Enter the planned production quantity before starting. It may be above or below the customer order, subject to raw-material availability.');
+        } catch (\Throwable $e) {
+            return back()->with('error', 'Failed to open production order: ' . $e->getMessage());
         }
     }
 
@@ -2521,6 +2627,68 @@ class SaleController extends Controller
         }
     }
 
+
+    /**
+     * Update the customer-facing unit price of one draft invoice line.
+     * The physical/BOM cost remains untouched.
+     */
+    public function updateManualPrice(Request $request, SaleItem $item)
+    {
+        $validated = $request->validate([
+            'unit_price' => 'required|numeric|min:0.0001',
+        ]);
+
+        $item->loadMissing(['sale.currency']);
+        $sale = $item->sale;
+
+        if (! $sale || $sale->status !== 'draft') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Manual line price can only be changed while the invoice is in draft.',
+            ], 422);
+        }
+
+        return DB::transaction(function () use ($item, $sale, $validated) {
+            $newPrice = (float) $validated['unit_price'];
+            $rate = max((float) ($item->rate ?: $sale->exchange_rate ?: 1), 0.000001);
+            $isUsd = $sale->currency?->code === 'USD';
+
+            if ((float) ($item->base_price ?? 0) <= 0) {
+                $item->base_price = (float) $item->unit_price;
+            }
+            if ((float) ($item->original_unit_price ?? 0) <= 0) {
+                $item->original_unit_price = (float) $item->unit_price;
+            }
+
+            $item->final_price = $newPrice;
+            $item->unit_price = $newPrice;
+            $item->price_adjustment_type = 'manual';
+            $item->total = $newPrice * (float) $item->qty;
+            $item->usd_unit_price = $isUsd ? $newPrice : $newPrice / $rate;
+            $item->usd_total = (float) $item->usd_unit_price * (float) $item->qty;
+
+            $basePrice = (float) ($item->base_price ?: $item->original_unit_price ?: $newPrice);
+            $discountDifference = max($basePrice - $newPrice, 0);
+            $item->discount_amount = $discountDifference;
+            $item->discount_percentage = $basePrice > 0 && $discountDifference > 0
+                ? ($discountDifference / $basePrice) * 100
+                : 0;
+
+            $item->calculateProfitUsd();
+            $item->save();
+
+            $sale->unsetRelation('items');
+            $sale->load('items');
+            $sale->recalculateTotals();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Manual unit price updated.',
+                'item' => $item->fresh(),
+                'sale_total' => (float) $sale->fresh()->grand_total,
+            ]);
+        });
+    }
 
     /**
      * Apply discount to a sale item.

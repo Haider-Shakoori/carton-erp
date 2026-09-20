@@ -142,6 +142,19 @@
         .formula-badge.cut_roll { background: #d1fae5; color: #065f46; }
         .formula-badge.fixed_percentage { background: #fef3c7; color: #92400e; }
         .formula-badge.fixed_rate { background: #fce4ec; color: #dc2626; }
+        .formula-badge.adhesive_mix { background: #fce7f3; color: #9d174d; }
+
+        /* ─── Adhesive Mix Defaults ─── */
+        .adhesive-defaults summary {
+            cursor: pointer;
+            font-size: 0.72rem;
+            font-weight: 600;
+            color: #9d174d;
+            padding: 0.25rem 0;
+        }
+        .adhesive-defaults summary::marker {
+            color: #db2777;
+        }
 
         /* ─── Formula Configuration ─── */
         .formula-config-section {
@@ -159,6 +172,37 @@
         }
         .formula-config-section .formula-title i {
             margin-right: 0.3rem;
+        }
+        .form-label-sm {
+            font-size: 0.7rem;
+            font-weight: 600;
+            color: #475569;
+            margin-bottom: 0.25rem;
+            min-height: 1.9rem;
+            display: flex;
+            align-items: flex-end;
+            line-height: 1.2;
+        }
+        .form-control-sm-custom {
+            width: 100%;
+            padding: 0.375rem 0.625rem;
+            font-size: 0.8rem;
+            border: 1px solid #e2e8f0;
+            border-radius: 6px;
+            transition: border-color 0.15s ease;
+        }
+        .form-control-sm-custom:focus {
+            border-color: #4f46e5;
+            outline: none;
+            box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+        }
+        .item-main-row > [class*="col-"] > .form-label {
+            min-height: 3rem;
+            display: flex;
+            align-items: flex-end;
+            font-size: 0.75rem;
+            line-height: 1.25;
+            margin-bottom: 0.35rem;
         }
 
         /* ─── Currency Badge ─── */
@@ -329,6 +373,22 @@
         <form action="{{ route('bom.store') }}" method="POST" id="bomForm">
             @csrf
 
+            @if ($errors->any())
+                <div class="alert alert-danger border-0 shadow-sm mb-4">
+                    <div class="d-flex gap-2 align-items-start">
+                        <i class="bi bi-exclamation-triangle fs-5"></i>
+                        <div>
+                            <strong>Please fix the following errors:</strong>
+                            <ul class="mb-0 mt-1 ps-3">
+                                @foreach ($errors->all() as $error)
+                                    <li>{{ $error }}</li>
+                                @endforeach
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            @endif
+
             <div class="row g-4">
                 <div class="col-lg-8">
                     <!-- Basic Information -->
@@ -406,7 +466,7 @@
                                     <input type="number" class="form-control @error('exchange_rate') is-invalid @enderror"
                                            name="exchange_rate" id="mainExchangeRate"
                                            value="{{ old('exchange_rate', $exchangeRate ?? 85) }}"
-                                           step="0.01" min="0.0001">
+                                           step="0.0001" min="0.0001">
                                     <small class="text-muted">
                                         <i class="bi bi-info-circle me-1"></i>
                                         <span id="exchangeRateInfo">USD → AFN conversion rate</span>
@@ -562,6 +622,37 @@
             let itemCounter = 0;
             const defaultExchangeRate = {{ $exchangeRate ?? 85 }};
             let hasUsdMaterial = false;
+            const adhesiveConfig = @json(config('carton.adhesive'));
+            const sqInchToM2 = {{ config('carton.sq_inch_to_m2') }};
+
+            // ─── ADHESIVE MIX HELPERS ───
+            function resolveAdhesiveRecipeKey(materialName) {
+                const normalized = String(materialName || '').toLowerCase().trim();
+                if (!normalized) return null;
+
+                const map = adhesiveConfig.materials || {};
+                if (map[normalized]) return map[normalized];
+
+                for (const name of Object.keys(map)) {
+                    if (name && normalized.includes(name)) return map[name];
+                }
+
+                return null;
+            }
+
+            window.syncAdhesiveRecipe = function(id) {
+                const name = $(`#material-${id}`).find('option:selected').data('name') || '';
+                const key = resolveAdhesiveRecipeKey(name);
+                const $recipe = $(`#adhesive-recipe-${id}`);
+                const $hint = $(`#adhesive-recipe-hint-${id}`);
+
+                if (key && adhesiveConfig.recipe && adhesiveConfig.recipe[key] !== undefined) {
+                    $recipe.val(adhesiveConfig.recipe[key]);
+                    $hint.html('Recipe detected: <strong>' + key.replace(/_/g, ' ') + '</strong>');
+                } else if (name) {
+                    $hint.html('<span class="text-warning">Not a mapped mixing material — enter the recipe share manually.</span>');
+                }
+            };
 
             // ─── INCHES TO CM CONVERSION ───
             window.inchesToCm = function(inches) {
@@ -643,7 +734,7 @@
                 </div>
 
                 <!-- ─── MATERIAL SELECTION ─── -->
-                <div class="row g-3">
+                <div class="row g-3 item-main-row">
                     <div class="col-md-4">
                         <label class="form-label">{{ __('ui.raw_material') }} <span class="text-danger">*</span></label>
                         <select class="form-select select2-material"
@@ -657,10 +748,7 @@
                                         data-name="{{ $material->name }}"
                                         data-currency="{{ $material->purchase_currency ?? 'AFN' }}"
                                         data-currency-id="{{ $material->purchase_currency_id ?? '' }}">
-                                    {{ $material->name }}
-                <span class="text-muted small">
-                    ({{ $material->purchase_currency ?? 'AFN' }})
-                                    </span>
+                                    {{ $material->name }} ({{ $material->purchase_currency ?? 'AFN' }})
                                 </option>
                             @endforeach
                 </select>
@@ -677,6 +765,7 @@
                             <option value="fixed">{{ __('ui.fixed_quantity') }}</option>
                             <option value="carton_3d">{{ __('ui.three_d_carton') }}</option>
                             <option value="cut_roll">{{ __('ui.cut_roll') }}</option>
+                            <option value="adhesive_mix">Adhesive Mix — Dimension Based</option>
                             <option value="fixed_percentage">{{ __('ui.material_percent') }}</option>
                             <option value="fixed_rate">{{ __('ui.fixed_rate') }}</option>
                         </select>
@@ -697,7 +786,7 @@
                         </small>
                     </div>
 
-                    <div class="col-md-2">
+                    <div class="col-md-1">
                         <label class="form-label">{{ __('ui.unit') }}</label>
                         <input type="text" class="form-control unit-input"
                                name="items[${id}][unit]"
@@ -705,7 +794,7 @@
                                value="Unit" readonly>
                     </div>
 
-                    <div class="col-md-1">
+                    <div class="col-md-2">
                         <label class="form-label">{{ __('ui.wastage_percent') }}</label>
                         <input type="number" class="form-control"
                                name="items[${id}][wastage_percentage]"
@@ -926,6 +1015,110 @@
                         </div>
                     </div>
 
+                    <!-- Adhesive Mix (dimension driven) -->
+                    <div id="adhesive-fields-${id}" style="display: none;">
+                        <div class="row g-2">
+                            <div class="col-12">
+                                <div class="formula-hint mb-2" style="background: #fdf2f8; padding: 0.75rem; border-radius: 6px; border-left: 4px solid #db2777;">
+                                    <i class="bi bi-droplet-half me-1" style="color: #db2777;"></i>
+                                    <strong style="color: #db2777;">Adhesive Mix — Dimension Based</strong><br>
+                                    <span style="font-size: 0.75rem;">
+                                        Board Area = ((L + W) × 2 + 4) × (W + H + 1) × 0.00064516 m²<br>
+                                        Wet Glue = Board Area × Glue Lines × Dry Glue GSM × (1 + Glue Wastage%) ÷ Adhesive Solids%<br>
+                                        Ingredient kg = Wet Glue kg × Recipe Share. Quantities follow the carton dimensions automatically.
+                                    </span>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="form-label-sm">{{ __('ui.carton_length') }} <span class="text-danger">*</span></div>
+                                <input type="number" class="form-control-sm-custom"
+                                       name="items[${id}][length_inch]"
+                                       id="adhesive-length-${id}"
+                                       placeholder="17.32" step="0.01" min="0.01"
+                                       oninput="calculateFormulaBasedItem(${id})">
+                            </div>
+                            <div class="col-md-3">
+                                <div class="form-label-sm">{{ __('ui.carton_width') }} <span class="text-danger">*</span></div>
+                                <input type="number" class="form-control-sm-custom"
+                                       name="items[${id}][width_inch]"
+                                       id="adhesive-width-${id}"
+                                       placeholder="15.75" step="0.01" min="0.01"
+                                       oninput="calculateFormulaBasedItem(${id})">
+                            </div>
+                            <div class="col-md-3">
+                                <div class="form-label-sm">{{ __('ui.carton_height') }} <span class="text-danger">*</span></div>
+                                <input type="number" class="form-control-sm-custom"
+                                       name="items[${id}][height_inch]"
+                                       id="adhesive-height-${id}"
+                                       placeholder="12.20" step="0.01" min="0.01"
+                                       oninput="calculateFormulaBasedItem(${id})">
+                            </div>
+                            <div class="col-md-3">
+                                <div class="form-label-sm">Recipe Share (kg/kg wet glue)</div>
+                                <input type="number" class="form-control-sm-custom"
+                                       name="items[${id}][recipe_percentage]"
+                                       id="adhesive-recipe-${id}"
+                                       placeholder="Auto" step="0.000001" min="0"
+                                       oninput="calculateFormulaBasedItem(${id})">
+                                <small class="text-muted" id="adhesive-recipe-hint-${id}">Auto-detected from the selected mixing material.</small>
+                            </div>
+                            <div class="col-12">
+                                <details class="adhesive-defaults">
+                                    <summary>
+                                        Factory adhesive parameters
+                                        <span class="text-muted" style="font-weight: 400;">
+                                            ({{ config('carton.adhesive.glue_lines') }} glue lines × {{ config('carton.adhesive.dry_glue_gsm_per_line') }} GSM,
+                                            {{ config('carton.adhesive.glue_wastage_percentage') }}% glue wastage,
+                                            {{ config('carton.adhesive.adhesive_solids_percentage') }}% solids — change only if this BOM differs)
+                                        </span>
+                                    </summary>
+                                    <div class="row g-2 mt-1">
+                                        <div class="col-md-2">
+                                            <div class="form-label-sm">Glue Lines</div>
+                                            <input type="number" class="form-control-sm-custom"
+                                                   name="items[${id}][glue_lines]"
+                                                   id="adhesive-glue-lines-${id}"
+                                                   step="1" min="0" value="{{ config('carton.adhesive.glue_lines') }}"
+                                                   oninput="calculateFormulaBasedItem(${id})">
+                                        </div>
+                                        <div class="col-md-2">
+                                            <div class="form-label-sm">Dry Glue GSM / Line</div>
+                                            <input type="number" class="form-control-sm-custom"
+                                                   name="items[${id}][dry_glue_gsm_per_line]"
+                                                   id="adhesive-dry-gsm-${id}"
+                                                   step="0.01" min="0" value="{{ config('carton.adhesive.dry_glue_gsm_per_line') }}"
+                                                   oninput="calculateFormulaBasedItem(${id})">
+                                        </div>
+                                        <div class="col-md-2">
+                                            <div class="form-label-sm">Glue Wastage %</div>
+                                            <input type="number" class="form-control-sm-custom"
+                                                   name="items[${id}][glue_wastage_percentage]"
+                                                   id="adhesive-wastage-${id}"
+                                                   step="0.01" min="0" max="100" value="{{ config('carton.adhesive.glue_wastage_percentage') }}"
+                                                   oninput="calculateFormulaBasedItem(${id})">
+                                        </div>
+                                        <div class="col-md-2">
+                                            <div class="form-label-sm">Adhesive Solids %</div>
+                                            <input type="number" class="form-control-sm-custom"
+                                                   name="items[${id}][adhesive_solids_percentage]"
+                                                   id="adhesive-solids-${id}"
+                                                   step="0.01" min="0" max="100" value="{{ config('carton.adhesive.adhesive_solids_percentage') }}"
+                                                   oninput="calculateFormulaBasedItem(${id})">
+                                        </div>
+                                        <div class="col-md-2">
+                                            <div class="form-label-sm">Wet Glue kg / Carton</div>
+                                            <input type="text" class="form-control-sm-custom" id="adhesive-wet-kg-${id}" readonly>
+                                        </div>
+                                        <div class="col-md-2">
+                                            <div class="form-label-sm">Ingredient kg / Carton</div>
+                                            <input type="text" class="form-control-sm-custom" id="adhesive-kg-${id}" readonly>
+                                        </div>
+                                    </div>
+                                </details>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- Fixed Percentage -->
                     <div id="fixed-percentage-fields-${id}" style="display: none;">
                         <div class="row g-2">
@@ -1117,6 +1310,10 @@
                         // Check if we have USD materials
                         checkUsdMaterialExists();
 
+                        // Dimension-driven adhesive rows resolve their recipe share
+                        // from the selected mixing material.
+                        syncAdhesiveRecipe(id);
+
                         // Fetch material cost
                         fetchMaterialCost(materialId, id, currency);
                     } else {
@@ -1163,6 +1360,10 @@
                     `#per-gram-rate-cut-${id}`, `#ply-${id}`, `#print-cut-${id}`,
                     `#multiplication-layer-cut-${id}`, `#formula-constant-cut-${id}`,
                     `#cut-work-percentage-${id}`, `#multiplication-method-${id}`,
+                    // Adhesive Mix fields
+                    `#adhesive-length-${id}`, `#adhesive-width-${id}`, `#adhesive-height-${id}`,
+                    `#adhesive-recipe-${id}`, `#adhesive-glue-lines-${id}`, `#adhesive-dry-gsm-${id}`,
+                    `#adhesive-wastage-${id}`, `#adhesive-solids-${id}`,
                     // Fixed Percentage fields
                     `#base-material-${id}`, `#percentage-of-base-${id}`,
                     // Fixed Rate fields
@@ -1201,6 +1402,7 @@
                 // Hide all formula groups
                 $(`#carton-3d-fields-${id}`).hide();
                 $(`#cut-roll-fields-${id}`).hide();
+                $(`#adhesive-fields-${id}`).hide();
                 $(`#fixed-percentage-fields-${id}`).hide();
                 $(`#fixed-rate-fields-${id}`).hide();
 
@@ -1211,6 +1413,10 @@
                     $(`#carton-calculation-details-${id}`).show();
                 } else if (formulaType === 'cut_roll') {
                     $(`#cut-roll-fields-${id}`).show();
+                    $(`#reel-dimensions-${id}`).hide();
+                    $(`#carton-calculation-details-${id}`).hide();
+                } else if (formulaType === 'adhesive_mix') {
+                    $(`#adhesive-fields-${id}`).show();
                     $(`#reel-dimensions-${id}`).hide();
                     $(`#carton-calculation-details-${id}`).hide();
                 } else if (formulaType === 'fixed_percentage') {
@@ -1226,17 +1432,48 @@
                     $(`#carton-calculation-details-${id}`).hide();
                 }
 
+                // Only the active formula group may submit its fields. The hidden
+                // groups share names (per_gram_rate, formula_constant, print,
+                // multiplication_layer) and would otherwise overwrite the active
+                // formula values in the POST payload.
+                const formulaGroups = {
+                    carton_3d: `carton-3d-fields-${id}`,
+                    cut_roll: `cut-roll-fields-${id}`,
+                    adhesive_mix: `adhesive-fields-${id}`,
+                    fixed_percentage: `fixed-percentage-fields-${id}`,
+                    fixed_rate: `fixed-rate-fields-${id}`
+                };
+                Object.keys(formulaGroups).forEach(function(type) {
+                    $(`#${formulaGroups[type]}`)
+                        .find('input, select, textarea')
+                        .prop('disabled', type !== formulaType);
+                });
+
+                // The adhesive formula already includes the configured glue
+                // wastage; a row-level wastage would double count it.
+                const $wastageInput = $(`#item-wastage-${id}`);
+                if (formulaType === 'adhesive_mix') {
+                    if ($wastageInput.data('previous-value') === undefined) {
+                        $wastageInput.data('previous-value', $wastageInput.val());
+                    }
+                    $wastageInput.val(0).prop('disabled', true);
+                } else if ($wastageInput.prop('disabled')) {
+                    $wastageInput.prop('disabled', false)
+                        .val($wastageInput.data('previous-value') || 5);
+                }
+
                 // Update formula badge
                 const badge = $(`#formula-badge-${id}`);
                 const labels = {
                     fixed: { class: 'fixed', label: 'Fixed' },
                     carton_3d: { class: 'carton_3d', label: '3D Carton' },
                     cut_roll: { class: 'cut_roll', label: 'Cut/Roll' },
+                    adhesive_mix: { class: 'adhesive_mix', label: 'Adhesive Mix' },
                     fixed_percentage: { class: 'fixed_percentage', label: '% of Material' },
                     fixed_rate: { class: 'fixed_rate', label: 'Fixed Rate' }
                 };
                 const info = labels[formulaType] || labels.fixed;
-                badge.removeClass('fixed carton_3d cut_roll fixed_percentage fixed_rate')
+                badge.removeClass('fixed carton_3d cut_roll adhesive_mix fixed_percentage fixed_rate')
                     .addClass(info.class)
                     .text(info.label);
 
@@ -1261,6 +1498,7 @@
                 let netRate = 0;
                 let reelLength = 0;
                 let reelHeight = 0;
+                let wetGlueKg = 0;
 
                 if (formulaType === 'carton_3d') {
                     const length = parseFloat($(`#length-${id}`).val()) || 0;
@@ -1338,6 +1576,45 @@
 
                     $(`#reel-dimensions-${id}`).hide();
                     $(`#carton-calculation-details-${id}`).hide();
+                } else if (formulaType === 'adhesive_mix') {
+                    const length = parseFloat($(`#adhesive-length-${id}`).val()) || 0;
+                    const width = parseFloat($(`#adhesive-width-${id}`).val()) || 0;
+                    const height = parseFloat($(`#adhesive-height-${id}`).val()) || 0;
+                    const glueLines = parseFloat($(`#adhesive-glue-lines-${id}`).val());
+                    const dryGlueGsm = parseFloat($(`#adhesive-dry-gsm-${id}`).val());
+                    const glueWastage = parseFloat($(`#adhesive-wastage-${id}`).val());
+                    const solids = parseFloat($(`#adhesive-solids-${id}`).val());
+                    const recipe = parseFloat($(`#adhesive-recipe-${id}`).val()) || 0;
+
+                    if (length > 0 && width > 0 && height > 0) {
+                        const adhesiveReelLength = ((length + width) * 2) + 4;
+                        const adhesiveReelHeight = width + height + 1;
+                        const boardAreaM2 = adhesiveReelLength * adhesiveReelHeight * sqInchToM2;
+                        const dryGlueGrams = boardAreaM2
+                            * (Number.isFinite(glueLines) ? glueLines : 0)
+                            * (Number.isFinite(dryGlueGsm) ? dryGlueGsm : 0);
+                        const dryGlueWithWastage = dryGlueGrams
+                            * (1 + ((Number.isFinite(glueWastage) ? glueWastage : 0) / 100));
+
+                        wetGlueKg = (Number.isFinite(solids) && solids > 0)
+                            ? (dryGlueWithWastage / 1000) / (solids / 100)
+                            : 0;
+                        quantity = wetGlueKg * recipe;
+
+                        $(`#adhesive-wet-kg-${id}`).val(wetGlueKg.toFixed(8));
+                    } else {
+                        quantity = 0;
+                        $(`#adhesive-wet-kg-${id}`).val('0');
+                    }
+
+                    $(`#adhesive-kg-${id}`).val(quantity > 0 ? quantity.toFixed(8) : '0');
+
+                    if (quantity > 0) {
+                        $(`#unit-${id}`).val('kg');
+                    }
+
+                    $(`#reel-dimensions-${id}`).hide();
+                    $(`#carton-calculation-details-${id}`).hide();
                 } else if (formulaType === 'fixed_percentage') {
                     const baseMaterialId = $(`#base-material-${id}`).val();
                     const percentage = parseFloat($(`#percentage-of-base-${id}`).val()) || 0;
@@ -1380,6 +1657,12 @@
                         `<i class="bi bi-calculator me-1"></i>
                          Physical paper: <strong>${quantity.toFixed(6)} kg</strong> / finished unit.
                          Commercial row: <strong>؋${netRate.toFixed(4)}</strong>.`
+                    );
+                } else if (formulaType === 'adhesive_mix') {
+                    $(`#cost-hint-${id}`).html(
+                        `<i class="bi bi-droplet-half me-1"></i>
+                         Wet glue: <strong>${wetGlueKg.toFixed(6)} kg</strong> / finished unit
+                         (glue wastage already included). Ingredient: <strong>${quantity.toFixed(6)} kg</strong>.`
                     );
                 }
 
@@ -1592,6 +1875,9 @@
                         const configured = parseFloat($(`#cut-work-percentage-${id}`).val());
                         rowWorkPercentage = Number.isFinite(configured) ? configured : globalWorkPercentage;
                         rowPrintAfn = parseFloat($(`#print-cut-${id}`).val()) || 0;
+                    } else if (formulaType === 'adhesive_mix') {
+                        // Physical material cost only: no commercial work/profit.
+                        rowWorkPercentage = 0;
                     }
 
                     baseMaterialUsd += baseUsd;
@@ -1759,6 +2045,18 @@
                             valid = false;
                             row.addClass('border-danger');
                             validationMessage = 'Cut/Roll rows require positive cut length, cut width and GRH.';
+                        }
+                    }
+
+                    if (formulaType === 'adhesive_mix') {
+                        const length = parseFloat($(`#adhesive-length-${id}`).val()) || 0;
+                        const width = parseFloat($(`#adhesive-width-${id}`).val()) || 0;
+                        const height = parseFloat($(`#adhesive-height-${id}`).val()) || 0;
+                        const recipe = parseFloat($(`#adhesive-recipe-${id}`).val()) || 0;
+                        if (length <= 0 || width <= 0 || height <= 0 || quantity <= 0 || recipe <= 0) {
+                            valid = false;
+                            row.addClass('border-danger');
+                            validationMessage = 'Adhesive Mix rows require positive carton dimensions and a recipe share (pick a mapped mixing material or enter it manually).';
                         }
                     }
                 });

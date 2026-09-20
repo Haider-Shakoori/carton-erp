@@ -19,6 +19,7 @@ class ProductionOrder extends Model
         'product_id',
         'bom_id',
         'quantity_ordered',
+        'quantity_planned',
         'quantity_produced',
         'status',
         'start_date',
@@ -35,6 +36,7 @@ class ProductionOrder extends Model
 
     protected $casts = [
         'quantity_ordered' => 'decimal:2',
+        'quantity_planned' => 'decimal:2',
         'quantity_produced' => 'decimal:2',
         'total_material_cost' => 'decimal:4',
         'total_labor_cost' => 'decimal:4',
@@ -132,7 +134,9 @@ class ProductionOrder extends Model
 
     public function getIsCompletedAttribute()
     {
-        return $this->quantity_produced >= $this->quantity_ordered;
+        // A production order may validly finish below or above the customer
+        // order quantity. Completion is a workflow state, not a quantity test.
+        return $this->status === self::STATUS_COMPLETED;
     }
 
     public function getCostPerUnitAttribute()

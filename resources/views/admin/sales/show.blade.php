@@ -1591,12 +1591,10 @@
 
                 @if($sale->status === 'confirmed' && !$sale->is_produced)
                     @if($sale->productionOrder && $sale->productionOrder->status === 'pending')
-                        <form action="{{ route('admin.sales.start-production', $sale->id) }}" method="POST" class="d-inline">
-                            @csrf
-                            <button type="submit" class="btn btn-warning btn-action" onclick='return confirm(@json(__('ui.start_production_confirm')))'>
-                                <i class="bi bi-gear me-1"></i> {{ __('ui.start_production') }}
-                            </button>
-                        </form>
+                        <a href="{{ route('production-orders.show', $sale->productionOrder) }}"
+                           class="btn btn-warning btn-action">
+                            <i class="bi bi-calculator me-1"></i> Set Production Qty
+                        </a>
                     @endif
                 @endif
 
@@ -1618,9 +1616,21 @@
 
                 <div class="action-divider"></div>
 
+                @if($sale->items->isNotEmpty())
+                    <a href="{{ route('admin.sales.quotation', $sale->id) }}" target="_blank" class="btn btn-outline-primary btn-action">
+                        <i class="bi bi-file-earmark-text"></i> Quotation
+                    </a>
+                @endif
+
                 <a href="{{ route('admin.sales.print', $sale->id) }}" target="_blank" class="btn btn-print btn-action">
                     <i class="bi bi-printer"></i> {{ __('ui.print_invoice') }}
                 </a>
+
+                @if($sale->status === 'delivered' && $sale->gatePass)
+                    <a href="{{ route('admin.sales.gate-pass', $sale->id) }}" target="_blank" class="btn btn-outline-success btn-action">
+                        <i class="bi bi-door-open"></i> Gate Pass
+                    </a>
+                @endif
 
                 @if($sale->is_produced && $sale->productionOrder)
                     <a href="{{ route('production-orders.show', $sale->productionOrder) }}" class="btn btn-outline-info btn-action">
@@ -2066,12 +2076,23 @@
                         </div>
                     </div>
 
-                    {{-- ─── Exchange Rate ─── --}}
+                    {{-- ─── Pricing Overrides & Quotation Description ─── --}}
                     <div class="row g-3 mt-2">
                         <div class="col-md-3">
                             <label class="form-label">{{ __('ui.exchange_rate') }}</label>
                             <input type="number" id="exchangeRate" class="form-control" value="{{ $exchangeRate ?? 1 }}" step="0.000001" min="0.000001" oninput="recalculateLiveEstimate();">
                             <small class="text-muted">1 {{ $currencyCode }} = ? USD</small>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Manual Unit Price <span class="currency-badge">{{ $currencyCode }}</span></label>
+                            <input type="number" id="manualUnitPrice" class="form-control" min="0" step="0.0001" placeholder="Optional override">
+                            <small class="text-muted">Leave blank to use the calculated/BOM price.</small>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Quotation Description</label>
+                            <input type="text" id="quotationDescription" class="form-control" maxlength="2000"
+                                   placeholder="Description to print on the quotation for this line item">
+                            <small class="text-muted">This is customer-facing; BOM/internal details are never printed.</small>
                         </div>
                     </div>
 
@@ -2139,6 +2160,145 @@
                     </div>
                 </div>
             </div>
+
+            {{-- ─── QUICK CARTON SPECIFICATION QUOTATION ─── --}}
+            <div class="sale-section" id="cartonSpecSection">
+                <div class="section-header">
+                    <h5>
+                        <i class="bi bi-box-seam" style="color: var(--sale-primary);"></i> Quick Carton Quotation
+                    </h5>
+                    <span style="font-size: 0.75rem; color: var(--sale-gray-400);">
+                        <i class="bi bi-lightning-charge"></i> Dimensions + board profile → technical BOM + price automatically
+                    </span>
+                </div>
+
+                <div class="section-body">
+                    <div class="row g-3">
+                        <div class="col-md-4">
+                            <label class="form-label">Finished Carton Product <span class="text-danger">*</span></label>
+                            <select id="csProduct" class="form-select" style="width: 100%;">
+                                <option value="">Select product...</option>
+                                @foreach ($products as $product)
+                                    <option value="{{ $product->id }}">{{ $product->name }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label">Box Style</label>
+                            <select id="csBoxStyle" class="form-select"></select>
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label">Length <span class="text-danger">*</span></label>
+                            <input type="number" id="csLength" class="form-control" step="0.01" min="0.01" placeholder="0.00">
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label">Width <span class="text-danger">*</span></label>
+                            <input type="number" id="csWidth" class="form-control" step="0.01" min="0.01" placeholder="0.00">
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label">Height <span class="text-danger">*</span></label>
+                            <input type="number" id="csHeight" class="form-control" step="0.01" min="0.01" placeholder="0.00">
+                        </div>
+                    </div>
+
+                    <div class="row g-3 mt-2">
+                        <div class="col-md-2">
+                            <label class="form-label">Unit</label>
+                            <select id="csUnit" class="form-select"></select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Board Profile <span class="text-danger">*</span></label>
+                            <select id="csBoardProfile" class="form-select"></select>
+                            <small class="text-muted" id="csProfileHelp"></small>
+                        </div>
+                        <div class="col-md-1">
+                            <label class="form-label">Ply</label>
+                            <input type="number" id="csPly" class="form-control" min="1" step="1" readonly>
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label">Flute</label>
+                            <select id="csFlute" class="form-select"></select>
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label">Printing</label>
+                            <select id="csPrinting" class="form-select"></select>
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label">Quantity <span class="text-danger">*</span></label>
+                            <input type="number" id="csQuantity" class="form-control" min="1" step="1" value="1">
+                        </div>
+                    </div>
+
+                    <div class="row g-3 mt-2">
+                        <div class="col-md-2">
+                            <label class="form-label">Wastage %</label>
+                            <input type="number" id="csWastage" class="form-control" min="0" max="100" step="0.1" value="5">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Quoted Unit Price Override <span class="currency-badge">{{ $currencyCode }}</span></label>
+                            <input type="number" id="csQuotedPrice" class="form-control" min="0" step="0.0001" placeholder="Optional">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Quotation Description</label>
+                            <input type="text" id="csDescription" class="form-control" maxlength="2000" placeholder="Customer-facing description">
+                        </div>
+                        <div class="col-md-4 d-flex align-items-end gap-2">
+                            <button type="button" class="btn btn-outline-primary" id="csCalculateBtn">
+                                <i class="bi bi-calculator"></i> Calculate
+                            </button>
+                            <button type="button" class="btn btn-success" id="csAddBtn" disabled>
+                                <i class="bi bi-cart-plus"></i> Add to Sale
+                            </button>
+                        </div>
+                    </div>
+
+                    <div id="csError" class="alert alert-danger mt-3 mb-0 py-2 px-3" style="display:none; font-size:.8rem;"></div>
+
+                    <div id="csSummary" class="mt-3" style="display:none;">
+                        <div class="quote-summary-grid">
+                            <div class="quote-summary-card highlight"><div class="label">Unit Selling Price ({{ $currencyCode }})</div><div class="value" id="csUnitPrice">-</div></div>
+                            <div class="quote-summary-card"><div class="label">Order Value ({{ $currencyCode }})</div><div class="value" id="csOrderValue">-</div></div>
+                            <div class="quote-summary-card"><div class="label">Estimated Paper</div><div class="value" id="csPaperKg">-</div></div>
+                            <div class="quote-summary-card"><div class="label">Estimated Adhesive</div><div class="value" id="csAdhesiveKg">-</div></div>
+                            <div class="quote-summary-card"><div class="label">Estimated Material Cost (AFN)</div><div class="value" id="csMaterialCost">-</div></div>
+                            <div class="quote-summary-card"><div class="label">Work / Profit (AFN)</div><div class="value" id="csWorkProfit">-</div></div>
+                            <div class="quote-summary-card"><div class="label">Expected Profit (AFN)</div><div class="value" id="csExpectedProfit">-</div></div>
+                            <div class="quote-summary-card"><div class="label">Stock Status</div><div class="value" id="csStockStatus">-</div></div>
+                        </div>
+
+                        <div id="csShortageList" class="alert alert-warning mt-3 mb-0 py-2 px-3" style="display:none; font-size:.78rem;"></div>
+
+                        <div class="mt-3">
+                            <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#csAdvanced">
+                                <i class="bi bi-gear"></i> Advanced / Technical BOM
+                            </button>
+                            <div class="collapse mt-2" id="csAdvanced">
+                                <div class="table-responsive">
+                                    <table class="table table-sm" style="font-size:.75rem;">
+                                        <thead>
+                                        <tr>
+                                            <th>Material</th>
+                                            <th>Type</th>
+                                            <th class="text-end">GSM</th>
+                                            <th class="text-end">Layers</th>
+                                            <th class="text-end">Kg / Unit</th>
+                                            <th class="text-end">Kg incl. Wastage</th>
+                                            <th class="text-end">Landed AFN/kg</th>
+                                            <th class="text-end">Work %</th>
+                                            <th class="text-end">Row Rate (AFN)</th>
+                                        </tr>
+                                        </thead>
+                                        <tbody id="csAdvancedRows"></tbody>
+                                    </table>
+                                </div>
+                                <small class="text-muted">
+                                    Frozen technical rows generated by the carton specification engine. Adhesive rows are physical material cost only and never receive the paper work/profit.
+                                </small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
         @endif
 
         {{-- ─── SALE ITEMS TABLE ─── --}}
@@ -2170,7 +2330,6 @@
                         <thead>
                         <tr>
                             <th style="min-width: 150px;">{{ __('ui.product') }}</th>
-                            <th style="min-width: 100px;">{{ __('ui.bom') }}</th>
                             <th class="text-center" style="min-width: 60px;">{{ __('ui.qty') }}</th>
                             <th class="text-end" style="min-width: 115px;">{{ $actualAvailable ? __('ui.actual_cost_unit') : __('ui.quotation_cost_unit') }}</th>
                             <th class="text-end" style="min-width: 115px;">{{ $actualAvailable ? __('ui.actual_cost_total') : __('ui.quotation_cost_total') }}</th>
@@ -2231,18 +2390,16 @@
                                 <td>
                                     <div class="product-cell">
                                         <div class="name">{{ $item->product->name ?? '-' }}</div>
-                                        @if ($item->remarks)
-                                            <div class="meta"><i class="bi bi-journal-text"></i> {{ $item->remarks }}</div>
+                                        @if ($sale->status === 'draft')
+                                            <textarea class="form-control form-control-sm quotation-description-input mt-1"
+                                                      data-id="{{ $item->id }}"
+                                                      maxlength="2000"
+                                                      rows="2"
+                                                      placeholder="Quotation description">{{ $item->quotation_description }}</textarea>
+                                        @elseif($item->quotation_description)
+                                            <div class="meta"><i class="bi bi-card-text"></i> {{ $item->quotation_description }}</div>
                                         @endif
                                     </div>
-                                </td>
-                                <td>
-                                    @if($item->bom)
-                                        <span class="badge bg-primary">{{ $item->bom->code ?? 'N/A' }}</span>
-                                        <div style="font-size: 0.65rem; color: var(--sale-gray-400);">v{{ $item->bom->version ?? '1.0' }}</div>
-                                    @else
-                                        <span class="text-muted">N/A</span>
-                                    @endif
                                 </td>
                                 <td class="text-center fw-bold">{{ number_format($item->qty, 2) }}</td>
                                 <td class="text-end">
@@ -2257,7 +2414,22 @@
                                         <span style="font-size: 0.55rem; color: var(--sale-gray-400); display: block;">${{ number_format($costTotalUsd, 2) }} USD</span>
                                     @endif
                                 </td>
-                                <td class="text-end">{{ $currencySymbol }}{{ number_format($item->unit_price, 2) }}</td>
+                                <td class="text-end">
+                                    @if($sale->status === 'draft')
+                                        <div class="input-group input-group-sm" style="min-width:130px;">
+                                            <span class="input-group-text">{{ $currencySymbol }}</span>
+                                            <input type="number"
+                                                   class="form-control text-end manual-line-price"
+                                                   data-id="{{ $item->id }}"
+                                                   value="{{ number_format((float) $item->unit_price, 4, '.', '') }}"
+                                                   min="0.0001"
+                                                   step="0.0001">
+                                        </div>
+                                        <small class="text-muted">Manual selling price</small>
+                                    @else
+                                        {{ $currencySymbol }}{{ number_format($item->unit_price, 2) }}
+                                    @endif
+                                </td>
                                 <td class="text-end fw-bold">{{ $currencySymbol }}{{ number_format($item->total, 2) }}</td>
                                 <td class="text-end">
                                     <span class="{{ $profitDisplay >= 0 ? 'profit-positive' : 'profit-negative' }}">
@@ -2284,7 +2456,7 @@
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="{{ $sale->status === 'draft' ? '10' : '9' }}">
+                                <td colspan="{{ $sale->status === 'draft' ? '9' : '8' }}">
                                     <div class="empty-state">
                                         <i class="bi bi-box-seam icon"></i>
                                         <div class="title">{{ __('ui.no_items_added') }}</div>
@@ -2298,6 +2470,82 @@
                 </div>
             </div>
         </div>
+
+        @if ($actualAvailable && !empty($productionVariance))
+            @php $pv = $productionVariance; $pvSummary = $pv['summary']; @endphp
+            <div class="sale-section" id="productionVarianceSection">
+                <div class="section-header">
+                    <h5>
+                        <i class="bi bi-graph-up-arrow"></i> Planned vs Actual Production
+                    </h5>
+                    <span style="font-size: 0.75rem; color: var(--sale-gray-400);">
+                        <i class="bi bi-info-circle"></i> Actual quantities come from real FIFO production consumption records
+                    </span>
+                </div>
+                <div class="section-body">
+                    <div class="quote-summary-grid">
+                        <div class="quote-summary-card"><div class="label">Estimated Production Cost (USD)</div><div class="value">${{ number_format((float) $pvSummary['estimated_production_cost_usd'], 4) }}</div></div>
+                        <div class="quote-summary-card"><div class="label">Actual Production Cost (USD)</div><div class="value">${{ number_format((float) $pvSummary['actual_production_cost_usd'], 4) }}</div></div>
+                        <div class="quote-summary-card"><div class="label">Material Variance (USD)</div><div class="value" style="color: {{ (float) $pvSummary['material_cost_variance_usd'] > 0 ? '#dc2626' : '#059669' }};">${{ number_format((float) $pvSummary['material_cost_variance_usd'], 4) }}</div></div>
+                        <div class="quote-summary-card"><div class="label">Estimated Profit (AFN)</div><div class="value">{{ $currencySymbol }}{{ number_format((float) $pvSummary['estimated_profit_afn'], 2) }}</div></div>
+                        <div class="quote-summary-card highlight"><div class="label">Realized Profit (AFN)</div><div class="value">{{ $pvSummary['realized_profit_afn'] !== null ? $currencySymbol . number_format((float) $pvSummary['realized_profit_afn'], 2) : 'Pending' }}</div></div>
+                        <div class="quote-summary-card"><div class="label">Margin Variance</div><div class="value">{{ $pvSummary['margin_variance_percentage'] !== null ? number_format((float) $pvSummary['margin_variance_percentage'], 2) . '%' : 'Pending' }}</div></div>
+                    </div>
+
+                    <div class="table-responsive mt-3">
+                        <table class="table table-sm" style="font-size:.75rem;">
+                            <thead>
+                            <tr>
+                                <th>Material</th>
+                                <th class="text-end">Planned Qty</th>
+                                <th class="text-end">Actual Qty</th>
+                                <th class="text-end">Variance Qty</th>
+                                <th class="text-end">Planned Wastage</th>
+                                <th class="text-end">Actual Wastage</th>
+                                <th class="text-end">Planned Cost (USD)</th>
+                                <th class="text-end">Actual Cost (USD)</th>
+                                <th class="text-end">Cost Variance (USD)</th>
+                                <th class="text-center">Status</th>
+                            </tr>
+                            </thead>
+                            <tbody>
+                            @foreach ($pv['materials'] as $pvRow)
+                                <tr>
+                                    <td>{{ $pvRow['material_name'] }} <span class="text-muted">({{ $pvRow['unit'] }})</span></td>
+                                    <td class="text-end">{{ number_format((float) $pvRow['planned_quantity'], 4) }}</td>
+                                    <td class="text-end">{{ number_format((float) $pvRow['actual_quantity'], 4) }}</td>
+                                    <td class="text-end" style="color: {{ (float) $pvRow['variance_quantity'] > 0 ? '#dc2626' : '#059669' }};">
+                                        {{ number_format((float) $pvRow['variance_quantity'], 4) }}
+                                    </td>
+                                    <td class="text-end">{{ number_format((float) $pvRow['planned_wastage_quantity'], 4) }}</td>
+                                    <td class="text-end">{{ number_format((float) $pvRow['actual_wastage_quantity'], 4) }}</td>
+                                    <td class="text-end">${{ number_format((float) $pvRow['planned_cost_usd'], 4) }}</td>
+                                    <td class="text-end">${{ number_format((float) $pvRow['actual_cost_usd'], 4) }}</td>
+                                    <td class="text-end" style="color: {{ (float) $pvRow['cost_variance_usd'] > 0 ? '#dc2626' : '#059669' }};">
+                                        ${{ number_format((float) $pvRow['cost_variance_usd'], 4) }}
+                                    </td>
+                                    <td class="text-center">
+                                        @if (!$pvRow['has_actual'])
+                                            <span class="badge bg-secondary">Pending</span>
+                                        @elseif ($pvRow['indicator'] === 'unfavorable')
+                                            <span class="badge bg-danger">Unfavorable</span>
+                                        @elseif ($pvRow['indicator'] === 'favorable')
+                                            <span class="badge bg-success">Favorable</span>
+                                        @else
+                                            <span class="badge bg-light text-dark">Neutral</span>
+                                        @endif
+                                    </td>
+                                </tr>
+                            @endforeach
+                            </tbody>
+                        </table>
+                    </div>
+                    <small class="text-muted">
+                        Planned quantities follow the frozen accepted specification. Actual wastage is shown only when real consumption records carry it; production variance may also include yield/waste differences not separately recorded.
+                    </small>
+                </div>
+            </div>
+        @endif
 
     </div>
 
@@ -2811,6 +3059,57 @@
         let pricingMode = null;
         let manualTemplateBomId = null;
 
+        // ─── ADHESIVE MIX (MIXING MATERIALS) ───
+        const cartonAdhesiveConfig = @json(config('carton.adhesive'));
+        const cartonSqInchToM2 = {{ config('carton.sq_inch_to_m2') }};
+
+        function adhesiveRowFormula(parameters) {
+            const length = Math.max(parseFloat(parameters.length) || 0, 0);
+            const width = Math.max(parseFloat(parameters.width) || 0, 0);
+            const height = Math.max(parseFloat(parameters.height) || 0, 0);
+            const glueLines = Math.max(parseFloat(parameters.glueLines) || 0, 0);
+            const dryGlueGsm = Math.max(parseFloat(parameters.dryGlueGsm) || 0, 0);
+            const glueWastage = Math.max(parseFloat(parameters.glueWastage) || 0, 0);
+            const solids = Math.max(parseFloat(parameters.solids) || 0, 0);
+            const recipe = Math.max(parseFloat(parameters.recipe) || 0, 0);
+
+            if (length <= 0 || width <= 0 || height <= 0) {
+                return { boardAreaM2: 0, wetGlueKg: 0, ingredientKg: 0, reelLength: 0, reelHeight: 0 };
+            }
+
+            const reelLength = ((length + width) * 2) + 4;
+            const reelHeight = width + height + 1;
+            const boardAreaM2 = reelLength * reelHeight * cartonSqInchToM2;
+            const dryGlueGrams = boardAreaM2 * glueLines * dryGlueGsm;
+            const dryGlueWithWastage = dryGlueGrams * (1 + (glueWastage / 100));
+            const wetGlueKg = solids > 0 ? (dryGlueWithWastage / 1000) / (solids / 100) : 0;
+
+            return {
+                boardAreaM2: boardAreaM2,
+                wetGlueKg: wetGlueKg,
+                ingredientKg: wetGlueKg * recipe,
+                reelLength: reelLength,
+                reelHeight: reelHeight,
+            };
+        }
+
+        function adhesiveSnapshotParameters(material, f, overrides) {
+            const adhesive = material.adhesive || {};
+            overrides = overrides || {};
+
+            return {
+                length: overrides.length !== undefined ? overrides.length : f.length,
+                width: overrides.width !== undefined ? overrides.width : f.width,
+                height: overrides.height !== undefined ? overrides.height : f.height,
+                glueLines: overrides.glueLines !== undefined ? overrides.glueLines : (adhesive.glue_lines || cartonAdhesiveConfig.glue_lines),
+                dryGlueGsm: overrides.dryGlueGsm !== undefined ? overrides.dryGlueGsm : (adhesive.dry_glue_gsm_per_line || cartonAdhesiveConfig.dry_glue_gsm_per_line),
+                glueWastage: overrides.glueWastage !== undefined ? overrides.glueWastage : (adhesive.glue_wastage_percentage || cartonAdhesiveConfig.glue_wastage_percentage),
+                solids: overrides.solids !== undefined ? overrides.solids : (adhesive.adhesive_solids_percentage || cartonAdhesiveConfig.adhesive_solids_percentage),
+                recipe: overrides.recipe !== undefined ? overrides.recipe : (adhesive.recipe_fraction !== undefined ? adhesive.recipe_fraction : 0),
+                recipeKey: adhesive.recipe_key || null,
+            };
+        }
+
         // ─── BOM CALCULATOR MODAL VARIABLES ───
         let modalItemCounter = 0;
         const defaultModalExchangeRate = {{ $exchangeRate ?? 85 }};
@@ -2827,9 +3126,15 @@
             return currencySymbol + ' ' + parseFloat(value).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
         }
 
+        function effectiveUnitPrice() {
+            const manual = parseFloat($('#manualUnitPrice').val()) || 0;
+            const automatic = parseFloat($('#unitPrice').val()) || 0;
+            return manual > 0 ? manual : automatic;
+        }
+
         function updateAddTotals() {
             const qty = parseFloat($('#itemQty').val()) || 0;
-            const unitPrice = parseFloat($('#unitPrice').val()) || 0;
+            const unitPrice = effectiveUnitPrice();
             const total = qty * unitPrice;
             const symbol = currencySymbol || '$';
 
@@ -3283,8 +3588,49 @@
                 latestSupplier: material.latest_supplier_name || material.supplier_name || material.supplier || '',
                 latestBatch: material.latest_batch_no || material.batch_no || material.batch_number || '',
                 unit: material.unit || material.inventory_unit || 'unit',
-                materialIsRollBased: !!(material.material_is_roll_based)
+                materialIsRollBased: !!(material.material_is_roll_based),
+                formulaType: material.formula_type || 'carton_3d',
+                isAdhesive: (material.formula_type || '') === 'adhesive_mix',
+                adhesive: material.adhesive || null
             };
+        }
+
+        // ─── ADHESIVE MIX MATERIAL CARD ───
+        function buildAdhesiveMaterialCard(index, material, f, missing, referenceRate, referenceUnit) {
+            var materialName = material.material_name || material.name || 'Material';
+            var adhesive = material.adhesive || {};
+            var rateLabel = missing
+                ? '⚠️ ' + @json(__('ui.no_cost'))
+                : (currencyCode === 'USD' ? '$' : '؋') + Number(referenceRate).toFixed(4) + ' / ' + referenceUnit;
+
+            return '<div class="manual-material-card ' + (missing ? 'border border-danger' : '') + '" data-estimate-row="' + index + '" data-formula-type="adhesive_mix" data-latest-rate="' + f.latestRate + '">' +
+                '<div class="manual-material-header">' +
+                '<div class="manual-material-title">' +
+                '<div class="manual-material-name"><i class="bi bi-droplet-half me-2 text-danger"></i>' + materialName + '</div>' +
+                '<div class="manual-material-subtitle">Adhesive Mix — Dimension Based (board area drives the glue mix)</div>' +
+                '</div>' +
+                '<span class="latest-cost-chip">' + rateLabel + '</span>' +
+                '</div>' +
+                '<div class="manual-material-body">' +
+                '<div class="manual-input-grid">' +
+                '<div class="manual-field"><label>{{ __('ui.carton_length_in') }}</label><input class="est-length" type="number" min="0" step="0.01" value="' + f.length + '"></div>' +
+                '<div class="manual-field"><label>{{ __('ui.carton_width_in') }}</label><input class="est-width" type="number" min="0" step="0.01" value="' + f.width + '"></div>' +
+                '<div class="manual-field"><label>{{ __('ui.carton_height_in') }}</label><input class="est-height" type="number" min="0" step="0.01" value="' + f.height + '"></div>' +
+                '<div class="manual-field"><label>Recipe Share (kg/kg wet glue)</label><input class="est-adhesive-recipe" type="number" min="0" step="0.000001" value="' + (adhesive.recipe_fraction !== undefined ? adhesive.recipe_fraction : '') + '"></div>' +
+                '<div class="manual-field"><label>Glue Lines</label><input class="est-adhesive-glue-lines" type="number" min="0" step="1" value="' + (adhesive.glue_lines !== undefined ? adhesive.glue_lines : cartonAdhesiveConfig.glue_lines) + '"></div>' +
+                '<div class="manual-field"><label>Dry Glue GSM / Line</label><input class="est-adhesive-dry-gsm" type="number" min="0" step="0.01" value="' + (adhesive.dry_glue_gsm_per_line !== undefined ? adhesive.dry_glue_gsm_per_line : cartonAdhesiveConfig.dry_glue_gsm_per_line) + '"></div>' +
+                '<div class="manual-field"><label>Glue Wastage %</label><input class="est-adhesive-wastage" type="number" min="0" step="0.01" value="' + (adhesive.glue_wastage_percentage !== undefined ? adhesive.glue_wastage_percentage : cartonAdhesiveConfig.glue_wastage_percentage) + '"></div>' +
+                '<div class="manual-field"><label>Adhesive Solids %</label><input class="est-adhesive-solids" type="number" min="0" max="100" step="0.01" value="' + (adhesive.adhesive_solids_percentage !== undefined ? adhesive.adhesive_solids_percentage : cartonAdhesiveConfig.adhesive_solids_percentage) + '"></div>' +
+                '<div class="manual-field"><label>Board Area (m²)</label><input class="form-control est-adhesive-board-area" type="text" value="0.000000" readonly style="background:#f1f5f9;cursor:not-allowed;font-size:0.75rem;height:34px;"></div>' +
+                '<div class="manual-field"><label>Wet Glue (kg / carton)</label><input class="form-control est-adhesive-wet-kg" type="text" value="0.00000000" readonly style="background:#f1f5f9;cursor:not-allowed;font-size:0.75rem;height:34px;"></div>' +
+                '<div class="manual-field"><label>Ingredient (kg / carton)</label><input class="form-control est-adhesive-kg" type="text" value="0.00000000" readonly style="background:#f1f5f9;cursor:not-allowed;font-size:0.75rem;height:34px;"></div>' +
+                '</div>' +
+                '<div class="manual-result-panel">' +
+                '<div class="manual-result-row"><span>Ingredient kg × Carton</span><strong class="est-adhesive-order-kg">0.000000</strong></div>' +
+                '<div class="manual-result-row total"><span>Physical material cost</span><strong class="est-adhesive-cost">؋0.0000</strong></div>' +
+                '</div>' +
+                '</div>' +
+                '</div>';
         }
 
         // ─── RENDER MANUAL MATERIALS ───
@@ -3317,10 +3663,16 @@
                 var missing = !f.inventoryFound || referenceRate <= 0 || (kgBased && !f.purchaseRateFound);
                 hasMissingCost = hasMissingCost || missing;
 
+                if (f.isAdhesive) {
+                    html += buildAdhesiveMaterialCard(i, material, f, missing, referenceRate, referenceUnit);
+                    continue;
+                }
+
                 var reelLengthCalc = ((f.length + f.width) * 2) + 4;
                 var reelHeightCalc = f.width + f.height + 1;
 
-                html += '<div class="manual-material-card ' + (missing ? 'border border-danger' : '') + '" data-estimate-row="' + i + '" data-latest-rate="' + f.latestRate + '">' +
+                var formulaType = material.formula_type || 'carton_3d';
+                html += '<div class="manual-material-card ' + (missing ? 'border border-danger' : '') + '" data-estimate-row="' + i + '" data-formula-type="' + formulaType + '" data-latest-rate="' + f.latestRate + '">' +
                     '<div class="manual-material-header">' +
                     '<div class="manual-material-title">' +
                     '<div class="manual-material-name"><i class="bi bi-layers me-2 text-primary"></i>' + materialName + '</div>' +
@@ -3334,7 +3686,7 @@
                     '<div class="manual-field"><label>{{ __('ui.carton_width_in') }}</label><input class="est-width" type="number" min="0" step="0.01" value="' + f.width + '"></div>' +
                     '<div class="manual-field"><label>{{ __('ui.carton_height_in') }}</label><input class="est-height" type="number" min="0" step="0.01" value="' + f.height + '"></div>' +
                     '<div class="manual-field"><label>{{ __('ui.paper_gsm') }}</label><input class="est-paper-gsm" type="number" min="0" step="1" value="' + f.paperGsm + '"></div>' +
-                    '<div class="manual-field"><label>{{ __('ui.per_gram_rate') }}</label><input class="est-per-gram-rate" type="number" min="0" step="0.01" value="' + f.perGramRate + '"></div>' +
+                    '<div class="manual-field"><label>PO Rate (AFN/kg)</label><input class="est-per-gram-rate" type="number" min="0" step="0.0001" value="' + f.perGramRate + '" readonly style="background:#f1f5f9;cursor:not-allowed;"><small class="text-muted d-block mt-1">Auto-populated from latest arrived purchase order.</small></div>' +
                     '<div class="manual-field"><label>{{ __('ui.multiplication_layer') }}</label><input class="est-multiplication-layer" type="number" min="1" step="1" value="' + f.multiplicationLayer + '"></div>' +
                     '<div class="manual-field"><label>{{ __('ui.print_cost') }}</label><input class="est-print-cost" type="number" min="0" step="0.01" value="' + f.printCost + '"></div>' +
                     '<div class="manual-field"><label>{{ __('ui.formula_constant') }}</label><input class="est-formula-constant" type="number" min="0.0001" step="1" value="' + f.formulaConstant + '"></div>' +
@@ -3372,8 +3724,35 @@
             $('#bomMaterialsTableBody').html(html);
 
             $('#bomMaterialsTableBody input, #bomMaterialsTableBody select').on('input change', function() {
+                var $input = $(this);
+                var $sourceRow = $input.closest('.manual-material-card');
+
+                if (($sourceRow.data('formula-type') === 'carton_3d' || $sourceRow.data('formula-type') === 'adhesive_mix')
+                    && ($input.hasClass('est-length') || $input.hasClass('est-width') || $input.hasClass('est-height'))) {
+                    var fieldClass = $input.hasClass('est-length')
+                        ? '.est-length'
+                        : ($input.hasClass('est-width') ? '.est-width' : '.est-height');
+
+                    $('#bomMaterialsTableBody .manual-material-card[data-formula-type="carton_3d"], #bomMaterialsTableBody .manual-material-card[data-formula-type="adhesive_mix"]')
+                        .not($sourceRow)
+                        .find(fieldClass)
+                        .val($input.val());
+                }
+
                 recalculateLiveEstimate();
             });
+
+            // A carton has one set of finished dimensions shared by every paper
+            // layer AND the dimension-driven adhesive rows.
+            var $first3d = $('#bomMaterialsTableBody .manual-material-card[data-formula-type="carton_3d"], #bomMaterialsTableBody .manual-material-card[data-formula-type="adhesive_mix"]').first();
+            if ($first3d.length) {
+                ['.est-length', '.est-width', '.est-height'].forEach(function(selector) {
+                    var value = $first3d.find(selector).val();
+                    $('#bomMaterialsTableBody .manual-material-card[data-formula-type="carton_3d"], #bomMaterialsTableBody .manual-material-card[data-formula-type="adhesive_mix"]')
+                        .find(selector)
+                        .val(value);
+                });
+            }
 
             if (hasMissingCost) {
                 $('#unitPrice').val(0);
@@ -3409,6 +3788,63 @@
                 var row = $(this);
                 var index = parseInt(row.data('estimate-row'));
                 var material = currentBOMData.materials[index];
+
+                // Dimension-driven adhesive rows: physical material cost only,
+                // never part of the paper commercial quotation subtotals.
+                if (row.data('formula-type') === 'adhesive_mix') {
+                    var adhesive = material.adhesive || {};
+                    var adhesiveParams = {
+                        length: parseFloat(row.find('.est-length').val()) || 0,
+                        width: parseFloat(row.find('.est-width').val()) || 0,
+                        height: parseFloat(row.find('.est-height').val()) || 0,
+                        glueLines: parseFloat(row.find('.est-adhesive-glue-lines').val()),
+                        dryGlueGsm: parseFloat(row.find('.est-adhesive-dry-gsm').val()),
+                        glueWastage: parseFloat(row.find('.est-adhesive-wastage').val()),
+                        solids: parseFloat(row.find('.est-adhesive-solids').val()),
+                        recipe: parseFloat(row.find('.est-adhesive-recipe').val())
+                    };
+                    var adhesiveResult = adhesiveRowFormula(adhesiveParams);
+                    var adhesiveF = materialFormulaValues(material);
+                    var adhesiveRateAfn = adhesiveF.purchaseRateAfnKg > 0 ? adhesiveF.purchaseRateAfnKg : adhesiveF.latestRate;
+                    var adhesiveRateUsd = adhesiveF.purchaseRateUsdKg > 0
+                        ? adhesiveF.purchaseRateUsdKg
+                        : (saleExchangeRate > 0 ? adhesiveRateAfn / saleExchangeRate : 0);
+                    var adhesiveCostAfn = adhesiveResult.ingredientKg * adhesiveRateAfn;
+
+                    row.find('.est-adhesive-board-area').val(adhesiveResult.boardAreaM2.toFixed(6));
+                    row.find('.est-adhesive-wet-kg').val(adhesiveResult.wetGlueKg.toFixed(8));
+                    row.find('.est-adhesive-kg').val(adhesiveResult.ingredientKg.toFixed(8));
+                    row.find('.est-adhesive-order-kg').text((adhesiveResult.ingredientKg * qty).toFixed(6));
+                    row.find('.est-adhesive-cost').text('؋' + adhesiveCostAfn.toFixed(4));
+
+                    snapshot.push({
+                        material_id: material.material_id || material.id,
+                        material_name: material.material_name || material.name || 'Material',
+                        formula_type: 'adhesive_mix',
+                        length: adhesiveParams.length,
+                        width: adhesiveParams.width,
+                        height: adhesiveParams.height,
+                        glue_lines: adhesiveParams.glueLines,
+                        dry_glue_gsm_per_line: adhesiveParams.dryGlueGsm,
+                        glue_wastage_percentage: adhesiveParams.glueWastage,
+                        adhesive_solids_percentage: adhesiveParams.solids,
+                        recipe_key: adhesive.recipe_key || null,
+                        recipe_percentage: adhesiveParams.recipe,
+                        sq_inch_to_m2: cartonSqInchToM2,
+                        landed_cost_usd_per_kg: adhesiveRateUsd,
+                        per_gram_rate: adhesiveRateAfn,
+                        wastage: 0,
+                        work_percentage: 0,
+                        print_cost: 0,
+                        kg_per_finished_unit: adhesiveResult.ingredientKg,
+                        kg_with_wastage: adhesiveResult.ingredientKg,
+                        physical_cost_usd: adhesiveResult.ingredientKg * adhesiveRateUsd,
+                        row_net_rate: 0,
+                        final_rate_afn: 0
+                    });
+
+                    return;
+                }
 
                 var length = parseFloat(row.find('.est-length').val()) || 0;
                 var width = parseFloat(row.find('.est-width').val()) || 0;
@@ -3450,6 +3886,7 @@
 
                 snapshot.push({
                     material_id: material.material_id || material.id,
+                    formula_type: 'carton_3d',
                     length: length,
                     width: width,
                     height: height,
@@ -3523,7 +3960,9 @@
             var selectedPricingValue = $('#bomSelect').val();
             var bomId = pricingMode === 'manual' ? manualTemplateBomId : selectedPricingValue;
             var qty = parseFloat($('#itemQty').val()) || 0;
-            var unitPrice = parseFloat($('#unitPrice').val()) || 0;
+            var autoUnitPrice = parseFloat($('#unitPrice').val()) || 0;
+            var manualUnitPrice = parseFloat($('#manualUnitPrice').val()) || 0;
+            var unitPrice = manualUnitPrice > 0 ? manualUnitPrice : autoUnitPrice;
             var exchangeRateVal = parseFloat($('#exchangeRate').val()) || 1;
 
             if (!productId) {
@@ -3576,7 +4015,9 @@
                     qty: qty,
                     exchange_rate: exchangeRateVal,
                     currency_code: currencyCode,
-                    quoted_unit_price: unitPrice,
+                    quoted_unit_price: autoUnitPrice,
+                    manual_unit_price: manualUnitPrice > 0 ? manualUnitPrice : null,
+                    quotation_description: $('#quotationDescription').val(),
                     pricing_mode: pricingMode || 'saved',
                     formula_snapshot: pricingMode === 'manual' ? JSON.stringify(currentQuoteSnapshot) : null,
                     remarks: pricingMode === 'manual'
@@ -5196,6 +5637,7 @@
                     currentProductId = productId;
                     loadBomsForProduct(productId);
                     $('#unitPrice').val(0);
+                    $('#manualUnitPrice').val('');
                     $('#priceSource').text(@json(__('ui.select_pricing_method_plain')));
                     $('#addItemBtn').prop('disabled', true);
                     updateAddTotals();
@@ -5205,6 +5647,7 @@
                     pricingMode = null;
                     manualTemplateBomId = null;
                     $('#unitPrice').val(0);
+                    $('#manualUnitPrice').val('');
                     $('#priceSource').text(@json(__('ui.select_bom_auto')));
                     $('#addItemBtn').prop('disabled', true);
                     updateAddTotals();
@@ -5221,6 +5664,7 @@
                     currentBOMData = null;
                     $('#bomDetailsPreview, #pricingModeNotice').hide();
                     $('#unitPrice').val(0);
+                    $('#manualUnitPrice').val('');
                     $('#priceSource').text(@json(__('ui.select_pricing_method_no_dots')));
                     $('#addItemBtn').prop('disabled', true);
                     updateAddTotals();
@@ -5230,6 +5674,7 @@
                 if (selectedOption.prop('disabled')) {
                     $('#bomDetailsPreview, #pricingModeNotice').hide();
                     $('#unitPrice').val(0);
+                    $('#manualUnitPrice').val('');
                     $('#priceSource').text(@json(__('ui.no_bom_available')));
                     $('#addItemBtn').prop('disabled', true);
                     updateAddTotals();
@@ -5262,6 +5707,69 @@
                 } else {
                     updateAddTotals();
                 }
+            });
+
+            $('#manualUnitPrice').on('input', function() {
+                updateAddTotals();
+            });
+
+            $(document).on('change', '.manual-line-price', function() {
+                var $field = $(this);
+                var itemId = $field.data('id');
+                var unitPrice = parseFloat($field.val()) || 0;
+
+                if (unitPrice <= 0) {
+                    Swal.fire({
+                        icon: 'warning',
+                        title: @json(__('ui.invalid_price')),
+                        text: 'Manual unit price must be greater than zero.'
+                    });
+                    return;
+                }
+
+                $field.prop('disabled', true);
+
+                $.ajax({
+                    url: '{{ url('admin/sales/item') }}/' + itemId + '/manual-price',
+                    method: 'PATCH',
+                    data: {
+                        _token: '{{ csrf_token() }}',
+                        unit_price: unitPrice
+                    },
+                    success: function(response) {
+                        if (response.success) {
+                            location.reload();
+                        }
+                    },
+                    error: function(xhr) {
+                        $field.prop('disabled', false);
+                        Swal.fire({
+                            icon: 'error',
+                            title: @json(__('ui.error')),
+                            text: xhr.responseJSON?.message || 'Could not update manual unit price.'
+                        });
+                    }
+                });
+            });
+
+            $(document).on('change blur', '.quotation-description-input', function() {
+                var $field = $(this);
+                var itemId = $field.data('id');
+
+                $.ajax({
+                    url: '{{ url('admin/sales/item') }}/' + itemId + '/quotation-description',
+                    method: 'PATCH',
+                    data: {
+                        _token: '{{ csrf_token() }}',
+                        quotation_description: $field.val()
+                    }
+                }).fail(function(xhr) {
+                    Swal.fire({
+                        icon: 'error',
+                        title: @json(__('ui.error')),
+                        text: xhr.responseJSON?.message || 'Could not save quotation description.'
+                    });
+                });
             });
 
             // ─── EXCHANGE RATE CHANGE ───
@@ -5637,6 +6145,297 @@
 
                 validateForm();
             }
+        })();
+    </script>
+
+    {{-- ─── QUICK CARTON QUOTATION SCRIPT ─── --}}
+    <script>
+        (function () {
+            var csSaleId = {{ (int) $sale->id }};
+            var csCurrency = @json($currencyCode);
+            var csOptionsUrl = @json(route('admin.sales.carton-spec.options'));
+            var csCalculateUrl = @json(route('admin.sales.carton-spec.calculate', $sale->id));
+            var csAddUrl = @json(route('admin.sales.carton-spec.add', $sale->id));
+            var csToken = @json(csrf_token());
+            var csOptions = null;
+            var csPreview = null;
+
+            if (!document.getElementById('cartonSpecSection')) {
+                return;
+            }
+
+            function csNumber(value, decimals) {
+                var number = parseFloat(value || 0);
+                if (isNaN(number)) { number = 0; }
+                return number.toLocaleString(undefined, {
+                    minimumFractionDigits: decimals,
+                    maximumFractionDigits: decimals
+                });
+            }
+
+            function csFillSelect(element, items, placeholder) {
+                element.innerHTML = '';
+                if (placeholder) {
+                    var empty = document.createElement('option');
+                    empty.value = '';
+                    empty.textContent = placeholder;
+                    element.appendChild(empty);
+                }
+                (items || []).forEach(function (item) {
+                    var option = document.createElement('option');
+                    option.value = item.value;
+                    option.textContent = item.label;
+                    element.appendChild(option);
+                });
+            }
+
+            function csCurrentProfile() {
+                if (!csOptions) { return null; }
+                var id = document.getElementById('csBoardProfile').value;
+                return (csOptions.profiles || []).find(function (profile) {
+                    return String(profile.id) === String(id);
+                }) || null;
+            }
+
+            function csApplyProfile() {
+                var profile = csCurrentProfile();
+                if (!profile) {
+                    document.getElementById('csProfileHelp').textContent = '';
+                    return;
+                }
+                document.getElementById('csPly').value = profile.ply;
+                if (profile.flute_type) {
+                    var flute = document.getElementById('csFlute');
+                    if (flute.querySelector('option[value="' + profile.flute_type + '"]')) {
+                        flute.value = profile.flute_type;
+                    }
+                }
+                if (!document.getElementById('csWastage').dataset.touched) {
+                    document.getElementById('csWastage').value = profile.wastage_percentage;
+                }
+                var layers = (profile.layers || []).map(function (layer) {
+                    return (layer.gsm || 0) + ' GSM x ' + layer.multiplication_layer;
+                }).join(' + ');
+                document.getElementById('csProfileHelp').textContent = 'v' + profile.version + ' - ' + layers;
+            }
+
+            function csShowError(message) {
+                var box = document.getElementById('csError');
+                box.textContent = message || '';
+                box.style.display = message ? 'block' : 'none';
+            }
+
+            function csRenderPreview(preview) {
+                csPreview = preview;
+                var unitPrice = csCurrency === 'USD'
+                    ? preview.commercial.selling_price_usd
+                    : preview.commercial.selling_price_afn;
+                var orderValue = csCurrency === 'USD'
+                    ? preview.commercial.order_total_usd
+                    : preview.commercial.order_total_afn;
+                var quantity = preview.quantity || 1;
+
+                document.getElementById('csUnitPrice').textContent = csNumber(unitPrice, 4);
+                document.getElementById('csOrderValue').textContent = csNumber(orderValue, 2);
+                document.getElementById('csPaperKg').textContent = csNumber(preview.paper.physical_kg_total, 3) + ' kg';
+                document.getElementById('csAdhesiveKg').textContent = csNumber(preview.adhesive.kg_total, 3) + ' kg';
+                document.getElementById('csMaterialCost').textContent = csNumber(preview.physical.material_cost_afn_total, 2);
+                document.getElementById('csWorkProfit').textContent = csNumber(preview.commercial.work_profit_afn * quantity, 2);
+                document.getElementById('csExpectedProfit').textContent = csNumber(preview.expected_profit_afn, 2);
+
+                var stock = document.getElementById('csStockStatus');
+                var shortageBox = document.getElementById('csShortageList');
+                if (preview.shortages && preview.shortages.has_shortage) {
+                    stock.textContent = 'Shortage';
+                    stock.style.color = '#dc2626';
+                    var lines = (preview.shortages.materials || [])
+                        .filter(function (row) { return !row.is_available; })
+                        .map(function (row) {
+                            return row.material_name + ': need ' + csNumber(row.required_quantity, 3)
+                                + ' kg, available ' + csNumber(row.available_quantity, 3) + ' kg';
+                        });
+                    shortageBox.innerHTML = '<i class="bi bi-exclamation-triangle me-1"></i>' + lines.join('<br>');
+                    shortageBox.style.display = 'block';
+                } else {
+                    stock.textContent = 'Available';
+                    stock.style.color = '#059669';
+                    shortageBox.style.display = 'none';
+                }
+
+                var body = document.getElementById('csAdvancedRows');
+                body.innerHTML = '';
+                (preview.rows || []).forEach(function (row) {
+                    var tr = document.createElement('tr');
+                    tr.innerHTML = '<td>' + (row.material_name || '-') + '</td>'
+                        + '<td>' + row.component_type + '</td>'
+                        + '<td class="text-end">' + (row.paper_gsm || '-') + '</td>'
+                        + '<td class="text-end">' + (row.multiplication_layer || '-') + '</td>'
+                        + '<td class="text-end">' + csNumber(row.kg_per_unit, 6) + '</td>'
+                        + '<td class="text-end">' + csNumber(row.kg_with_wastage, 6) + '</td>'
+                        + '<td class="text-end">' + csNumber(row.landed_cost_afn_per_kg, 4) + '</td>'
+                        + '<td class="text-end">' + (row.apply_work_percentage ? csNumber(row.work_percentage, 2) : '0.00') + '</td>'
+                        + '<td class="text-end">' + csNumber(row.row_net_rate_afn, 4) + '</td>';
+                    body.appendChild(tr);
+                });
+
+                document.getElementById('csSummary').style.display = 'block';
+                document.getElementById('csAddBtn').disabled = false;
+            }
+
+            function csCalculate() {
+                csShowError('');
+                document.getElementById('csAddBtn').disabled = true;
+                var payload = {
+                    _token: csToken,
+                    product_id: document.getElementById('csProduct').value,
+                    box_style: document.getElementById('csBoxStyle').value,
+                    length: document.getElementById('csLength').value,
+                    width: document.getElementById('csWidth').value,
+                    height: document.getElementById('csHeight').value,
+                    dimension_unit: document.getElementById('csUnit').value,
+                    board_profile_id: document.getElementById('csBoardProfile').value,
+                    ply: document.getElementById('csPly').value || null,
+                    flute_type: document.getElementById('csFlute').value || null,
+                    printing_option: document.getElementById('csPrinting').value,
+                    quantity: document.getElementById('csQuantity').value,
+                    wastage_percentage: document.getElementById('csWastage').value,
+                    quoted_unit_price: document.getElementById('csQuotedPrice').value || null,
+                    quotation_description: document.getElementById('csDescription').value || null
+                };
+
+                $.ajax({
+                    url: csCalculateUrl,
+                    type: 'POST',
+                    data: payload,
+                    success: function (response) {
+                        if (response.success) {
+                            csRenderPreview(response.data);
+                        } else {
+                            csShowError(response.message || 'Calculation failed.');
+                        }
+                    },
+                    error: function (xhr) {
+                        var message = 'Calculation failed.';
+                        if (xhr.responseJSON && xhr.responseJSON.message) {
+                            message = xhr.responseJSON.message;
+                        } else if (xhr.responseJSON && xhr.responseJSON.errors) {
+                            message = Object.values(xhr.responseJSON.errors).flat().join(' ');
+                        }
+                        csShowError(message);
+                    }
+                });
+            }
+
+            function csAdd() {
+                if (!csPreview) {
+                    csShowError('Calculate the specification before adding it to the sale.');
+                    return;
+                }
+                csShowError('');
+                document.getElementById('csAddBtn').disabled = true;
+                $.ajax({
+                    url: csAddUrl,
+                    type: 'POST',
+                    data: {
+                        _token: csToken,
+                        product_id: document.getElementById('csProduct').value,
+                        box_style: document.getElementById('csBoxStyle').value,
+                        length: document.getElementById('csLength').value,
+                        width: document.getElementById('csWidth').value,
+                        height: document.getElementById('csHeight').value,
+                        dimension_unit: document.getElementById('csUnit').value,
+                        board_profile_id: document.getElementById('csBoardProfile').value,
+                        ply: document.getElementById('csPly').value || null,
+                        flute_type: document.getElementById('csFlute').value || null,
+                        printing_option: document.getElementById('csPrinting').value,
+                        quantity: document.getElementById('csQuantity').value,
+                        wastage_percentage: document.getElementById('csWastage').value,
+                        quoted_unit_price: document.getElementById('csQuotedPrice').value || null,
+                        quotation_description: document.getElementById('csDescription').value || null
+                    },
+                    success: function (response) {
+                        if (response.success) {
+                            Swal.fire({
+                                icon: 'success',
+                                title: @json(__('ui.added')),
+                                text: response.message,
+                                timer: 1500,
+                                showConfirmButton: false
+                            }).then(function () {
+                                location.reload();
+                            });
+                        } else {
+                            document.getElementById('csAddBtn').disabled = false;
+                            csShowError(response.message || 'Could not add the specification.');
+                        }
+                    },
+                    error: function (xhr) {
+                        document.getElementById('csAddBtn').disabled = false;
+                        var message = 'Could not add the specification.';
+                        if (xhr.responseJSON && xhr.responseJSON.message) {
+                            message = xhr.responseJSON.message;
+                        } else if (xhr.responseJSON && xhr.responseJSON.errors) {
+                            message = Object.values(xhr.responseJSON.errors).flat().join(' ');
+                        }
+                        csShowError(message);
+                    }
+                });
+            }
+
+            document.getElementById('csBoardProfile').addEventListener('change', csApplyProfile);
+            document.getElementById('csWastage').addEventListener('input', function () {
+                this.dataset.touched = '1';
+            });
+            document.getElementById('csCalculateBtn').addEventListener('click', csCalculate);
+            document.getElementById('csAddBtn').addEventListener('click', csAdd);
+
+            $.get(csOptionsUrl, function (response) {
+                if (!response.success) { return; }
+                csOptions = response.data;
+
+                csFillSelect(document.getElementById('csBoxStyle'), csOptions.box_styles, null);
+                csFillSelect(document.getElementById('csFlute'),
+                    [{ value: '', label: 'None' }].concat(csOptions.flutes), null);
+                csFillSelect(document.getElementById('csPrinting'), csOptions.printing, null);
+                csFillSelect(document.getElementById('csUnit'),
+                    (csOptions.units || []).map(function (unit) {
+                        return { value: unit, label: unit.toUpperCase() };
+                    }), null);
+
+                var profileItems = (csOptions.profiles || []).map(function (profile) {
+                    return {
+                        value: String(profile.id),
+                        label: profile.name + ' (v' + profile.version + ')'
+                    };
+                });
+                csFillSelect(document.getElementById('csBoardProfile'), profileItems, 'Select board profile...');
+
+                document.getElementById('csBoxStyle').value = csOptions.default_box_style || 'RSC';
+                var unitSelect = document.getElementById('csUnit');
+                if (unitSelect.querySelector('option[value="cm"]')) {
+                    unitSelect.value = 'cm';
+                }
+                if (csOptions.profiles && csOptions.profiles.length === 1) {
+                    document.getElementById('csBoardProfile').value = String(csOptions.profiles[0].id);
+                }
+                csApplyProfile();
+
+                if (!profileItems.length) {
+                    csShowError('No active board profiles are configured. Run the board profile seeder, then reload this page.');
+                }
+            }).fail(function (xhr) {
+                var message = 'Could not load carton quotation options.';
+                if (xhr.responseJSON && xhr.responseJSON.message) {
+                    message = xhr.responseJSON.message;
+                } else if (xhr.status === 403) {
+                    message = 'You do not have permission to create sale items.';
+                } else if (xhr.status === 404) {
+                    message = 'The carton quotation endpoint was not found. Clear route/config caches and reload.';
+                } else if (xhr.status >= 500) {
+                    message = 'The carton quotation options failed on the server. Confirm the board profile migrations have been applied.';
+                }
+                csShowError(message);
+            });
         })();
     </script>
 @endsection

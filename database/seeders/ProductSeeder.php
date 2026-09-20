@@ -24,6 +24,7 @@ class ProductSeeder extends Seeder
         $packagingCategory = Category::where('name', 'Packaging Supplies')->first();
         $machineCategory = Category::where('name', 'Machine Parts & Consumables')->first();
         $chemicalCategory = Category::where('name', 'Chemicals & Lubricants')->first();
+        $mixingCategory = Category::where('name', 'Mixing Materials')->first();
         $syrupBoxCategory = Category::where('name', 'Syrup Boxes')->first();
         $pharmaBoxCategory = Category::where('name', 'Pharmaceutical Boxes')->first();
         $customCartonCategory = Category::where('name', 'Custom Cartons')->first();
@@ -61,6 +62,13 @@ class ProductSeeder extends Seeder
             ['name' => 'Recycled Paper Roll', 'unit' => 'roll', 'min_stock' => 10],
             ['name' => 'Testliner Paper', 'unit' => 'roll', 'min_stock' => 10],
             ['name' => 'Fluting Paper', 'unit' => 'roll', 'min_stock' => 10],
+            // Client-approved 3D carton paper materials
+            ['name' => 'Test Liner', 'unit' => 'roll', 'min_stock' => 10],
+            ['name' => 'Fluting', 'unit' => 'roll', 'min_stock' => 10],
+            ['name' => 'Kraft Liner', 'unit' => 'roll', 'min_stock' => 10],
+            ['name' => 'Semi Kraft', 'unit' => 'roll', 'min_stock' => 10],
+            ['name' => 'White Liner', 'unit' => 'roll', 'min_stock' => 10],
+            ['name' => 'Box Board', 'unit' => 'roll', 'min_stock' => 10],
         ];
 
         foreach ($paperMaterials as $material) {
@@ -153,7 +161,32 @@ class ProductSeeder extends Seeder
         }
 
         // ============================================================
-        // 4. PACKAGING SUPPLIES
+        // 4. MIXING MATERIALS FOR 3D CARTONS
+        // ============================================================
+        $mixingMaterials = [
+            ['name' => 'Seligate (Glue)', 'unit' => 'kg', 'min_stock' => 25],
+            ['name' => 'Corn Flour', 'unit' => 'kg', 'min_stock' => 25],
+            ['name' => 'Borax', 'unit' => 'kg', 'min_stock' => 10],
+            ['name' => 'Caustic Soda', 'unit' => 'kg', 'min_stock' => 10],
+        ];
+
+        foreach ($mixingMaterials as $material) {
+            Product::firstOrCreate(
+                ['name' => $material['name']],
+                [
+                    'slug' => Str::slug($material['name']) . '-' . Str::random(6),
+                    'unit' => $material['unit'],
+                    'category_id' => ($mixingCategory ?: $chemicalCategory)->id,
+                    'type' => 'raw_material',
+                    'min_stock_alert' => $material['min_stock'],
+                    'is_active' => true,
+                    'description' => '3D carton mixing material - ' . $material['name'],
+                ]
+            );
+        }
+
+        // ============================================================
+        // 5. PACKAGING SUPPLIES
         // ============================================================
         $packagingMaterials = [
             ['name' => 'Plastic Strapping', 'unit' => 'roll', 'min_stock' => 10],
@@ -190,7 +223,7 @@ class ProductSeeder extends Seeder
         }
 
         // ============================================================
-        // 5. MACHINE PARTS & CONSUMABLES
+        // 6. MACHINE PARTS & CONSUMABLES
         // ============================================================
         $machineMaterials = [
             ['name' => 'Cutting Blade', 'unit' => 'pcs', 'min_stock' => 10],
@@ -226,7 +259,7 @@ class ProductSeeder extends Seeder
         }
 
         // ============================================================
-        // 6. CHEMICALS & LUBRICANTS
+        // 7. CHEMICALS & LUBRICANTS
         // ============================================================
         $chemicalMaterials = [
             ['name' => 'Machine Oil', 'unit' => 'liter', 'min_stock' => 10],
@@ -255,7 +288,7 @@ class ProductSeeder extends Seeder
         }
 
         // ============================================================
-        // 7. SYRUP BOXES (Finished Goods)
+        // 8. SYRUP BOXES (Finished Goods)
         // ============================================================
         $syrupBoxes = [
             ['name' => '120ml Syrup Box', 'unit' => 'box', 'min_stock' => 50],
@@ -288,7 +321,7 @@ class ProductSeeder extends Seeder
         }
 
         // ============================================================
-        // 8. PHARMACEUTICAL BOXES (Finished Goods)
+        // 9. PHARMACEUTICAL BOXES (Finished Goods)
         // ============================================================
         $pharmaBoxes = [
             ['name' => 'Tablets Carton Box 10x10', 'unit' => 'box', 'min_stock' => 50],
@@ -318,7 +351,7 @@ class ProductSeeder extends Seeder
         }
 
         // ============================================================
-        // 9. CUSTOM CARTONS (Finished Goods)
+        // 10. CUSTOM CARTONS (Finished Goods)
         // ============================================================
         $customCartons = [
             ['name' => 'Food Packaging Carton Box', 'unit' => 'box', 'min_stock' => 20],

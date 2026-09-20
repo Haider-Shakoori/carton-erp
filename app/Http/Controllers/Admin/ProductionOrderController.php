@@ -232,17 +232,14 @@ class ProductionOrderController extends Controller
             }
 
             if ($availability['has_shortage']) {
-                $shortageMessage = 'The following materials have shortages:<br>';
-                foreach ($availability['shortages'] as $shortage) {
-                    $shortageMessage .= "- {$shortage['material_name']}: Need {$shortage['total_required']} {$shortage['unit']}, Available: {$shortage['available_stock']} {$shortage['unit']}<br>";
-                }
-
-                \Log::warning('Production Order Store - Material shortages detected', [
-                    'shortages' => $availability['shortages']
+                // A shortage no longer blocks creation. The production order keeps
+                // the customer's requested quantity as the plan, while Start
+                // Production allocates only the quantity current raw material can
+                // support. The real finished quantity is entered at completion.
+                \Log::warning('Production Order Store - Material shortages recorded for partial production', [
+                    'shortages' => $availability['shortages'],
+                    'quantity_ordered' => $request->quantity_ordered,
                 ]);
-
-                DB::rollBack();
-                return back()->with('error', $shortageMessage)->withInput();
             }
 
             // ─── LOG 6: Calculating costs ───
@@ -450,6 +447,19 @@ class ProductionOrderController extends Controller
             'approvedBy',
         ]);
 
+        $maxProducibleQuantity = null;
+        if ($productionOrder->status === ProductionOrder::STATUS_PENDING) {
+            try {
+                $maxProducibleQuantity = app(\App\Services\ProductionQuantityService::class)
+                    ->maxProducibleQuantity($productionOrder);
+            } catch (\Throwable $e) {
+                Log::warning('Could not calculate max producible quantity', [
+                    'production_order_id' => $productionOrder->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
         // ─── GET LINKED SALE ───
         $sale = Sale::where('production_order_id', $productionOrder->id)
             ->with(['currency', 'items', 'items.bom'])
@@ -579,6 +589,7 @@ class ProductionOrderController extends Controller
 
             return view('admin.production-orders.show', compact(
                 'productionOrder',
+                'maxProducibleQuantity',
                 'progress',
                 'sale',
                 'currencyCode',
@@ -656,6 +667,7 @@ class ProductionOrderController extends Controller
 
         return view('admin.production-orders.show', compact(
             'productionOrder',
+            'maxProducibleQuantity',
             'progress',
             'sale',
             'currencyCode',
@@ -688,268 +700,67 @@ class ProductionOrderController extends Controller
      * Start production (consume materials).
      * ✅ COMPLETE FIX
      */
-    public function startProduction(ProductionOrder $productionOrder)
-    {
+    public function startProduction(
+        ProductionOrder $productionOrder,
+        ?Request $request = null
+    ) {
+        $request ??= request();
+
+        $plannedInput = $request->input('quantity_planned');
+        $plannedQuantity = $plannedInput === null
+            ? (float) $productionOrder->quantity_ordered
+            : (float) $plannedInput;
+
+        if ($plannedInput !== null) {
+            $request->validate([
+                'quantity_planned' => 'required|numeric|min:0.01|max:999999999.99',
+            ]);
+        }
+
         try {
-            Log::info('Starting production order', [
-                'production_order_id' => $productionOrder->id,
-                'order_number' => $productionOrder->order_number,
-                'status' => $productionOrder->status,
-                'quantity_ordered' => $productionOrder->quantity_ordered,
-            ]);
+            $sale = Sale::where('production_order_id', $productionOrder->id)
+                ->with('items')
+                ->first();
 
-            DB::beginTransaction();
+            $result = app(\App\Services\ProductionQuantityService::class)
+                ->start($productionOrder, $sale, $plannedQuantity);
 
-            // ─── STEP 0: Validate production order status ───
-            if ($productionOrder->status !== 'pending') {
-                throw new \Exception('Production order must be in "pending" status. Current status: ' . $productionOrder->status);
-            }
-
-            // ─── STEP 1: Authoritative material source ───
-            // Production Orders created from a sale carry a frozen planned snapshot
-            // in production_order_materials (kg–based, wastage already applied,
-            // duplicate same–product rows kept independent). That snapshot is the
-            // authoritative requirement for Start Production — never the current BOM
-            // template, Product.unit or legacy BOM item quantities. Legacy orders
-            // without a snapshot fall back to the BOM template path unchanged.
-            $snapshot = $productionOrder->materials;
-
-            $materials = [];
-
-            if ($snapshot->isNotEmpty()) {
-                foreach ($snapshot as $mat) {
-                    $remaining = max(
-                        (float) $mat->required_quantity - (float) ($mat->consumed_quantity ?? 0),
-                        0
-                    );
-
-                    if ($remaining <= 0.000001) {
-                        continue;
-                    }
-
-                    $materials[] = [
-                        'material_id' => (int) $mat->product_id,
-                        'quantity' => $remaining,
-                        'planned_quantity' => $remaining,
-                        'wastage_quantity' => 0,
-                        'unit' => $mat->unit ?: 'kg',
-                        'material_name' => $mat->product->name ?? 'Material #' . $mat->product_id,
-                    ];
-
-                    Log::info('Material requirement (planned snapshot)', [
-                        'production_order_material_id' => $mat->id,
-                        'material_id' => $mat->product_id,
-                        'material_name' => $mat->product->name ?? 'Unknown',
-                        'required_qty' => $remaining,
-                        'unit' => $mat->unit ?? 'kg',
-                        'available_quantity' => $mat->available_quantity,
-                        'shortage_quantity' => $mat->shortage_quantity,
-                        'cost_per_unit' => $mat->cost_per_unit,
-                    ]);
-                }
-
-                if (empty($materials)) {
-                    throw new \Exception('All planned materials have already been consumed for this production order.');
-                }
-            } else {
-                // ─── Legacy fallback: build materials from the BOM template ───
-                $bom = $productionOrder->bom;
-
-                if (!$bom) {
-                    throw new \Exception('No BOM found for this production order.');
-                }
-
-                if ($bom->items->count() === 0) {
-                    throw new \Exception('BOM has no items defined. Please add materials to the BOM first.');
-                }
-
-                $quantity = (float) $productionOrder->quantity_ordered;
-
-                if ($quantity <= 0) {
-                    throw new \Exception('Invalid quantity: ' . $quantity);
-                }
-
-                Log::info('BOM found', [
-                    'bom_id' => $bom->id,
-                    'bom_code' => $bom->code,
-                    'items_count' => $bom->items->count(),
-                    'quantity' => $quantity,
-                ]);
-
-                foreach ($bom->items as $item) {
-                    // Get the material/product
-                    $material = $item->material;
-                    if (!$material) {
-                        Log::error('BOM item missing material', [
-                            'bom_item_id' => $item->id,
-                            'material_id' => $item->material_id,
-                        ]);
-                        continue;
-                    }
-
-                    // Calculate required quantity including wastage
-                    $requiredQty = $item->calculateStockRequirement((float) $quantity, false);
-                    $wastagePercent = (float) ($item->wastage_percentage ?? 0);
-                    $totalRequired = $item->calculateStockRequirement((float) $quantity, true);
-                    $wastageQty = $totalRequired - $requiredQty;
-
-                    // ✅ FIX: Get current stock for this material
-                    $availableStock = $this->getAvailableStockForMaterial($material->id);
-
-                    Log::info('Material requirement (legacy BOM)', [
-                        'material_id' => $material->id,
-                        'material_name' => $material->name,
-                        'required_qty' => $requiredQty,
-                        'wastage_percent' => $wastagePercent,
-                        'wastage_qty' => $wastageQty,
-                        'total_required' => $totalRequired,
-                        'available_stock' => $availableStock,
-                        'unit' => $item->unit ?? 'unit',
-                    ]);
-
-                    $materials[] = [
-                        'material_id' => (int) $material->id,
-                        'quantity' => $totalRequired,
-                        'planned_quantity' => $requiredQty,
-                        'wastage_quantity' => $wastageQty,
-                        'unit' => $item->unit ?? 'unit',
-                        'material_name' => $material->name ?? 'Unknown Material',
-                    ];
-                }
-
-                if (empty($materials)) {
-                    throw new \Exception('No valid materials found in the BOM.');
-                }
-            }
-
-            // ─── STEP 3: Check stock availability using StockDeductionService ───
-            Log::info('Checking material availability', [
-                'materials' => $materials,
-            ]);
-
-            $stockService = new \App\Services\StockDeductionService();
-            $availability = $stockService->checkAvailability($materials);
-
-            Log::info('Availability result', [
-                'available' => $availability['available'],
-                'materials' => $availability['materials'],
-            ]);
-
-            if (!$availability['available']) {
-                // Build friendly shortage messages
-                $shortageMessages = [];
-                foreach ($availability['materials'] as $material) {
-                    if (!$material['available']) {
-                        $materialName = $material['material_name'] ?? 'Material #' . $material['material_id'];
-                        $shortageMessages[] = sprintf(
-                            '%s: Need %s %s, Available: %s %s (Shortage: %s %s)',
-                            $materialName,
-                            number_format($material['required_quantity'], 2),
-                            $material['unit'],
-                            number_format($material['available_quantity'], 2),
-                            $material['unit'],
-                            number_format($material['shortage_quantity'], 2),
-                            $material['unit']
-                        );
-                    }
-                }
-                $shortages = implode(" | ", $shortageMessages);
-
-                $errorMessage = "Cannot start production. Material shortages: " . $shortages;
-
-                DB::rollBack();
-
-                Log::warning('Material shortages detected', [
-                    'shortages' => $shortageMessages,
-                    'production_order_id' => $productionOrder->id,
-                ]);
-
-                return redirect()->route('production-orders.show', $productionOrder)
-                    ->with('error', $errorMessage);
-            }
-
-            // ─── STEP 4: Get the associated sale ───
-            // Correct NULL semantics: the linked Sale ID when the production order
-            // genuinely belongs to a sale, otherwise NULL — never 0. The PMC
-            // production_material_consumptions.sale_id FK (ON DELETE SET NULL)
-            // only accepts a real sales.id or NULL.
-            $sale = Sale::where('production_order_id', $productionOrder->id)->first();
-            $saleId = $sale?->id;
-
-            Log::info('Deducting materials from stock', [
-                'production_order_id' => $productionOrder->id,
-                'sale_id' => $saleId,
-            ]);
-
-            // ─── STEP 5: Deduct materials using StockDeductionService ───
-            $deductionResult = $stockService->deductMaterials(
-                $productionOrder->id,
-                $saleId,
-                $materials
+            $message = sprintf(
+                'Production started for %s units. Raw material and production cost were calculated for this manually entered quantity.',
+                number_format($result['planned_quantity'], 2)
             );
 
-            if ($deductionResult->isEmpty()) {
-                throw new \Exception('No materials were consumed. Please check stock availability.');
+            $variance = (float) $result['variance_quantity'];
+            if ($variance > 0.000001) {
+                $message .= sprintf(
+                    ' Planned production is %s units above the customer order.',
+                    number_format($variance, 2)
+                );
+            } elseif ($variance < -0.000001) {
+                $message .= sprintf(
+                    ' Planned production is %s units below the customer order.',
+                    number_format(abs($variance), 2)
+                );
             }
 
-            Log::info('Materials consumed', [
-                'production_order_id' => $productionOrder->id,
-                'deduction_count' => $deductionResult->count(),
-                'total_cost_usd' => $deductionResult->sum('total_cost_usd'),
-            ]);
-
-            $actualMaterialCostUsd = (float) $deductionResult->sum('total_cost_usd');
-            $productionOrder->total_material_cost = $actualMaterialCostUsd;
-            $productionOrder->total_cost = $actualMaterialCostUsd
-                + (float) $productionOrder->total_labor_cost
-                + (float) $productionOrder->total_overhead_cost;
-
-            // ─── STEP 6: Update production order status ───
-            $productionOrder->update([
-                'status' => 'in_progress',
-                'started_at' => now(),
-            ]);
-
-            // ─── STEP 7: Update sale if exists ───
-            if ($sale) {
-                $sale->save();
-                Log::info('Sale updated', [
-                    'sale_id' => $sale->id,
-                    'sale_no' => $sale->sale_no,
-                ]);
-            }
-
-            DB::commit();
-
-            $totalCost = $deductionResult->sum('total_cost_usd');
-            $message = "Production started successfully! " . $deductionResult->count() . " materials consumed. Total cost: $" . number_format($totalCost, 2);
-
-            if ($sale) {
-                $message .= " Sale #" . $sale->sale_no . " is now in production.";
-            }
+            $message .= ' Enter the real finished quantity when production ends.';
 
             return redirect()->route('production-orders.show', $productionOrder)
                 ->with('success', $message);
-
-        } catch (\Exception $e) {
-            DB::rollBack();
-
+        } catch (\Throwable $e) {
             Log::error('Start production failed', [
-                'production_order_id' => $productionOrder->id ?? 'unknown',
+                'production_order_id' => $productionOrder->id,
+                'planned_quantity' => $plannedQuantity,
                 'error' => $e->getMessage(),
-                'file' => $e->getFile(),
-                'line' => $e->getLine(),
                 'trace' => $e->getTraceAsString(),
             ]);
 
             return redirect()->route('production-orders.show', $productionOrder)
+                ->withInput()
                 ->with('error', 'Failed to start production: ' . $e->getMessage());
         }
     }
 
-    /**
-     * ✅ NEW: Helper method to get available stock for a material
-     */
     private function getAvailableStockForMaterial($materialId)
     {
         return PurchaseItem::where('product_id', $materialId)
@@ -962,65 +773,87 @@ class ProductionOrderController extends Controller
     /**
      * Complete production (produce finished goods).
      */
-    public function completeProduction(ProductionOrder $productionOrder)
-    {
-        if ($productionOrder->status !== 'in_progress') {
+    public function completeProduction(
+        ProductionOrder $productionOrder,
+        ?Request $request = null
+    ) {
+        if ($productionOrder->status !== ProductionOrder::STATUS_IN_PROGRESS) {
             return back()->with('error', 'Only in-progress orders can be completed.');
         }
 
+        $request ??= request();
+
+        // Direct service/controller calls used by existing regression tests keep
+        // the historical default. Normal HTTP completion always submits the
+        // actual quantity through the completion form.
+        $actualInput = $request->input('quantity_produced');
+        $actualQuantity = $actualInput === null
+            ? (float) $productionOrder->quantity_ordered
+            : (float) $actualInput;
+
+        if ($actualInput !== null) {
+            $request->validate([
+                'quantity_produced' => 'required|numeric|min:0.01|max:999999999.99',
+            ]);
+        }
+
         try {
-            DB::beginTransaction();
+            $sale = Sale::where('production_order_id', $productionOrder->id)
+                ->with(['items', 'currency'])
+                ->first();
 
-            // Update production order
-            $productionOrder->quantity_produced = $productionOrder->quantity_ordered;
-            $productionOrder->status = 'completed';
-            $productionOrder->completion_date = now();
-            $productionOrder->save();
+            $result = app(\App\Services\ProductionQuantityService::class)
+                ->complete($productionOrder, $actualQuantity, $sale);
 
-            // ─── CRITICAL: Update the associated sale if exists ───
-            $sale = Sale::where('production_order_id', $productionOrder->id)->first();
+            $variance = (float) $result['variance_quantity'];
+            $message = sprintf(
+                'Production completed with actual output of %s units.',
+                number_format($actualQuantity, 2)
+            );
 
-            if ($sale) {
-                // Mark sale as produced
-                $sale->is_produced = true;
-                $sale->save();
-
-                \Log::info('Sale updated from production completion', [
-                    'sale_id' => $sale->id,
-                    'sale_no' => $sale->sale_no,
-                    'production_order_id' => $productionOrder->id,
-                ]);
+            if ($variance > 0.000001) {
+                $message .= sprintf(
+                    ' This is %s units above the original order.',
+                    number_format($variance, 2)
+                );
+            } elseif ($variance < -0.000001) {
+                $message .= sprintf(
+                    ' This is %s units below the original order.',
+                    number_format(abs($variance), 2)
+                );
             } else {
-                \Log::warning('No sale found for production order', [
-                    'production_order_id' => $productionOrder->id,
-                ]);
+                $message .= ' Actual output matches the original order.';
             }
 
-            DB::commit();
-
-            $message = 'Production completed successfully!';
             if ($sale) {
-                $message .= ' Sale has been marked as produced.';
+                $message .= ' The final invoice quantity and amount were updated to the actual production quantity.';
+
+                $overpayment = (float) data_get($result, 'invoice.overpayment', 0);
+                if ($overpayment > 0) {
+                    $message .= sprintf(
+                        ' Customer payments exceed the revised invoice by %s %s; the excess remains as customer credit.',
+                        $sale->currency?->symbol ?? '',
+                        number_format($overpayment, 2)
+                    );
+                }
             }
 
             return redirect()->route('production-orders.show', $productionOrder)
                 ->with('success', $message);
-
-        } catch (\Exception $e) {
-            DB::rollBack();
-            \Log::error('Complete production failed', [
+        } catch (\Throwable $e) {
+            Log::error('Complete production failed', [
                 'production_order_id' => $productionOrder->id,
+                'actual_quantity' => $actualQuantity,
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
             ]);
 
-            return back()->with('error', 'Failed to complete production: ' . $e->getMessage());
+            return back()
+                ->withInput()
+                ->with('error', 'Failed to complete production: ' . $e->getMessage());
         }
     }
 
-    /**
-     * Cancel a production order.
-     */
     public function cancelProduction(ProductionOrder $productionOrder)
     {
         if (!in_array($productionOrder->status, ['pending', 'in_progress'])) {

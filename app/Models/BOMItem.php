@@ -5,6 +5,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use App\Services\AdhesiveMixCalculator;
 
 class BOMItem extends Model
 {
@@ -17,6 +18,7 @@ class BOMItem extends Model
         'material_id',
         'quantity',
         'unit',
+        'component_type',
         'wastage_percentage',
         'cost_per_unit_usd',
         'cost_per_unit_afn',
@@ -51,6 +53,7 @@ class BOMItem extends Model
         'multiplication_layer',
         'formula_constant',
         'work_percentage',
+        'apply_work_percentage',
         'multiplication_method',
         // ─── Fixed Percentage Fields ───
         'base_material_id',
@@ -91,6 +94,7 @@ class BOMItem extends Model
         'multiplication_layer' => 'integer',
         'formula_constant' => 'integer',
         'work_percentage' => 'decimal:2',
+        'apply_work_percentage' => 'boolean',
         'percentage_of_base' => 'decimal:2',
         'rate_per_unit' => 'decimal:8',
         'rate_base_units' => 'integer',
@@ -123,6 +127,7 @@ class BOMItem extends Model
             'cut_roll' => 'Cut/Roll Formula',
             'fixed_percentage' => 'Percentage of Base Material',
             'fixed_rate' => 'Fixed Rate',
+            'adhesive_mix' => 'Adhesive Mix — Dimension Based',
         ];
         return $labels[$this->formula_type] ?? 'Unknown';
     }
@@ -135,6 +140,7 @@ class BOMItem extends Model
             'cut_roll' => 'bi-scissors',
             'fixed_percentage' => 'bi-percent',
             'fixed_rate' => 'bi-clock',
+            'adhesive_mix' => 'bi-droplet-half',
         ];
         return $icons[$this->formula_type] ?? 'bi-question';
     }
@@ -142,6 +148,52 @@ class BOMItem extends Model
     public function getCurrencyBadgeAttribute()
     {
         return $this->purchase_currency === 'USD' ? 'usd' : 'afn';
+    }
+
+    // ─── COMPONENT CLASSIFICATION ───
+
+    /**
+     * Explicit component type, falling back to safe legacy inference.
+     * paper | adhesive | printing | auxiliary
+     */
+    public function resolvedComponentType(): string
+    {
+        $explicit = (string) ($this->component_type ?? '');
+
+        if ($explicit !== '') {
+            return $explicit;
+        }
+
+        if ($this->is_formula_based && $this->formula_type === 'adhesive_mix') {
+            return 'adhesive';
+        }
+
+        if ($this->is_formula_based && $this->formula_type === 'fixed_rate') {
+            return 'auxiliary';
+        }
+
+        return 'paper';
+    }
+
+    public function isAdhesiveComponent(): bool
+    {
+        return $this->resolvedComponentType() === 'adhesive';
+    }
+
+    /**
+     * Whether the client 40% commercial work/profit applies to this row.
+     *
+     * Legacy rows preserve the historical behaviour (work applies except on
+     * dimension-driven adhesive rows). New technical rows carry an explicit
+     * flag, so adhesive/mixing materials can never silently receive the 40%.
+     */
+    public function appliesWorkProfit(): bool
+    {
+        if ($this->apply_work_percentage !== null) {
+            return (bool) $this->apply_work_percentage;
+        }
+
+        return ! $this->isAdhesiveComponent();
     }
 
     // ─── FORMULA CALCULATION ───
@@ -213,7 +265,65 @@ class BOMItem extends Model
             return $length * $width * $gsm * $ply * $layers / $constant;
         }
 
+        if ($this->formula_type === 'adhesive_mix') {
+            return app(AdhesiveMixCalculator::class)->perCartonKg(
+                (float) ($this->length_inch ?? 0),
+                (float) ($this->width_inch ?? 0),
+                (float) ($this->height_inch ?? 0),
+                $this->adhesiveRecipeKey(),
+                $this->adhesiveOverrides()
+            );
+        }
+
         return (float) $this->quantity;
+    }
+
+    /**
+     * Recipe key for an adhesive_mix row. Uses the snapshotted key first so a
+     * renamed product does not change historical BOM calculations.
+     */
+    public function adhesiveRecipeKey(): ?string
+    {
+        $data = is_array($this->formula_data ?? null) ? $this->formula_data : [];
+
+        if (! empty($data['recipe_key'])) {
+            return (string) $data['recipe_key'];
+        }
+
+        return app(AdhesiveMixCalculator::class)->resolveRecipeKey($this->material?->name);
+    }
+
+    /**
+     * Snapshotted adhesive parameter overrides (empty values fall back to config).
+     */
+    public function adhesiveOverrides(): array
+    {
+        $data = is_array($this->formula_data ?? null) ? $this->formula_data : [];
+        $keys = [
+            'sq_inch_to_m2',
+            'glue_lines',
+            'dry_glue_gsm_per_line',
+            'glue_wastage_percentage',
+            'adhesive_solids_percentage',
+            'recipe_percentage',
+        ];
+
+        return array_intersect_key($data, array_flip($keys));
+    }
+
+    /**
+     * Effective adhesive parameters for this row (snapshot over config defaults).
+     */
+    public function adhesiveParameters(): array
+    {
+        $calculator = app(AdhesiveMixCalculator::class);
+        $recipeKey = $this->adhesiveRecipeKey();
+        $overrides = $this->adhesiveOverrides();
+        $parameters = $calculator->parameters($overrides);
+        $parameters['recipe_key'] = $recipeKey;
+        $parameters['recipe_fraction'] = $calculator->recipeFraction($recipeKey, $overrides);
+
+        return $parameters;
     }
 
 
@@ -275,11 +385,19 @@ class BOMItem extends Model
             $rate = (float) ($this->rate_per_unit ?? 0);
             $baseUnits = max((float) ($this->rate_base_units ?? 100), 0.000001);
             $required = ($productionQuantity / $baseUnits) * $rate;
+        } elseif ($this->is_formula_based && $this->formula_type === 'adhesive_mix') {
+            $required = $this->calculateStockKgPerUnit() * $productionQuantity;
         } else {
             $required = (float) $this->quantity * $productionQuantity;
         }
 
         if (!$includeWastage) {
+            return max($required, 0.0);
+        }
+
+        // The adhesive formula already applies the configured glue wastage to the
+        // dry glue, so a row-level wastage would be double counted.
+        if ($this->is_formula_based && $this->formula_type === 'adhesive_mix') {
             return max($required, 0.0);
         }
 
@@ -415,6 +533,24 @@ class BOMItem extends Model
                     'type' => 'Fixed Rate',
                     'params' => [
                         'Rate' => $this->rate_per_unit . ' per ' . $this->rate_base_units . ' units',
+                    ],
+                ];
+            case 'adhesive_mix':
+                $calculator = app(AdhesiveMixCalculator::class);
+                $parameters = $calculator->parameters($this->adhesiveOverrides());
+
+                return [
+                    'type' => 'Adhesive Mix — Dimension Based',
+                    'params' => [
+                        'Length' => $this->length_inch . ' in',
+                        'Width' => $this->width_inch . ' in',
+                        'Height' => $this->height_inch . ' in',
+                        'Glue Lines' => $parameters['glue_lines'],
+                        'Dry Glue GSM / Line' => $parameters['dry_glue_gsm_per_line'],
+                        'Glue Wastage' => $parameters['glue_wastage_percentage'] . '%',
+                        'Adhesive Solids' => $parameters['adhesive_solids_percentage'] . '%',
+                        'Recipe' => $this->adhesiveRecipeKey() ?? 'Not mapped',
+                        'Ingredient kg / Carton' => $this->calculateStockKgPerUnit(),
                     ],
                 ];
             default:

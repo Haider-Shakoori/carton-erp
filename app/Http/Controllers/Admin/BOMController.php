@@ -57,7 +57,10 @@ class BOMController extends Controller
 
                 if ($latestPurchaseItem && $latestPurchaseItem->purchase) {
                     $material->purchase_currency = $latestPurchaseItem->purchase->currency->code ?? 'AFN';
-                    $material->purchase_currency_id = $latestPurchaseItem->purchase->currency_id ?? null;
+                    $material->purchase_currency_id = $this->resolveCurrencyId(
+                        $latestPurchaseItem->purchase->currency_id ?? null,
+                        $material->purchase_currency
+                    );
                 } else {
                     // Default to AFN if no purchase exists
                     $material->purchase_currency = 'AFN';
@@ -151,8 +154,14 @@ class BOMController extends Controller
                 $lineBaseUsdPerUnit = $basePerUnit * $costPerUnitUsd;
                 $linePhysicalUsdPerUnit = $withWastePerUnit * $costPerUnitUsd;
                 $workPercentage = (float) ($item->work_percentage ?? $bom->work_percentage ?? 40);
-                $lineWorkAfnPerUnit = ($lineBaseUsdPerUnit * $exchangeRate) * ($workPercentage / 100);
-                $printCostAfnPerUnit = (float) ($item->print ?? 0);
+                // Adhesive/mixing rows are physical material cost only: no
+                // commercial Standard Work / Profit and no print component.
+                // Explicit apply_work_percentage flags on technical rows take
+                // precedence over the legacy inference.
+                $lineWorkAfnPerUnit = $item->appliesWorkProfit()
+                    ? ($lineBaseUsdPerUnit * $exchangeRate) * ($workPercentage / 100)
+                    : 0.0;
+                $printCostAfnPerUnit = $item->isAdhesiveComponent() ? 0.0 : (float) ($item->print ?? 0);
                 $rowNetRate = ($lineBaseUsdPerUnit * $exchangeRate)
                     + $lineWorkAfnPerUnit
                     + $printCostAfnPerUnit;
@@ -369,7 +378,10 @@ class BOMController extends Controller
                     'latest_cost_afn' => $latestCostAfn,
                     'weighted_avg_cost' => $weightedAvgCost,
                     'purchase_currency' => $purchaseCurrency,
-                    'purchase_currency_id' => $latest['purchase_currency_id'] ?? null,
+                    'purchase_currency_id' => $this->resolveCurrencyId(
+                        $latest['purchase_currency_id'] ?? null,
+                        $purchaseCurrency
+                    ),
                     'exchange_rate' => $exchangeRate,
                     'batch_breakdown' => [
                         'batches' => $batchDetails,
@@ -414,6 +426,11 @@ class BOMController extends Controller
             'has_items' => $request->has('items'),
         ]);
 
+        // Legacy purchases may reference currency ids that no longer exist after
+        // the currencies table was re-seeded. Normalise those references to the
+        // current row for the submitted currency code before validating.
+        $this->normalizeItemCurrencyReferences($request);
+
         $request->validate([
             'name' => 'required|string|max:255',
             'product_id' => 'required|exists:products,id',
@@ -432,7 +449,7 @@ class BOMController extends Controller
             'items.*.purchase_currency_id' => 'nullable|exists:currencies,id',
             'items.*.roll_weight' => 'nullable|numeric|min:0',
             'items.*.notes' => 'nullable|string',
-            'items.*.formula_type' => 'nullable|string|in:fixed,carton_3d,cut_roll,fixed_percentage,fixed_rate',
+            'items.*.formula_type' => 'nullable|string|in:fixed,carton_3d,cut_roll,fixed_percentage,fixed_rate,adhesive_mix',
             'items.*.is_formula_based' => 'nullable|boolean',
             // 3D Carton fields
             'items.*.length_inch' => 'nullable|numeric|min:0',
@@ -461,6 +478,16 @@ class BOMController extends Controller
             // Fixed Rate fields
             'items.*.rate_per_unit' => 'nullable|numeric|min:0',
             'items.*.rate_base_units' => 'nullable|integer|min:1',
+            // Adhesive mix (dimension driven)
+            'items.*.glue_lines' => 'nullable|numeric|min:0',
+            'items.*.dry_glue_gsm_per_line' => 'nullable|numeric|min:0',
+            'items.*.glue_wastage_percentage' => 'nullable|numeric|min:0|max:100',
+            'items.*.adhesive_solids_percentage' => 'nullable|numeric|min:0|max:100',
+            'items.*.recipe_percentage' => 'nullable|numeric|min:0',
+            'items.*.recipe_key' => 'nullable|string|max:50',
+            // Component classification
+            'items.*.component_type' => 'nullable|string|in:paper,adhesive,printing,auxiliary',
+            'items.*.apply_work_percentage' => 'nullable|boolean',
         ]);
 
         Log::info('BOM Store - Validation Passed');
@@ -553,7 +580,11 @@ class BOMController extends Controller
                     ]);
 
                     $quantity = floatval($itemData['quantity'] ?? 0);
-                    $wastage = floatval($itemData['wastage_percentage'] ?? 5);
+                    $isAdhesiveMix = (isset($itemData['is_formula_based']) && $itemData['is_formula_based'])
+                        && ($itemData['formula_type'] ?? 'fixed') === 'adhesive_mix';
+                    // Glue wastage is applied inside the adhesive formula, so a
+                    // row-level wastage would be double counted.
+                    $wastage = $isAdhesiveMix ? 0.0 : floatval($itemData['wastage_percentage'] ?? 5);
                     $quantityWithWastage = $quantity * (1 + ($wastage / 100));
                     $totalCostUsd = $quantityWithWastage * floatval($costPerUnitUsd);
                     $totalCostAfn = $quantityWithWastage * floatval($costPerUnitAfn);
@@ -572,9 +603,23 @@ class BOMController extends Controller
                     $isFormulaBased = isset($itemData['is_formula_based']) && $itemData['is_formula_based'];
                     $formulaType = $isFormulaBased ? ($itemData['formula_type'] ?? 'fixed') : 'fixed';
 
+                    // The per-gram/per-kg paper rate is purchase-driven. Do not
+                    // persist a manually typed or stale template value for paper.
+                    if ($isFormulaBased && in_array($formulaType, ['carton_3d', 'cut_roll'], true)) {
+                        $latestPurchaseCost = app(\App\Services\BOMCostingService::class)
+                            ->latestInventoryCost((int) $material->id, $exchangeRate, false);
+
+                        if (($latestPurchaseCost['found'] ?? false)
+                            && ($latestPurchaseCost['basis_unit'] ?? null) === 'kg'
+                            && (float) ($latestPurchaseCost['cost_afn'] ?? 0) > 0) {
+                            $itemData['per_gram_rate'] = (float) $latestPurchaseCost['cost_afn'];
+                        }
+                    }
+
                     Log::info("BOM Store - Formula Check", [
                         'is_formula_based' => $isFormulaBased,
                         'formula_type' => $formulaType,
+                        'per_gram_rate_from_purchase' => $itemData['per_gram_rate'] ?? null,
                     ]);
 
                     // ─── Calculate roll weight based on formula type ───
@@ -591,6 +636,12 @@ class BOMController extends Controller
                         'material_id' => $itemData['material_id'],
                         'quantity' => $itemData['quantity'],
                         'unit' => $itemData['unit'] ?? ($material->unit ?? 'Unit'),
+                        'component_type' => $itemData['component_type']
+                            ?? ($formulaType === 'adhesive_mix' ? 'adhesive' : null),
+                        'apply_work_percentage' => array_key_exists('apply_work_percentage', $itemData)
+                            && $itemData['apply_work_percentage'] !== null
+                                ? (bool) $itemData['apply_work_percentage']
+                                : ($formulaType === 'adhesive_mix' ? false : null),
                         'wastage_percentage' => $wastage,
                         'cost_per_unit_usd' => $costPerUnitUsd,
                         'cost_per_unit_afn' => $costPerUnitAfn,
@@ -798,11 +849,82 @@ class BOMController extends Controller
                 ];
                 break;
 
+            case 'adhesive_mix':
+                $calculator = app(\App\Services\AdhesiveMixCalculator::class);
+                $material = !empty($itemData['material_id']) ? Product::find($itemData['material_id']) : null;
+                $recipeKey = $itemData['recipe_key'] ?? $calculator->resolveRecipeKey($material?->name);
+                $overrides = [
+                    'sq_inch_to_m2' => $itemData['sq_inch_to_m2'] ?? config('carton.sq_inch_to_m2'),
+                    'glue_lines' => $itemData['glue_lines'] ?? null,
+                    'dry_glue_gsm_per_line' => $itemData['dry_glue_gsm_per_line'] ?? null,
+                    'glue_wastage_percentage' => $itemData['glue_wastage_percentage'] ?? null,
+                    'adhesive_solids_percentage' => $itemData['adhesive_solids_percentage'] ?? null,
+                    'recipe_percentage' => $itemData['recipe_percentage'] ?? null,
+                ];
+                $parameters = $calculator->parameters($overrides);
+                $hasRecipeOverride = $overrides['recipe_percentage'] !== null && $overrides['recipe_percentage'] !== '';
+
+                // Snapshot the EFFECTIVE values so a later change to
+                // config/carton.php does not silently alter this BOM row.
+                $data = [
+                    'recipe_key' => $recipeKey,
+                    'recipe_percentage' => ($hasRecipeOverride || $recipeKey !== null)
+                        ? $calculator->recipeFraction($recipeKey, $overrides)
+                        : null,
+                    'glue_lines' => $parameters['glue_lines'],
+                    'dry_glue_gsm_per_line' => $parameters['dry_glue_gsm_per_line'],
+                    'glue_wastage_percentage' => $parameters['glue_wastage_percentage'],
+                    'adhesive_solids_percentage' => $parameters['adhesive_solids_percentage'],
+                    'sq_inch_to_m2' => $parameters['sq_inch_to_m2'],
+                    'length_inch' => $itemData['length_inch'] ?? null,
+                    'width_inch' => $itemData['width_inch'] ?? null,
+                    'height_inch' => $itemData['height_inch'] ?? null,
+                ];
+                break;
+
             default:
                 $data = ['quantity' => $itemData['quantity'] ?? 0];
         }
 
         return $data;
+    }
+
+    /**
+     * Resolve a currency reference to an existing currency row.
+     */
+    private function resolveCurrencyId($currencyId, $currencyCode = null)
+    {
+        if ($currencyId && Currency::whereKey($currencyId)->exists()) {
+            return (int) $currencyId;
+        }
+
+        $id = Currency::where('code', $currencyCode ?: 'AFN')->value('id');
+
+        return $id ? (int) $id : null;
+    }
+
+    /**
+     * Normalise stale item currency references to the current currency row for
+     * the submitted currency code (legacy purchases may point at re-seeded ids).
+     */
+    private function normalizeItemCurrencyReferences(Request $request): void
+    {
+        $request->merge([
+            'items' => collect($request->input('items', []))
+                ->map(function ($item) {
+                    if (is_array($item)
+                        && !empty($item['purchase_currency_id'])
+                        && !Currency::whereKey($item['purchase_currency_id'])->exists()) {
+                        $item['purchase_currency_id'] = $this->resolveCurrencyId(
+                            null,
+                            $item['purchase_currency'] ?? 'AFN'
+                        );
+                    }
+
+                    return $item;
+                })
+                ->all(),
+        ]);
     }
 
     /**
@@ -864,7 +986,10 @@ class BOMController extends Controller
 
                 if ($latestPurchaseItem && $latestPurchaseItem->purchase) {
                     $material->purchase_currency = $latestPurchaseItem->purchase->currency->code ?? 'AFN';
-                    $material->purchase_currency_id = $latestPurchaseItem->purchase->currency_id ?? null;
+                    $material->purchase_currency_id = $this->resolveCurrencyId(
+                        $latestPurchaseItem->purchase->currency_id ?? null,
+                        $material->purchase_currency
+                    );
                 } else {
                     $material->purchase_currency = 'AFN';
                     $material->purchase_currency_id = null;
@@ -906,6 +1031,10 @@ class BOMController extends Controller
      */
     public function update(Request $request, BOM $bom)
     {
+        // Existing BOM rows may hold legacy currency ids; normalise them the
+        // same way as the store flow before validating.
+        $this->normalizeItemCurrencyReferences($request);
+
         $request->validate([
             'name' => 'required|string|max:255',
             'product_id' => 'required|exists:products,id',
@@ -925,7 +1054,7 @@ class BOMController extends Controller
             'items.*.purchase_currency_id' => 'nullable|exists:currencies,id',
             'items.*.roll_weight' => 'nullable|numeric|min:0',
             'items.*.notes' => 'nullable|string',
-            'items.*.formula_type' => 'nullable|string|in:fixed,carton_3d,cut_roll,fixed_percentage,fixed_rate',
+            'items.*.formula_type' => 'nullable|string|in:fixed,carton_3d,cut_roll,fixed_percentage,fixed_rate,adhesive_mix',
             'items.*.is_formula_based' => 'nullable|boolean',
             'items.*.length_inch' => 'nullable|numeric|min:0',
             'items.*.width_inch' => 'nullable|numeric|min:0',
@@ -949,6 +1078,16 @@ class BOMController extends Controller
             'items.*.percentage_of_base' => 'nullable|numeric|min:0',
             'items.*.rate_per_unit' => 'nullable|numeric|min:0',
             'items.*.rate_base_units' => 'nullable|integer|min:1',
+            // Adhesive mix (dimension driven)
+            'items.*.glue_lines' => 'nullable|numeric|min:0',
+            'items.*.dry_glue_gsm_per_line' => 'nullable|numeric|min:0',
+            'items.*.glue_wastage_percentage' => 'nullable|numeric|min:0|max:100',
+            'items.*.adhesive_solids_percentage' => 'nullable|numeric|min:0|max:100',
+            'items.*.recipe_percentage' => 'nullable|numeric|min:0',
+            'items.*.recipe_key' => 'nullable|string|max:50',
+            // Component classification
+            'items.*.component_type' => 'nullable|string|in:paper,adhesive,printing,auxiliary',
+            'items.*.apply_work_percentage' => 'nullable|boolean',
         ]);
 
         try {
@@ -993,13 +1132,30 @@ class BOMController extends Controller
                 $costPerUnitAfn = $costPerUnitUsd * $exchangeRate;
 
                 $quantity = floatval($itemData['quantity']);
-                $wastage = floatval($itemData['wastage_percentage'] ?? 5);
+                $isAdhesiveMix = (isset($itemData['is_formula_based']) && $itemData['is_formula_based'])
+                    && ($itemData['formula_type'] ?? 'fixed') === 'adhesive_mix';
+                // Glue wastage is applied inside the adhesive formula, so a
+                // row-level wastage would be double counted.
+                $wastage = $isAdhesiveMix ? 0.0 : floatval($itemData['wastage_percentage'] ?? 5);
                 $quantityWithWastage = $quantity * (1 + ($wastage / 100));
                 $totalCostUsd = $quantityWithWastage * floatval($costPerUnitUsd);
                 $totalCostAfn = $quantityWithWastage * floatval($costPerUnitAfn);
 
                 $isFormulaBased = isset($itemData['is_formula_based']) && $itemData['is_formula_based'];
                 $formulaType = $isFormulaBased ? ($itemData['formula_type'] ?? 'fixed') : 'fixed';
+                $formulaData = $isFormulaBased ? $this->prepareFormulaData($itemData, $formulaType) : null;
+
+                if ($isFormulaBased && in_array($formulaType, ['carton_3d', 'cut_roll'], true)) {
+                    $latestPurchaseCost = app(\App\Services\BOMCostingService::class)
+                        ->latestInventoryCost((int) $material->id, $exchangeRate, false);
+
+                    if (($latestPurchaseCost['found'] ?? false)
+                        && ($latestPurchaseCost['basis_unit'] ?? null) === 'kg'
+                        && (float) ($latestPurchaseCost['cost_afn'] ?? 0) > 0) {
+                        $itemData['per_gram_rate'] = (float) $latestPurchaseCost['cost_afn'];
+                    }
+                }
+
                 $rollWeight = $this->calculateRollWeight($itemData, $formulaType, $quantity);
 
                 if (isset($itemData['id']) && in_array($itemData['id'], $existingItemIds)) {
@@ -1010,6 +1166,11 @@ class BOMController extends Controller
                             'material_id' => $itemData['material_id'],
                             'quantity' => $itemData['quantity'],
                             'unit' => $itemData['unit'] ?? null,
+                            'component_type' => $itemData['component_type'] ?? $item->component_type,
+                            'apply_work_percentage' => array_key_exists('apply_work_percentage', $itemData)
+                                && $itemData['apply_work_percentage'] !== null
+                                    ? (bool) $itemData['apply_work_percentage']
+                                    : $item->apply_work_percentage,
                             'wastage_percentage' => $wastage,
                             'cost_per_unit_usd' => $costPerUnitUsd,
                             'cost_per_unit_afn' => $costPerUnitAfn,
@@ -1022,6 +1183,7 @@ class BOMController extends Controller
                             'sort_order' => $index,
                             'is_formula_based' => $isFormulaBased,
                             'formula_type' => $formulaType,
+                            'formula_data' => $isAdhesiveMix ? $formulaData : $item->formula_data,
                             // 3D Carton
                             'length_inch' => $itemData['length_inch'] ?? null,
                             'width_inch' => $itemData['width_inch'] ?? null,
@@ -1059,6 +1221,12 @@ class BOMController extends Controller
                         'material_id' => $itemData['material_id'],
                         'quantity' => $itemData['quantity'],
                         'unit' => $itemData['unit'] ?? null,
+                        'component_type' => $itemData['component_type']
+                            ?? ($formulaType === 'adhesive_mix' ? 'adhesive' : null),
+                        'apply_work_percentage' => array_key_exists('apply_work_percentage', $itemData)
+                            && $itemData['apply_work_percentage'] !== null
+                                ? (bool) $itemData['apply_work_percentage']
+                                : ($formulaType === 'adhesive_mix' ? false : null),
                         'wastage_percentage' => $wastage,
                         'cost_per_unit_usd' => $costPerUnitUsd,
                         'cost_per_unit_afn' => $costPerUnitAfn,
@@ -1071,6 +1239,7 @@ class BOMController extends Controller
                         'sort_order' => $index,
                         'is_formula_based' => $isFormulaBased,
                         'formula_type' => $formulaType,
+                        'formula_data' => $formulaData,
                         'length_inch' => $itemData['length_inch'] ?? null,
                         'width_inch' => $itemData['width_inch'] ?? null,
                         'height_inch' => $itemData['height_inch'] ?? null,

@@ -17,6 +17,7 @@ class SaleItem extends Model
         'purchase_item_id',
         'sale_currency_id',
         'qty',
+        'ordered_qty',
         'cost_per_unit_usd',
         'total_cost_usd',
         'unit_price',
@@ -41,11 +42,14 @@ class SaleItem extends Model
         'profit_afn',
         'profit_percentage',
         'remarks',
+        'quotation_description',
         'manual_bom_snapshot',
+        'carton_spec_snapshot',
     ];
 
     protected $casts = [
         'qty' => 'decimal:2',
+        'ordered_qty' => 'decimal:2',
         'cost_per_unit_usd' => 'decimal:4',
         'total_cost_usd' => 'decimal:2',
         'unit_price' => 'decimal:4',
@@ -68,7 +72,9 @@ class SaleItem extends Model
         'profit_afn' => 'decimal:2',
         'profit_percentage' => 'decimal:2',
         'price_adjustment_type' => 'string',
+        'quotation_description' => 'string',
         'manual_bom_snapshot' => 'array',
+        'carton_spec_snapshot' => 'array',
     ];
 
     protected $appends = ['profit_margin', 'is_price_adjusted'];

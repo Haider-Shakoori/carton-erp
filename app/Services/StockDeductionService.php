@@ -49,6 +49,28 @@ class StockDeductionService
     }
 
     /**
+     * Available production quantity in the unit inventory is actually consumed
+     * in: kilograms for roll batches, native units otherwise.
+     */
+    public function availableProductionQuantity(int $materialId): float
+    {
+        $batches = PurchaseItem::query()
+            ->where('product_id', $materialId)
+            ->whereHas('purchase', fn ($q) => $q->where('status', 'arrived'))
+            ->get();
+
+        if ($batches->isEmpty()) {
+            return 0.0;
+        }
+
+        $isRoll = $batches->contains(fn (PurchaseItem $batch) => $batch->isRollBatch());
+
+        return $isRoll
+            ? (float) $batches->sum('qty_kg_available')
+            : (float) $batches->sum('qty_available');
+    }
+
+    /**
      * Check whether all requested materials are currently available.
      * ✅ COMPLETE FIX: Sums ALL batches for each product_id
      */
@@ -693,6 +715,122 @@ class StockDeductionService
                 'production_order_id' => $productionOrderId,
                 'consumptions_deleted' => $consumptions->count(),
             ]);
+        });
+    }
+
+    /**
+     * Restore part of one material previously consumed by a production order.
+     *
+     * The newest FIFO consumption records are unwound first. This preserves the
+     * original batch trace while allowing the completion step to reconcile an
+     * under-produced order back to the real quantity produced.
+     */
+    public function restoreProductionMaterialQuantity(
+        int $productionOrderId,
+        int $materialId,
+        float $quantity
+    ): float {
+        if ($quantity <= self::EPSILON) {
+            return 0.0;
+        }
+
+        return DB::transaction(function () use ($productionOrderId, $materialId, $quantity): float {
+            $remaining = $quantity;
+            $restored = 0.0;
+
+            $consumptions = ProductionMaterialConsumption::query()
+                ->where('production_order_id', $productionOrderId)
+                ->where('material_id', $materialId)
+                ->where('actual_quantity', '>', 0)
+                ->orderByDesc('id')
+                ->lockForUpdate()
+                ->get();
+
+            foreach ($consumptions as $consumption) {
+                if ($remaining <= self::EPSILON) {
+                    break;
+                }
+
+                $current = (float) $consumption->actual_quantity;
+                $toRestore = min($current, $remaining);
+
+                if ($toRestore <= self::EPSILON) {
+                    continue;
+                }
+
+                $batch = PurchaseItem::query()
+                    ->lockForUpdate()
+                    ->findOrFail($consumption->purchase_item_id);
+
+                if ($batch->isRollBatch()) {
+                    $kgPerRoll = max((float) $batch->kg_per_roll, self::EPSILON);
+                    $restoredRolls = $toRestore / $kgPerRoll;
+
+                    $batch->qty_kg_available = (float) ($batch->qty_kg_available ?? 0) + $toRestore;
+                    if ((float) ($batch->total_weight_kg ?? 0) > 0) {
+                        $batch->qty_kg_available = min(
+                            (float) $batch->qty_kg_available,
+                            (float) $batch->total_weight_kg
+                        );
+                    }
+
+                    $batch->qty_kg_used = max(
+                        (float) ($batch->qty_kg_used ?? 0) - $toRestore,
+                        0
+                    );
+                    $batch->qty_available = min(
+                        (float) $batch->qty_available + $restoredRolls,
+                        (float) $batch->qty
+                    );
+                    $batch->qty_used = max(
+                        (float) ($batch->qty_used ?? 0) - $restoredRolls,
+                        0
+                    );
+                } else {
+                    $batch->qty_available = min(
+                        (float) $batch->qty_available + $toRestore,
+                        (float) $batch->qty
+                    );
+                    $batch->qty_used = max(
+                        (float) ($batch->qty_used ?? 0) - $toRestore,
+                        0
+                    );
+                }
+
+                $batch->save();
+
+                $newActual = max($current - $toRestore, 0);
+                if ($newActual <= self::EPSILON) {
+                    $consumption->delete();
+                } else {
+                    $ratio = $newActual / max($current, self::EPSILON);
+                    $newPlanned = (float) $consumption->planned_quantity * $ratio;
+                    $newWastage = (float) $consumption->wastage_quantity * $ratio;
+
+                    $consumption->actual_quantity = $newActual;
+                    $consumption->planned_quantity = $newPlanned;
+                    $consumption->wastage_quantity = $newWastage;
+                    $consumption->total_cost_usd = $newActual * (float) $consumption->cost_per_unit_usd;
+                    $consumption->total_cost_afn = $newActual * (float) $consumption->cost_per_unit_afn;
+                    $consumption->wastage_cost_usd = $newWastage * (float) $consumption->cost_per_unit_usd;
+                    $consumption->wastage_cost_afn = $newWastage * (float) $consumption->cost_per_unit_afn;
+                    $consumption->save();
+                }
+
+                $remaining -= $toRestore;
+                $restored += $toRestore;
+            }
+
+            if ($remaining > self::EPSILON) {
+                throw new RuntimeException(sprintf(
+                    'Unable to restore %.6f units of material #%d for production order #%d.',
+                    $remaining,
+                    $materialId,
+                    $productionOrderId
+                ));
+            }
+
+            return $restored;
         });
     }
 

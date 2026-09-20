@@ -398,26 +398,31 @@ class SaleProfitService
     private function physicalCostRows($saleItem, $bom): array
     {
         $snapshot = is_array($saleItem->manual_bom_snapshot ?? null) ? $saleItem->manual_bom_snapshot : [];
+        $fromCartonSnapshot = false;
+
+        // A frozen carton specification is the authoritative physical plan for
+        // this line, exactly like a manual-BOM snapshot. Never reconstruct it
+        // from today's template BOM or board profile.
+        if (count($snapshot) === 0) {
+            $cartonSnapshot = $saleItem->carton_spec_snapshot ?? null;
+            if (is_array($cartonSnapshot) && ! empty($cartonSnapshot['rows'])) {
+                $snapshot = $cartonSnapshot['rows'];
+                $fromCartonSnapshot = true;
+            }
+        }
+
         $bomItems = $bom->items ?? collect();
         $rows = [];
 
         if (count($snapshot) > 0) {
             $bomItemArray = array_values($bomItems->all());
             foreach ($snapshot as $index => $row) {
-                $length = (float) ($row['length'] ?? 0);
-                $width = (float) ($row['width'] ?? 0);
-                $height = (float) ($row['height'] ?? 0);
-                $gsm = (float) ($row['paper_gsm'] ?? 0);
-                $layers = (float) ($row['multiplication_layer'] ?? ($row['layers'] ?? 1));
-                $wastage = (float) ($row['wastage'] ?? 0);
-
-                $rollWeightMissing = false;
+                $materialId = (int) ($row['material_id'] ?? 0);
                 $costPerUnitUsd = (float) (
                     $row['landed_cost_usd_per_kg']
                     ?? $row['cost_per_unit_usd']
                     ?? 0
                 );
-                $materialId = (int) ($row['material_id'] ?? 0);
 
                 if (isset($bomItemArray[$index]) && $bomItemArray[$index]) {
                     if ($costPerUnitUsd <= 0) {
@@ -435,8 +440,50 @@ class SaleProfitService
                     }
                 }
 
-                $costPerUnitUsd = $this->resolveRollCostPerKg($materialId, $costPerUnitUsd);
-                $rollWeightMissing = $this->rollWeightBasisMissing($materialId);
+                // Dimension-driven adhesive rows come from their own snapshot
+                // parameters; the 5% wastage is already inside the formula.
+                if (($row['formula_type'] ?? null) === 'adhesive_mix') {
+                    $calculator = app(\App\Services\AdhesiveMixCalculator::class);
+                    $kgPerUnit = $calculator->perCartonKg(
+                        (float) ($row['length'] ?? 0),
+                        (float) ($row['width'] ?? 0),
+                        (float) ($row['height'] ?? 0),
+                        $row['recipe_key'] ?? null,
+                        [
+                            'sq_inch_to_m2' => $row['sq_inch_to_m2'] ?? null,
+                            'glue_lines' => $row['glue_lines'] ?? null,
+                            'dry_glue_gsm_per_line' => $row['dry_glue_gsm_per_line'] ?? null,
+                            'glue_wastage_percentage' => $row['glue_wastage_percentage'] ?? null,
+                            'adhesive_solids_percentage' => $row['adhesive_solids_percentage'] ?? null,
+                            'recipe_percentage' => $row['recipe_percentage'] ?? null,
+                        ]
+                    );
+
+                    $rows[] = [
+                        'kg_per_unit' => $kgPerUnit,
+                        'wastage_percentage' => 0.0,
+                        'cost_per_unit_usd' => $fromCartonSnapshot
+                            ? $costPerUnitUsd
+                            : $this->resolveRollCostPerKg($materialId, $costPerUnitUsd),
+                        'roll_weight_missing' => false,
+                    ];
+
+                    continue;
+                }
+
+                $length = (float) ($row['length'] ?? 0);
+                $width = (float) ($row['width'] ?? 0);
+                $height = (float) ($row['height'] ?? 0);
+                $gsm = (float) ($row['paper_gsm'] ?? 0);
+                $layers = (float) ($row['multiplication_layer'] ?? ($row['layers'] ?? 1));
+                $wastage = (float) ($row['wastage'] ?? 0);
+
+                $costPerUnitUsd = $fromCartonSnapshot
+                    ? $costPerUnitUsd
+                    : $this->resolveRollCostPerKg($materialId, $costPerUnitUsd);
+                $rollWeightMissing = $fromCartonSnapshot
+                    ? false
+                    : $this->rollWeightBasisMissing($materialId);
 
                 $reelLength = (($length + $width) * 2) + 4;
                 $reelHeight = $width + $height + 1;
@@ -651,6 +698,17 @@ class SaleProfitService
     private function manualCommercialCalculation($saleItem): ?array
     {
         $snapshot = is_array($saleItem->manual_bom_snapshot ?? null) ? $saleItem->manual_bom_snapshot : [];
+
+        // Frozen carton specifications carry the same paper-row commercial
+        // basis (per_gram_rate, gsm, multiplication_layer, work%, print) and
+        // must be reproducible even if the auto-generated BOM is edited later.
+        if (count($snapshot) === 0) {
+            $cartonSnapshot = $saleItem->carton_spec_snapshot ?? null;
+            if (is_array($cartonSnapshot) && ! empty($cartonSnapshot['rows'])) {
+                $snapshot = $cartonSnapshot['rows'];
+            }
+        }
+
         if (count($snapshot) === 0) {
             return null;
         }
@@ -662,6 +720,12 @@ class SaleProfitService
         $netRate = 0.0;
 
         foreach ($snapshot as $row) {
+            // Adhesive/mixing rows are physical material cost only and carry no
+            // commercial paper/work/print rate in the quotation.
+            if (($row['formula_type'] ?? null) === 'adhesive_mix') {
+                continue;
+            }
+
             $length = (float) ($row['length'] ?? 0);
             $width = (float) ($row['width'] ?? 0);
             $height = (float) ($row['height'] ?? 0);

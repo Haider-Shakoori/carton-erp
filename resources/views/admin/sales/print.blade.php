@@ -649,8 +649,8 @@
                         <tr>
                             <td>
                                 <div class="product-name">{{ $item->product->name ?? 'Unknown Product' }}</div>
-                                @if ($item->remarks)
-                                    <div class="product-meta">{{ $item->remarks }}</div>
+                                @if ($item->product?->description)
+                                    <div class="product-meta">{{ $item->product->description }}</div>
                                 @endif
                             </td>
                             <td class="text-center">
