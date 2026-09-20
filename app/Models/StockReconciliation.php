@@ -47,6 +47,11 @@ class StockReconciliation extends Model
         return $this->hasMany(StockReconciliationItem::class);
     }
 
+    public function adjustment()
+    {
+        return $this->hasOne(StockAdjustment::class, 'stock_reconciliation_id');
+    }
+
     public function creator(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by');
