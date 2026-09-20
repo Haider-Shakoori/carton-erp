@@ -42,6 +42,7 @@ class SaleItem extends Model
         'profit_afn',
         'profit_percentage',
         'remarks',
+        'quotation_description',
         'manual_bom_snapshot',
     ];
 
@@ -70,6 +71,7 @@ class SaleItem extends Model
         'profit_afn' => 'decimal:2',
         'profit_percentage' => 'decimal:2',
         'price_adjustment_type' => 'string',
+        'quotation_description' => 'string',
         'manual_bom_snapshot' => 'array',
     ];
 
