@@ -336,3 +336,19 @@ it('rejects a submitted reconciliation without changing inventory', function () 
         ->and((float) PurchaseItem::find($fx['paperBatchId'])->qty_kg_available)->toBe(1000.0)
         ->and((float) PurchaseItem::find($fx['cornBatchId'])->qty_available)->toBe(50.0);
 });
+
+
+it('cancels only an in-progress count without changing inventory', function () {
+    $fx = stockReconciliationFixture();
+    $service = app(StockReconciliationService::class);
+
+    $reconciliation = $service->createSnapshot();
+    $cancelled = $service->cancel($reconciliation);
+
+    expect($cancelled->status)->toBe(StockReconciliation::STATUS_CANCELLED)
+        ->and((float) PurchaseItem::find($fx['paperBatchId'])->qty_kg_available)->toBe(1000.0)
+        ->and((float) PurchaseItem::find($fx['cornBatchId'])->qty_available)->toBe(50.0);
+
+    expect(fn () => $service->cancel($cancelled->fresh()))
+        ->toThrow(RuntimeException::class, 'still being counted');
+});
