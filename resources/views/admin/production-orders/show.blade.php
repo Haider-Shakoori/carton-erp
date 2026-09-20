@@ -697,12 +697,12 @@
                 </div>
                 <div class="action-btn-group">
                     @if($productionOrder->status === 'pending')
-                        <form action="{{ route('production-orders.start', $productionOrder) }}" method="POST" class="d-inline" id="startProductionForm">
-                            @csrf
-                            <button type="submit" class="action-btn action-btn-success" id="startProductionBtn">
-                                <i class="bi bi-play-fill"></i> {{ __('ui.start_production') }}
-                            </button>
-                        </form>
+                        <button type="button"
+                                class="action-btn action-btn-success"
+                                data-bs-toggle="modal"
+                                data-bs-target="#startProductionModal">
+                            <i class="bi bi-play-fill"></i> {{ __('ui.start_production') }}
+                        </button>
                     @endif
 
                     @if($productionOrder->status === 'in_progress')
@@ -730,6 +730,66 @@
             </div>
         </div>
 
+        @if($productionOrder->status === 'pending')
+            <div class="modal fade" id="startProductionModal" tabindex="-1" aria-labelledby="startProductionModalLabel" aria-hidden="true">
+                <div class="modal-dialog modal-dialog-centered">
+                    <div class="modal-content border-0 shadow-lg">
+                        <form action="{{ route('production-orders.start', $productionOrder) }}" method="POST" id="startProductionForm">
+                            @csrf
+                            <div class="modal-header border-0 pb-0">
+                                <div>
+                                    <h5 class="modal-title fw-bold" id="startProductionModalLabel">Start Production</h5>
+                                    <div class="text-muted small">Enter the quantity you plan to produce in this run.</div>
+                                </div>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="{{ __('ui.close') }}"></button>
+                            </div>
+                            <div class="modal-body pt-3">
+                                <div class="rounded-3 p-3 mb-3" style="background:#eff6ff;border:1px solid #bfdbfe;">
+                                    <div class="d-flex justify-content-between mb-1">
+                                        <span class="text-muted">Customer Ordered</span>
+                                        <strong>{{ number_format((float) $productionOrder->quantity_ordered, 2) }}</strong>
+                                    </div>
+                                    <div class="d-flex justify-content-between">
+                                        <span class="text-muted">Current Raw Material Supports</span>
+                                        <strong>{{ $maxProducibleQuantity !== null ? number_format((float) $maxProducibleQuantity, 2) : 'N/A' }}</strong>
+                                    </div>
+                                </div>
+
+                                <label for="quantity_planned" class="form-label fw-semibold">
+                                    Planned Production Quantity <span class="text-danger">*</span>
+                                </label>
+                                <input type="number"
+                                       class="form-control form-control-lg {{ isset($errors) && $errors->has('quantity_planned') ? 'is-invalid' : '' }}"
+                                       id="quantity_planned"
+                                       name="quantity_planned"
+                                       value="{{ old('quantity_planned', $productionOrder->quantity_ordered) }}"
+                                       min="0.01"
+                                       max="999999999.99"
+                                       step="0.01"
+                                       required>
+                                @if(isset($errors) && $errors->has('quantity_planned'))
+                                    <div class="invalid-feedback">{{ $errors->first('quantity_planned') }}</div>
+                                @endif
+
+                                <div class="alert alert-info mt-3 mb-0 small">
+                                    <i class="bi bi-calculator me-1"></i>
+                                    Raw-material quantity and production cost will be calculated from this value.
+                                    It may be lower or higher than the customer order, but it cannot exceed what current raw material can support.
+                                    The real finished quantity will still be entered when production ends.
+                                </div>
+                            </div>
+                            <div class="modal-footer border-0 pt-0">
+                                <button type="button" class="btn btn-light" data-bs-dismiss="modal">{{ __('ui.cancel') }}</button>
+                                <button type="submit" class="btn btn-success">
+                                    <i class="bi bi-play-circle me-1"></i> Calculate & Start Production
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        @endif
+
         @if($productionOrder->status === 'in_progress')
             <div class="modal fade" id="completeProductionModal" tabindex="-1" aria-labelledby="completeProductionModalLabel" aria-hidden="true">
                 <div class="modal-dialog modal-dialog-centered">
@@ -754,8 +814,12 @@
                                         <span class="text-muted">Customer ordered</span>
                                         <strong>{{ number_format((float) $productionOrder->quantity_ordered, 2) }}</strong>
                                     </div>
+                                    <div class="d-flex justify-content-between mb-1">
+                                        <span class="text-muted">Planned for this run</span>
+                                        <strong>{{ number_format((float) ($productionOrder->quantity_planned ?: $productionOrder->quantity_ordered), 2) }}</strong>
+                                    </div>
                                     <div class="small text-muted">
-                                        Actual production may be lower or higher depending on raw-material availability.
+                                        Actual production may differ from both the customer order and the planned run quantity.
                                     </div>
                                 </div>
 
@@ -766,7 +830,7 @@
                                        class="form-control form-control-lg {{ isset($errors) && $errors->has('quantity_produced') ? 'is-invalid' : '' }}"
                                        id="quantity_produced"
                                        name="quantity_produced"
-                                       value="{{ old('quantity_produced', $productionOrder->quantity_ordered) }}"
+                                       value="{{ old('quantity_produced', $productionOrder->quantity_planned ?: $productionOrder->quantity_ordered) }}"
                                        min="0.01"
                                        max="999999999.99"
                                        step="0.01"
@@ -890,6 +954,15 @@
                 </div>
                 <div class="stat-value blue">{{ number_format($productionOrder->quantity_ordered) }}</div>
                 <div class="stat-label">Ordered Quantity</div>
+            </div>
+            <div class="stat-card-modern">
+                <div class="stat-icon purple">
+                    <i class="bi bi-pencil-square"></i>
+                </div>
+                <div class="stat-value purple">
+                    {{ $productionOrder->quantity_planned !== null ? number_format((float) $productionOrder->quantity_planned) : '—' }}
+                </div>
+                <div class="stat-label">Planned Production</div>
             </div>
             <div class="stat-card-modern">
                 <div class="stat-icon green">
@@ -1354,6 +1427,13 @@
             }
             @endif
 
+            @if(isset($errors) && $errors->has('quantity_planned'))
+            const startModalElement = document.getElementById('startProductionModal');
+            if (startModalElement && window.bootstrap) {
+                new bootstrap.Modal(startModalElement).show();
+            }
+            @endif
+
             @if(isset($errors) && $errors->has('quantity_produced'))
             const completionModalElement = document.getElementById('completeProductionModal');
             if (completionModalElement && window.bootstrap) {
@@ -1365,7 +1445,7 @@
             const startForm = document.getElementById('startProductionForm');
             if (startForm) {
                 startForm.addEventListener('submit', function(e) {
-                    const confirmMessage = '⚠️ Start Production?\n\nThis will:\n• Allocate and consume the raw material currently available\n• Allow partial production if stock cannot cover the full order\n• Mark production as in progress\n\nYou will enter the real finished quantity when production ends. Continue?';
+                    const confirmMessage = '⚠️ Start Production?\n\nThis will calculate and consume raw material using the Planned Production Quantity you entered. The planned quantity can be above or below the customer order but must be supported by current stock.\n\nYou will enter the real finished quantity when production ends. Continue?';
 
                     if (!confirm(confirmMessage)) {
                         e.preventDefault();
