@@ -286,6 +286,85 @@
         </div>
 
         {{-- ============================================================
+        RECONCILIATION ADJUSTMENT HISTORY
+        ============================================================ --}}
+        <div class="table-card mt-4">
+            <div class="card-header-custom">
+                <h5>
+                    <i class="bi bi-clipboard-data"></i> Reconciliation Adjustment History
+                    <span class="header-badge">{{ $reconciliationAdjustments->count() }} recent lines</span>
+                </h5>
+                @can('view stock reconciliations')
+                    <a href="{{ route('admin.stock-reconciliations.report', ['product_id' => $product->id]) }}"
+                       class="btn btn-sm btn-outline-primary">
+                        <i class="bi bi-bar-chart me-1"></i> Full Variance Report
+                    </a>
+                @endcan
+            </div>
+            <div class="table-responsive-custom">
+                <table class="table-ledger">
+                    <thead>
+                        <tr>
+                            <th>Date / Reference</th>
+                            <th>Batch</th>
+                            <th class="text-end">Before</th>
+                            <th class="text-end">Adjustment</th>
+                            <th class="text-end">After</th>
+                            <th class="text-end">Value USD</th>
+                            <th>Reason</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @forelse($reconciliationAdjustments as $adjustmentLine)
+                            @php
+                                $reasonLabel = config('stock_reconciliation.reason_codes.'.$adjustmentLine->reason_code)
+                                    ?? $adjustmentLine->reason_code
+                                    ?? '—';
+                            @endphp
+                            <tr>
+                                <td>
+                                    <div style="font-weight:600;">
+                                        {{ $adjustmentLine->adjustment?->adjustment_date?->format('M d, Y') }}
+                                    </div>
+                                    @if($adjustmentLine->adjustment?->reconciliation)
+                                        <a href="{{ route('admin.stock-reconciliations.show', $adjustmentLine->adjustment->reconciliation) }}"
+                                           style="font-size:12px;">
+                                            {{ $adjustmentLine->adjustment->reconciliation->reconciliation_no }}
+                                        </a>
+                                    @else
+                                        <small class="text-muted">{{ $adjustmentLine->adjustment?->adjustment_no }}</small>
+                                    @endif
+                                </td>
+                                <td>
+                                    #{{ $adjustmentLine->purchase_item_id }}
+                                    <div style="font-size:11px;color:var(--text-secondary);">{{ $adjustmentLine->inventory_unit }}</div>
+                                </td>
+                                <td class="text-end">{{ number_format((float) $adjustmentLine->before_quantity, 4) }}</td>
+                                <td class="text-end" style="font-weight:700;color:{{ (float) $adjustmentLine->adjustment_quantity < 0 ? 'var(--danger)' : 'var(--success)' }};">
+                                    {{ (float) $adjustmentLine->adjustment_quantity > 0 ? '+' : '' }}{{ number_format((float) $adjustmentLine->adjustment_quantity, 4) }}
+                                </td>
+                                <td class="text-end">{{ number_format((float) $adjustmentLine->after_quantity, 4) }}</td>
+                                <td class="text-end" style="color:{{ (float) $adjustmentLine->adjustment_value_usd < 0 ? 'var(--danger)' : 'var(--success)' }};">
+                                    {{ (float) $adjustmentLine->adjustment_value_usd >= 0 ? '+' : '-' }}${{ number_format(abs((float) $adjustmentLine->adjustment_value_usd), 2) }}
+                                </td>
+                                <td>{{ $reasonLabel }}</td>
+                            </tr>
+                        @empty
+                            <tr>
+                                <td colspan="7">
+                                    <div class="empty-state">
+                                        <i class="bi bi-clipboard-check"></i>
+                                        <p>No posted reconciliation adjustments for this material.</p>
+                                    </div>
+                                </td>
+                            </tr>
+                        @endforelse
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        {{-- ============================================================
         ADDITIONAL INSIGHTS - Matching your card style
         ============================================================ --}}
         <div class="row mt-4">
