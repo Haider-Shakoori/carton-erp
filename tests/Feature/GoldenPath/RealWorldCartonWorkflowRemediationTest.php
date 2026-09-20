@@ -745,14 +745,24 @@ it('starts partial production when raw material cannot support the full ordered 
         ->required_quantity;
 
     // Limit both materials to exactly 60% of the 100-unit production plan.
+    // PurchaseItem derives availability from the used counters on save, so
+    // simulate genuine prior consumption rather than writing availability
+    // directly.
     foreach ([
         [$fx['kraftItem'], $kraftRequirement * 0.60],
         [$fx['flutingItem'], $flutingRequirement * 0.60],
-    ] as [$batch, $kg]) {
+    ] as [$batch, $kgAvailable]) {
         $batch = $batch->fresh();
-        $batch->qty_kg_available = $kg;
-        $batch->qty_available = $kg / max((float) $batch->kg_per_roll, 0.000001);
+
+        $totalKg = (float) $batch->total_weight_kg;
+        $usedKg = max($totalKg - $kgAvailable, 0);
+
+        $batch->qty_kg_used = $usedKg;
+        $batch->qty_used = $usedKg / max((float) $batch->kg_per_roll, 0.000001);
         $batch->save();
+
+        expect(abs((float) $batch->fresh()->qty_kg_available - $kgAvailable))
+            ->toBeLessThan(0.01);
     }
 
     $result = app(\App\Services\ProductionQuantityService::class)
