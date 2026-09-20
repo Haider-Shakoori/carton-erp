@@ -1525,6 +1525,14 @@ class SaleController extends Controller
                 }
             }
 
+            $baseUnitPrice = $unitPrice;
+            $manualUnitPrice = (float) ($validated['manual_unit_price'] ?? 0);
+            $hasManualPrice = $manualUnitPrice > 0;
+
+            if ($hasManualPrice) {
+                $unitPrice = $manualUnitPrice;
+            }
+
             $totalPrice = $unitPrice * $qty;
             $usdUnitPrice = $isUSD ? $unitPrice : $unitPrice / $exchangeRate;
             $usdTotal = $usdUnitPrice * $qty;
@@ -1569,9 +1577,14 @@ class SaleController extends Controller
                 'purchase_item_id' => null,
                 'sale_currency_id' => $sale->currency_id,
                 'qty' => $qty,
+                'ordered_qty' => $qty,
                 'cost_per_unit_usd' => $costPerUnitUsd,
                 'total_cost_usd' => $totalCostUsd,
                 'unit_price' => $unitPrice,
+                'base_price' => $baseUnitPrice,
+                'original_unit_price' => $baseUnitPrice,
+                'final_price' => $unitPrice,
+                'price_adjustment_type' => $hasManualPrice ? 'manual' : 'none',
                 'total' => $totalPrice,
                 'discount' => 0,
                 'tax' => 0,
