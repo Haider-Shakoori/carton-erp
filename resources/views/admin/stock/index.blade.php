@@ -159,8 +159,15 @@
                     </p>
                 </div>
 
-                {{-- Search - Using Bootstrap default styles --}}
-                <div class="search-wrapper">
+                <div class="d-flex flex-column flex-lg-row gap-2 align-items-lg-center">
+                    @can('view stock reconciliations')
+                        <a href="{{ route('admin.stock-reconciliations.index') }}" class="btn btn-outline-primary">
+                            <i class="bi bi-clipboard-check me-1"></i> Reconciliation
+                        </a>
+                    @endcan
+
+                    {{-- Search - Using Bootstrap default styles --}}
+                    <div class="search-wrapper">
                     <form action="{{ route('admin.stock.index') }}" method="GET" class="d-flex">
                         <div class="input-group">
                             <span class="input-group-text bg-white border-end-0">
@@ -180,6 +187,7 @@
                             </button>
                         </div>
                     </form>
+                    </div>
                 </div>
             </div>
         </div>

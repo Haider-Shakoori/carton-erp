@@ -29,6 +29,7 @@ use App\Http\Controllers\Admin\SaleReturnController;
 use App\Http\Controllers\Admin\SarafController;
 use App\Http\Controllers\Admin\SettingsController;
 use App\Http\Controllers\Admin\StockController;
+use App\Http\Controllers\Admin\StockReconciliationController;
 use App\Http\Controllers\Admin\SupplierController;
 use App\Http\Controllers\Admin\HR\DepartmentController;
 use App\Http\Controllers\Admin\HR\HRDashboardController;
@@ -102,6 +103,24 @@ Route::middleware(['auth'])->prefix('admin')->group(function () {
     Route::get('products/{product}', [App\Http\Controllers\Admin\StockController::class, 'show'])->name('admin.products.show')->middleware('permission.feedback:view stock');
     Route::get('/fetch', [AccountsController::class, 'fetchAccounts'])->name('fetch')->middleware('permission.feedback:view customers');
     Route::get('/products/low-stock', [App\Http\Controllers\Admin\ProductController::class, 'getLowStockProducts'])->name('admin.products.low-stock')->middleware('permission.feedback:view stock');
+
+    // Stock Reconciliation / Cycle Counts
+    Route::prefix('stock-reconciliations')->name('admin.stock-reconciliations.')->group(function () {
+        Route::get('/', [StockReconciliationController::class, 'index'])
+            ->name('index')->middleware('permission.feedback:view stock reconciliations');
+        Route::get('/create', [StockReconciliationController::class, 'create'])
+            ->name('create')->middleware('permission.feedback:create stock reconciliations');
+        Route::post('/', [StockReconciliationController::class, 'store'])
+            ->name('store')->middleware('permission.feedback:create stock reconciliations');
+        Route::get('/{stockReconciliation}', [StockReconciliationController::class, 'show'])
+            ->name('show')->middleware('permission.feedback:view stock reconciliations');
+        Route::patch('/{stockReconciliation}/counts', [StockReconciliationController::class, 'updateCounts'])
+            ->name('counts.update')->middleware('permission.feedback:update stock reconciliations');
+        Route::patch('/{stockReconciliation}/items/{item}', [StockReconciliationController::class, 'updateItem'])
+            ->name('items.update')->middleware('permission.feedback:update stock reconciliations');
+        Route::post('/{stockReconciliation}/submit', [StockReconciliationController::class, 'submit'])
+            ->name('submit')->middleware('permission.feedback:submit stock reconciliations');
+    });
 
     // ==================== ACCOUNTS ROUTES ====================
     Route::prefix('accounts')->name('admin.accounts.')->middleware('permission.feedback:view customers')->group(function () {

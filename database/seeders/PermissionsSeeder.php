@@ -52,6 +52,7 @@ class PermissionsSeeder extends Seeder
             'stock' => ['view', 'create', 'update', 'delete'],
             'products' => ['view', 'create', 'update', 'delete', 'print', 'send-whatsapp'],
             'stock movements' => ['view'], // NEW
+            'stock reconciliations' => ['view', 'create', 'update', 'submit', 'approve', 'post', 'cancel'],
 
             // ============================================================
             // FINANCE
