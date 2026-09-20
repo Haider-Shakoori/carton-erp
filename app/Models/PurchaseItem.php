@@ -30,6 +30,7 @@ class PurchaseItem extends Model
         'qty_sold',
         'qty_used',
         'qty_wasted',
+        'qty_adjusted',
         'unit',
         'kg_per_roll',
         'total_weight_kg',
@@ -37,6 +38,7 @@ class PurchaseItem extends Model
         'qty_kg_sold',
         'qty_kg_used',
         'qty_kg_wasted',
+        'qty_kg_adjusted',
         'qty_kg_available',
         'landed_cost_per_kg',
     ];
@@ -56,12 +58,14 @@ class PurchaseItem extends Model
         'qty_sold' => 'decimal:2',
         'qty_used' => 'decimal:2',
         'qty_wasted' => 'decimal:2',
+        'qty_adjusted' => 'decimal:6',
         'kg_per_roll' => 'decimal:4',
         'total_weight_kg' => 'decimal:4',
         'qty_kg' => 'decimal:4',
         'qty_kg_sold' => 'decimal:4',
         'qty_kg_used' => 'decimal:4',
         'qty_kg_wasted' => 'decimal:4',
+        'qty_kg_adjusted' => 'decimal:6',
         'qty_kg_available' => 'decimal:4',
         'landed_cost_per_kg' => 'decimal:6',
     ];
@@ -273,7 +277,8 @@ class PurchaseItem extends Model
             $purchaseItem->qty_available = $purchaseItem->qty
                 - ($purchaseItem->qty_sold ?? 0)
                 - ($purchaseItem->qty_used ?? 0)
-                - ($purchaseItem->qty_wasted ?? 0);
+                - ($purchaseItem->qty_wasted ?? 0)
+                + ($purchaseItem->qty_adjusted ?? 0);
 
             // Roll -> kg conversion on save. Only roll-based paper batches
             // derive physical weight; all other units keep kg columns at 0.
@@ -287,7 +292,8 @@ class PurchaseItem extends Model
                 $purchaseItem->qty_kg_available = $totalKg
                     - (float) ($purchaseItem->qty_kg_sold ?? 0)
                     - (float) ($purchaseItem->qty_kg_used ?? 0)
-                    - (float) ($purchaseItem->qty_kg_wasted ?? 0);
+                    - (float) ($purchaseItem->qty_kg_wasted ?? 0)
+                    + (float) ($purchaseItem->qty_kg_adjusted ?? 0);
 
                 // Recompute landed USD per kg from current cost fields.
                 $purchaseItem->landed_cost_per_kg = $totalKg > 0
@@ -300,6 +306,7 @@ class PurchaseItem extends Model
                 $purchaseItem->qty_kg_sold = 0;
                 $purchaseItem->qty_kg_used = 0;
                 $purchaseItem->qty_kg_wasted = 0;
+                $purchaseItem->qty_kg_adjusted = 0;
                 $purchaseItem->qty_kg_available = 0;
                 $purchaseItem->landed_cost_per_kg = 0;
             }
