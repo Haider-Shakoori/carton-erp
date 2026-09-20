@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - feat/stock-reconciliation-foundation
+      - feat/stock-reconciliation-posting
   workflow_dispatch:
 
 permissions:
@@ -83,10 +84,14 @@ jobs:
         run: |
           php -l app/Models/StockReconciliation.php
           php -l app/Models/StockReconciliationItem.php
+          php -l app/Models/StockAdjustment.php
+          php -l app/Models/StockAdjustmentItem.php
           php -l app/Services/StockReconciliationService.php
           php -l app/Http/Controllers/Admin/StockReconciliationController.php
           php -l database/migrations/2026_09_21_010000_create_stock_reconciliations_table.php
           php -l database/migrations/2026_09_21_010100_create_stock_reconciliation_items_table.php
+          php -l database/migrations/2026_09_21_020000_add_reconciliation_adjustments_to_purchase_items.php
+          php -l database/migrations/2026_09_21_020100_create_stock_adjustments_tables.php
 
       - name: Fresh MySQL install
         run: php artisan migrate:fresh --seed --force
