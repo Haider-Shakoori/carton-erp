@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - feat/actual-production-quantity-20260920
+      - feat/production-completion-actuals-v2
   workflow_dispatch:
 
 permissions:
@@ -89,6 +90,7 @@ jobs:
           php -l app/Models/ProductionOrder.php
           php -l app/Models/SaleItem.php
           php -l database/migrations/2026_09_20_073000_add_ordered_qty_to_sale_items.php
+          php -l database/migrations/2026_09_21_000000_add_production_completion_quantities.php
 
       - name: Fresh MySQL install
         run: php artisan migrate:fresh --seed --force
@@ -97,7 +99,10 @@ jobs:
         run: php artisan view:cache
 
       - name: Focused actual production quantity tests
-        run: php artisan test tests/Feature/GoldenPath/RealWorldCartonWorkflowRemediationTest.php
+        run: |
+          php artisan test tests/Feature/Production/ActualProductionQuantityUiContractTest.php
+          php artisan test tests/Feature/Production/ProductionOrderStartProductionFkCostRegressionTest.php
+          php artisan test tests/Feature/GoldenPath/RealWorldCartonWorkflowRemediationTest.php
 
       - name: Complete PHP test suite
         run: php artisan test
