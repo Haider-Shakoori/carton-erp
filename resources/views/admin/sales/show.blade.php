@@ -2277,7 +2277,22 @@
                                         <span style="font-size: 0.55rem; color: var(--sale-gray-400); display: block;">${{ number_format($costTotalUsd, 2) }} USD</span>
                                     @endif
                                 </td>
-                                <td class="text-end">{{ $currencySymbol }}{{ number_format($item->unit_price, 2) }}</td>
+                                <td class="text-end">
+                                    @if($sale->status === 'draft')
+                                        <div class="input-group input-group-sm" style="min-width:130px;">
+                                            <span class="input-group-text">{{ $currencySymbol }}</span>
+                                            <input type="number"
+                                                   class="form-control text-end manual-line-price"
+                                                   data-id="{{ $item->id }}"
+                                                   value="{{ number_format((float) $item->unit_price, 4, '.', '') }}"
+                                                   min="0.0001"
+                                                   step="0.0001">
+                                        </div>
+                                        <small class="text-muted">Manual selling price</small>
+                                    @else
+                                        {{ $currencySymbol }}{{ number_format($item->unit_price, 2) }}
+                                    @endif
+                                </td>
                                 <td class="text-end fw-bold">{{ $currencySymbol }}{{ number_format($item->total, 2) }}</td>
                                 <td class="text-end">
                                     <span class="{{ $profitDisplay >= 0 ? 'profit-positive' : 'profit-negative' }}">
@@ -5328,6 +5343,45 @@
 
             $('#manualUnitPrice').on('input', function() {
                 updateAddTotals();
+            });
+
+            $(document).on('change', '.manual-line-price', function() {
+                var $field = $(this);
+                var itemId = $field.data('id');
+                var unitPrice = parseFloat($field.val()) || 0;
+
+                if (unitPrice <= 0) {
+                    Swal.fire({
+                        icon: 'warning',
+                        title: @json(__('ui.invalid_price')),
+                        text: 'Manual unit price must be greater than zero.'
+                    });
+                    return;
+                }
+
+                $field.prop('disabled', true);
+
+                $.ajax({
+                    url: '{{ url('admin/sales/item') }}/' + itemId + '/manual-price',
+                    method: 'PATCH',
+                    data: {
+                        _token: '{{ csrf_token() }}',
+                        unit_price: unitPrice
+                    },
+                    success: function(response) {
+                        if (response.success) {
+                            location.reload();
+                        }
+                    },
+                    error: function(xhr) {
+                        $field.prop('disabled', false);
+                        Swal.fire({
+                            icon: 'error',
+                            title: @json(__('ui.error')),
+                            text: xhr.responseJSON?.message || 'Could not update manual unit price.'
+                        });
+                    }
+                });
             });
 
             $(document).on('change blur', '.quotation-description-input', function() {
