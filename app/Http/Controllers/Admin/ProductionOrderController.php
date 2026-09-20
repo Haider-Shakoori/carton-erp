@@ -499,6 +499,17 @@ class ProductionOrderController extends Controller
             }
         }
 
+        $productionVariance = null;
+        try {
+            $productionVariance = app(\App\Services\ProductionVarianceService::class)
+                ->forProductionOrder($productionOrder);
+        } catch (\Throwable $e) {
+            Log::warning('Could not calculate production variance', [
+                'production_order_id' => $productionOrder->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
         // ─── GET LINKED SALE ───
         $sale = Sale::where('production_order_id', $productionOrder->id)
             ->with(['currency', 'items', 'items.bom'])
@@ -630,6 +641,7 @@ class ProductionOrderController extends Controller
                 'productionOrder',
                 'maxProducibleQuantity',
                 'completionMaterials',
+                'productionVariance',
                 'progress',
                 'sale',
                 'currencyCode',
@@ -709,6 +721,7 @@ class ProductionOrderController extends Controller
             'productionOrder',
             'maxProducibleQuantity',
             'completionMaterials',
+            'productionVariance',
             'progress',
             'sale',
             'currencyCode',
