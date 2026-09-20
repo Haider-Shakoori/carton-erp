@@ -2567,9 +2567,10 @@ class SaleController extends Controller
             $item->usd_total = (float) $item->usd_unit_price * (float) $item->qty;
 
             $basePrice = (float) ($item->base_price ?: $item->original_unit_price ?: $newPrice);
-            $item->discount_amount = $basePrice - $newPrice;
-            $item->discount_percentage = $basePrice > 0
-                ? (($basePrice - $newPrice) / $basePrice) * 100
+            $discountDifference = max($basePrice - $newPrice, 0);
+            $item->discount_amount = $discountDifference;
+            $item->discount_percentage = $basePrice > 0 && $discountDifference > 0
+                ? ($discountDifference / $basePrice) * 100
                 : 0;
 
             $item->calculateProfitUsd();
