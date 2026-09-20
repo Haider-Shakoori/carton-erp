@@ -7,7 +7,7 @@ it('requires real output at production completion and explains invoice impact in
         ->toContain('Actual Quantity Produced')
         ->toContain('name="quantity_produced"')
         ->toContain('Save Actual Output & Complete')
-        ->toContain('actual production quantity')
+        ->toContain('real finished quantity')
         ->toContain('final invoice quantity')
         ->toContain('Production Variance')
         ->not->toContain("quantity_produced = quantity_ordered");
