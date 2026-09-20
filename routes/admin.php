@@ -38,6 +38,7 @@ use App\Http\Controllers\Admin\TransactionsController;
 use App\Http\Controllers\Admin\UsersController;
 use App\Http\Controllers\WhatsAppController;
 use App\Http\Controllers\Admin\BOMController;
+use App\Http\Controllers\Admin\CartonQuotationController;
 use App\Http\Controllers\Admin\ProductionOrderController;
 use App\Http\Controllers\Admin\WorkOrderController;
 use App\Http\Controllers\Admin\ShareholderWithdrawalController;
@@ -178,6 +179,10 @@ Route::middleware(['auth'])->prefix('admin')->group(function () {
         Route::get('/boms-for-product', [SaleController::class, 'getBomsForProduct'])->name('boms-for-product')->middleware('permission.feedback:create sales');
         Route::get('/bom-details', [SaleController::class, 'getBomDetails'])->name('bom-details')->middleware('permission.feedback:create sales');
         Route::post('/add-item-with-bom', [SaleController::class, 'addItemWithBOM'])->name('add-item-with-bom')->middleware('permission.feedback:create sales');
+        // Simple carton specification quotation (dimensions + board profile).
+        Route::get('/carton-spec/options', [CartonQuotationController::class, 'options'])->name('carton-spec.options')->middleware('permission.feedback:create sales');
+        Route::post('/{sale}/carton-spec/calculate', [CartonQuotationController::class, 'calculate'])->name('carton-spec.calculate')->middleware('permission.feedback:create sales');
+        Route::post('/{sale}/carton-spec/add', [CartonQuotationController::class, 'add'])->name('carton-spec.add')->middleware('permission.feedback:create sales');
         Route::get('/', [SaleController::class, 'index'])->name('index')->middleware('permission.feedback:view sales');
         Route::get('/create', [SaleController::class, 'create'])->name('create')->middleware('permission.feedback:create sales');
         Route::post('/', [SaleController::class, 'store'])->name('store')->middleware('permission.feedback:create sales');

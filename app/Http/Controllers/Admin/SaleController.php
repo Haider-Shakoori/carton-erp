@@ -262,6 +262,11 @@ class SaleController extends Controller
         // ─── EXACT PROFIT ───
         $profitSummary = app(\App\Services\SaleProfitService::class)->calculate($sale);
 
+        // ─── PLANNED VS ACTUAL MATERIAL VARIANCE (only after real consumption) ───
+        $productionVariance = ($profitSummary['actual_available'] ?? false)
+            ? app(\App\Services\ProductionVarianceService::class)->forSale($sale)
+            : null;
+
         // ─── ONLY FINISHED GOODS FOR SALES ───
         $products = Product::finishedGoods()
             ->where('is_active', true)
@@ -371,6 +376,9 @@ class SaleController extends Controller
                             'multiplication_method' => $item->multiplication_method ?? 'multiply',
                 'formula_type' => $item->formula_type ?? 'carton_3d',
                             'formula_type' => $item->formula_type ?? 'carton_3d',
+                            'adhesive' => ($item->is_formula_based && $item->formula_type === 'adhesive_mix')
+                                ? $item->adhesiveParameters()
+                                : null,
                         ];
                     }
 
@@ -425,7 +433,8 @@ class SaleController extends Controller
             'isUSD',
             'exchangeRate',
             'productBoms',
-            'profitSummary'
+            'profitSummary',
+            'productionVariance'
         ));
     }
 
@@ -1307,6 +1316,14 @@ class SaleController extends Controller
                 'purchase_rate_afn_kg' => $purchaseRateKg > 0 ? round($purchaseRateKg * $saleRate, 6) : 0.0,
                 'purchase_rate_found' => $purchaseRateKg > 0,
                 'material_is_roll_based' => (bool) ($item->material->is_roll_based ?? false),
+
+                // ─── ADHESIVE MIX (DIMENSION DRIVEN) ───
+                // Only adhesive rows opt out of the paper estimator; every other
+                // formula type keeps its existing estimator behaviour.
+                'formula_type' => $item->formula_type === 'adhesive_mix' ? 'adhesive_mix' : null,
+                'adhesive' => ($item->is_formula_based && $item->formula_type === 'adhesive_mix')
+                    ? $item->adhesiveParameters()
+                    : null,
             ];
         })->values();
 
@@ -1415,6 +1432,73 @@ class SaleController extends Controller
                     $landedUsdPerKg = (float) $latest['cost_usd'];
                     $landedAfnPerKg = $landedUsdPerKg * $exchangeRate;
 
+                    // Dimension-driven adhesive (mixing) rows: physical cost only.
+                    if (($row['formula_type'] ?? 'carton_3d') === 'adhesive_mix') {
+                        $adhesiveCalculator = app(\App\Services\AdhesiveMixCalculator::class);
+                        $adhesiveLength = (float) ($row['length'] ?? 0);
+                        $adhesiveWidth = (float) ($row['width'] ?? 0);
+                        $adhesiveHeight = (float) ($row['height'] ?? 0);
+
+                        if ($adhesiveLength <= 0 || $adhesiveWidth <= 0 || $adhesiveHeight <= 0) {
+                            throw new \RuntimeException(
+                                'Adhesive Mix rows require carton length, width and height greater than zero.'
+                            );
+                        }
+
+                        $adhesiveOverrides = [
+                            'sq_inch_to_m2' => $row['sq_inch_to_m2'] ?? null,
+                            'glue_lines' => $row['glue_lines'] ?? null,
+                            'dry_glue_gsm_per_line' => $row['dry_glue_gsm_per_line'] ?? null,
+                            'glue_wastage_percentage' => $row['glue_wastage_percentage'] ?? null,
+                            'adhesive_solids_percentage' => $row['adhesive_solids_percentage'] ?? null,
+                            'recipe_percentage' => $row['recipe_percentage'] ?? null,
+                        ];
+                        $adhesiveRecipeKey = $row['recipe_key']
+                            ?? $adhesiveCalculator->resolveRecipeKey($materialName);
+                        $adhesiveBreakdown = $adhesiveCalculator->breakdown(
+                            $adhesiveLength,
+                            $adhesiveWidth,
+                            $adhesiveHeight,
+                            $adhesiveRecipeKey,
+                            $adhesiveOverrides
+                        );
+
+                        $kgPerUnit = (float) $adhesiveBreakdown['ingredient_kg'];
+                        $physicalLineCostUsd = $kgPerUnit * $landedUsdPerKg;
+                        // Mixing materials are physical material cost only; they do
+                        // not contribute to the paper commercial quotation rate.
+                        $physicalMaterialCostPerUnitUsd += $physicalLineCostUsd;
+
+                        $materialBreakdown[] = [
+                            'material_id' => $materialId,
+                            'material_name' => $materialName,
+                            'formula_type' => 'adhesive_mix',
+                            'purchase_item_id' => $latest['purchase_item_id'],
+                            'length' => $adhesiveLength,
+                            'width' => $adhesiveWidth,
+                            'height' => $adhesiveHeight,
+                            'sq_inch_to_m2' => $adhesiveBreakdown['parameters']['sq_inch_to_m2'],
+                            'glue_lines' => $adhesiveBreakdown['parameters']['glue_lines'],
+                            'dry_glue_gsm_per_line' => $adhesiveBreakdown['parameters']['dry_glue_gsm_per_line'],
+                            'glue_wastage_percentage' => $adhesiveBreakdown['parameters']['glue_wastage_percentage'],
+                            'adhesive_solids_percentage' => $adhesiveBreakdown['parameters']['adhesive_solids_percentage'],
+                            'recipe_key' => $adhesiveRecipeKey,
+                            'recipe_percentage' => $adhesiveBreakdown['recipe_fraction'],
+                            'per_gram_rate' => $landedAfnPerKg,
+                            'landed_cost_usd_per_kg' => $landedUsdPerKg,
+                            'wastage' => 0,
+                            'work_percentage' => 0,
+                            'print_cost' => 0,
+                            'kg_per_finished_unit' => $kgPerUnit,
+                            'kg_with_wastage' => $kgPerUnit,
+                            'physical_cost_usd' => $physicalLineCostUsd,
+                            'row_net_rate' => 0,
+                            'final_rate_afn' => 0,
+                        ];
+
+                        continue;
+                    }
+
                     $length = (float) ($row['length'] ?? 0);
                     $width = (float) ($row['width'] ?? 0);
                     $height = (float) ($row['height'] ?? 0);
@@ -1453,6 +1537,7 @@ class SaleController extends Controller
                     $materialBreakdown[] = [
                         'material_id' => $materialId,
                         'material_name' => $materialName,
+                        'formula_type' => $row['formula_type'] ?? 'carton_3d',
                         'purchase_item_id' => $latest['purchase_item_id'],
                         'length' => $length,
                         'width' => $width,
@@ -1835,6 +1920,22 @@ class SaleController extends Controller
                         : 0;
                     $item->save();
                 }
+            }
+
+            // ─── Freeze accepted carton specifications ───
+            // The agreed technical and commercial assumptions are frozen now so
+            // the invoice, production and historical reporting never depend on
+            // today's board profile, config or landed rates.
+            $cartonSpecification = app(\App\Services\CartonSpecificationService::class);
+            foreach ($sale->items as $item) {
+                $cartonSpecification->freezeAccepted($item, [
+                    'unit_price' => (float) $item->unit_price,
+                    'total' => (float) $item->total,
+                    'currency' => strtoupper((string) ($sale->currency->code ?? 'AFN')),
+                    'exchange_rate' => (float) $sale->exchange_rate,
+                    'quantity' => (float) $item->qty,
+                    'is_manual_price' => $item->price_adjustment_type === 'manual',
+                ]);
             }
 
             // ─── Update stock ───

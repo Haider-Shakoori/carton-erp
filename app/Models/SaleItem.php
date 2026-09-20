@@ -44,6 +44,7 @@ class SaleItem extends Model
         'remarks',
         'quotation_description',
         'manual_bom_snapshot',
+        'carton_spec_snapshot',
     ];
 
     protected $casts = [
@@ -73,6 +74,7 @@ class SaleItem extends Model
         'price_adjustment_type' => 'string',
         'quotation_description' => 'string',
         'manual_bom_snapshot' => 'array',
+        'carton_spec_snapshot' => 'array',
     ];
 
     protected $appends = ['profit_margin', 'is_price_adjusted'];

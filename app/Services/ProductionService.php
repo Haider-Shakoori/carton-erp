@@ -15,6 +15,11 @@ use Illuminate\Support\Str;
 
 class ProductionService
 {
+    private function cartonSpecification(): CartonSpecificationService
+    {
+        return app(CartonSpecificationService::class);
+    }
+
     /**
      * Create production order from sale.
      */
@@ -39,7 +44,13 @@ class ProductionService
         // Validate BOMs here, but do not reject a sale because stock is below
         // the ordered quantity. Start Production now allocates the maximum quantity
         // supported by current raw material and completion records the real output.
+        // A sale item carrying a frozen carton specification does not need a live
+        // BOM: production consumes the frozen technical rows instead.
         foreach ($saleItems as $item) {
+            if (! empty($this->cartonSpecification()->frozenRows($item))) {
+                continue;
+            }
+
             $bom = $item->bom;
             if (!$bom) {
                 $bom = BOM::where('product_id', $item->product_id)
@@ -57,6 +68,22 @@ class ProductionService
         // ─── Create production orders for each item ───
         $productionOrders = [];
         foreach ($saleItems as $item) {
+            $snapshotRows = $this->cartonSpecification()->frozenRows($item);
+
+            if (! empty($snapshotRows)) {
+                $productionOrder = $this->createProductionOrderFromFrozenSpec(
+                    $item,
+                    $item->bom,
+                    $sale
+                );
+
+                if ($productionOrder) {
+                    $productionOrders[] = $productionOrder;
+                }
+
+                continue;
+            }
+
             $bom = $item->bom;
             if (!$bom) {
                 $bom = BOM::where('product_id', $item->product_id)
@@ -172,6 +199,119 @@ class ProductionService
                 'unit' => $material['unit'] ?? 'unit',
                 'cost_per_unit' => $material['cost_per_unit_usd'] ?? 0,
                 'total_cost' => $material['total_cost_usd'] ?? 0,
+                'consumed_quantity' => 0,
+            ]);
+        }
+
+        return $productionOrder;
+    }
+
+    /**
+     * Create a production order from a FROZEN carton specification.
+     *
+     * The accepted/frozen technical rows are authoritative: production never
+     * falls back to today's live board profile defaults when a sale snapshot
+     * exists. Requirements are aggregated per material before deduction so a
+     * material appearing in several technical rows is only consumed once.
+     */
+    public function createProductionOrderFromFrozenSpec($saleItem, $bom, $sale): ?ProductionOrder
+    {
+        if ($sale->production_order_id) {
+            return ProductionOrder::findOrFail($sale->production_order_id);
+        }
+
+        $snapshot = $saleItem->carton_spec_snapshot;
+
+        if (! is_array($snapshot) || empty($snapshot['rows'])) {
+            return null;
+        }
+
+        $quantity = (float) $saleItem->qty;
+        $exchangeRate = max((float) ($sale->exchange_rate ?? 66), 0.000001);
+
+        if ($quantity <= 0) {
+            throw new \Exception('Sale item quantity must be greater than zero.');
+        }
+
+        $bom ??= BOM::where('product_id', $saleItem->product_id)
+            ->where('status', 'active')
+            ->where('is_active', true)
+            ->first();
+
+        if (! $bom) {
+            throw new \Exception(
+                "No BOM found for product: {$saleItem->product?->name}. A technical BOM is required for production."
+            );
+        }
+
+        $requirements = $this->cartonSpecification()->requirementsFromSnapshot($snapshot, $quantity);
+        $stockService = app(StockDeductionService::class);
+
+        $materialDetails = [];
+        $materialCostUsd = 0.0;
+        $hasShortage = false;
+
+        foreach ($requirements as $requirement) {
+            $materialId = (int) $requirement['material_id'];
+            $required = (float) $requirement['required_quantity'];
+            $costPerUnitUsd = (float) $requirement['cost_per_unit_usd'];
+            $available = $stockService->availableProductionQuantity($materialId);
+            $shortage = max($required - $available, 0.0);
+
+            if ($shortage > 0.000001) {
+                $hasShortage = true;
+            }
+
+            $totalCostUsd = $required * $costPerUnitUsd;
+            $materialCostUsd += $totalCostUsd;
+
+            $materialDetails[] = [
+                'material_id' => $materialId,
+                'required_quantity' => $required,
+                'available_quantity' => $available,
+                'shortage_quantity' => $shortage,
+                'unit' => $requirement['unit'] ?? 'kg',
+                'cost_per_unit_usd' => $costPerUnitUsd,
+                'total_cost_usd' => $totalCostUsd,
+            ];
+        }
+
+        $laborCostUsd = ((float) ($bom->labor_cost_per_unit ?? 0) / $exchangeRate) * $quantity;
+        $overheadCostUsd = ((float) ($bom->overhead_cost_per_unit ?? 0) / $exchangeRate) * $quantity;
+
+        Log::info('Production order from frozen carton specification', [
+            'sale_item_id' => $saleItem->id,
+            'sale_id' => $sale->id,
+            'quantity' => $quantity,
+            'material_count' => count($materialDetails),
+            'has_shortage' => $hasShortage,
+        ]);
+
+        $productionOrder = ProductionOrder::create([
+            'order_number' => 'PROD-' . date('Y') . '-' . strtoupper(Str::random(8)),
+            'product_id' => $saleItem->product_id,
+            'bom_id' => $bom->id,
+            'quantity_ordered' => $quantity,
+            'quantity_produced' => 0,
+            'status' => 'pending',
+            'start_date' => now(),
+            'created_by' => auth()->id(),
+            'total_material_cost' => $materialCostUsd,
+            'total_labor_cost' => $laborCostUsd,
+            'total_overhead_cost' => $overheadCostUsd,
+            'total_cost' => $materialCostUsd + $laborCostUsd + $overheadCostUsd,
+            'notes' => "Created from frozen carton specification - Sale #{$sale->sale_no} - SaleItem ID: {$saleItem->id}",
+        ]);
+
+        foreach ($materialDetails as $material) {
+            $productionOrder->materials()->create([
+                'product_id' => $material['material_id'],
+                'required_quantity' => $material['required_quantity'],
+                'available_quantity' => $material['available_quantity'],
+                'shortage_quantity' => $material['shortage_quantity'],
+                'unit' => $material['unit'],
+                'cost_per_unit' => $material['cost_per_unit_usd'],
+                'total_cost' => $material['total_cost_usd'],
                 'consumed_quantity' => 0,
             ]);
         }

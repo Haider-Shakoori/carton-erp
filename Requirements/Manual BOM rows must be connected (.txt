@@ -1,0 +1,25 @@
+Manual BOM rows must be connected for 3d cartons(when one changed another must change automatically the dimension)
+BOM details must be removed from both invoice and invoice items row
+In production order quantity must be entered manually the amount must be calculated based on that amount (either more than or less than actual qty)
+When invoice is delivered gatepass must be created the gatepass must have quantity, item name/description
+BOM gram/kg must be populated from purchase order price of the item
+per item price in invoice add a input where manual price will be added
+
+3d carton raw materials
+
+Mixing Material:
+ -seligate (glue)
+ -corn flour
+ -borex
+ -kastic soda
+
+Paper material
+ -test liner
+ -fluting
+ -kraft liner
+ -semi kraft
+ -white liner
+ -box board
+
+
+Add a button for quotation where quotation description for each line item will be manually filled

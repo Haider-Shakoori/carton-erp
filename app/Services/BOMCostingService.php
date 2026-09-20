@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\BOM;
+use App\Models\Currency;
 use App\Models\PurchaseItem;
 
 class BOMCostingService
@@ -69,10 +70,28 @@ class BOMCostingService
             'basis_unit' => $purchaseItem->inventoryCostBasisUnit(),
             'available_quantity' => $purchaseItem->availableInventoryQuantity(),
             'purchase_currency' => $purchaseItem->purchase?->currency?->code,
-            'purchase_currency_id' => $purchaseItem->purchase?->currency_id,
+            'purchase_currency_id' => $this->resolveCurrencyId(
+                $purchaseItem->purchase?->currency_id,
+                $purchaseItem->purchase?->currency?->code
+            ),
             'purchase_date' => $date,
             'batch_no' => $purchaseItem->batch_no,
         ];
+    }
+
+    /**
+     * Legacy purchases may reference currency ids that no longer exist after the
+     * currencies table was re-seeded; resolve those to the current row by code.
+     */
+    private function resolveCurrencyId($currencyId, ?string $currencyCode): ?int
+    {
+        if ($currencyId && Currency::whereKey($currencyId)->exists()) {
+            return (int) $currencyId;
+        }
+
+        $id = Currency::where('code', $currencyCode ?: 'AFN')->value('id');
+
+        return $id ? (int) $id : null;
     }
 
     /**
@@ -81,7 +100,11 @@ class BOMCostingService
      */
     public function refreshBomMaterialCosts(BOM $bom): BOM
     {
-        $bom->loadMissing(['items.material']);
+        // Always reload: callers such as the BOM update flow already hold the
+        // items relation, and a stale collection would make updateQuietly()
+        // see "no changes" and leave the outdated prices in place.
+        $bom->unsetRelation('items');
+        $bom->load(['items.material']);
         $exchangeRate = max((float) $bom->getUSDtoAFNRate(), 0.000001);
 
         foreach ($bom->items as $item) {
@@ -186,8 +209,18 @@ class BOMCostingService
 
             $baseMaterialUsd += $lineBaseUsd;
             $physicalMaterialUsd += $linePhysicalUsd;
-            $standardWorkProfitAfn += ($lineBaseUsd * $exchangeRate) * ($lineWorkPercent / 100);
-            $printAfn += (float) ($item->print ?? 0);
+
+            // Mixing/adhesive rows are physical material cost only: they carry no
+            // commercial Standard Work / Profit markup and no print component.
+            // apply_work_percentage allows new technical rows to opt out (or in)
+            // explicitly without changing legacy rows.
+            if ($item->appliesWorkProfit()) {
+                $standardWorkProfitAfn += ($lineBaseUsd * $exchangeRate) * ($lineWorkPercent / 100);
+            }
+
+            if (! $item->isAdhesiveComponent()) {
+                $printAfn += (float) ($item->print ?? 0);
+            }
         }
 
         $baseMaterialAfn = $baseMaterialUsd * $exchangeRate;
