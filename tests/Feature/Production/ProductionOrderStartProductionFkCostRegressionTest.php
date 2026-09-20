@@ -335,3 +335,116 @@ it('keeps the legacy BOM-template fallback working when no frozen snapshot exist
     expect(abs($totalActual - 0.34388))->toBeLessThan(0.002)
         ->and($pmc->first()->sale_id)->toBeNull();
 });
+
+it('completes production from operator-entered output and actual material consumption', function () {
+    $fx = startProductionFixtures();
+    Auth::login($fx['user']);
+
+    $order = makeOrder('FK-ACTUAL-COMPLETE-001', $fx);
+    addSnapshotRows($order, $fx['materialId']);
+
+    (new ProductionOrderController())->startProduction($order);
+    $order->refresh();
+
+    $request = \Illuminate\Http\Request::create(
+        '/admin/production-orders/'.$order->id.'/complete',
+        'POST',
+        [
+            'quantity_manufactured' => 1.10,
+            'quantity_produced' => 1.00,
+            'quantity_rejected' => 0.10,
+            'materials' => [[
+                'material_id' => $fx['materialId'],
+                'actual_quantity' => 1.20,
+                'wastage_quantity' => 0.05,
+                'unit' => 'kg',
+            ]],
+        ]
+    );
+
+    $response = (new ProductionOrderController())->completeProduction($order, $request);
+
+    expect($response->getSession()->get('success'))
+        ->toContain('1.10 manufactured')
+        ->toContain('1.00 good/usable')
+        ->toContain('0.10 rejected');
+
+    $order->refresh();
+    $consumptions = ProductionMaterialConsumption::where('production_order_id', $order->id)->get();
+    $batch = PurchaseItem::findOrFail($fx['purchaseItemId']);
+
+    expect($order->status)->toBe('completed')
+        ->and((float) $order->quantity_manufactured)->toBe(1.10)
+        ->and((float) $order->quantity_produced)->toBe(1.00)
+        ->and((float) $order->quantity_rejected)->toBe(0.10)
+        ->and(abs((float) $order->yield_percentage - 90.9090909))->toBeLessThan(0.001)
+        ->and(abs((float) $consumptions->sum('actual_quantity') - 1.20))->toBeLessThan(0.0001)
+        ->and(abs((float) $consumptions->sum('wastage_quantity') - 0.05))->toBeLessThan(0.0001)
+        ->and(abs((float) $batch->qty_kg_available - 23998.80))->toBeLessThan(0.001);
+});
+
+it('restores unused FIFO stock when operator-entered actual material use is below the start allocation', function () {
+    $fx = startProductionFixtures();
+    Auth::login($fx['user']);
+
+    $order = makeOrder('FK-ACTUAL-RESTORE-001', $fx);
+    addSnapshotRows($order, $fx['materialId']);
+
+    (new ProductionOrderController())->startProduction($order);
+    $order->refresh();
+
+    $request = \Illuminate\Http\Request::create(
+        '/admin/production-orders/'.$order->id.'/complete',
+        'POST',
+        [
+            'quantity_manufactured' => 1.00,
+            'quantity_produced' => 0.95,
+            'quantity_rejected' => 0.05,
+            'materials' => [[
+                'material_id' => $fx['materialId'],
+                'actual_quantity' => 0.80,
+                'wastage_quantity' => 0.02,
+                'unit' => 'kg',
+            ]],
+        ]
+    );
+
+    (new ProductionOrderController())->completeProduction($order, $request);
+
+    $consumptions = ProductionMaterialConsumption::where('production_order_id', $order->id)->get();
+    $batch = PurchaseItem::findOrFail($fx['purchaseItemId']);
+
+    expect(abs((float) $consumptions->sum('actual_quantity') - 0.80))->toBeLessThan(0.0001)
+        ->and(abs((float) $consumptions->sum('wastage_quantity') - 0.02))->toBeLessThan(0.0001)
+        ->and(abs((float) $batch->qty_kg_available - 23999.20))->toBeLessThan(0.001);
+});
+
+it('rejects completion when manufactured quantity does not equal good plus rejected', function () {
+    $fx = startProductionFixtures();
+    Auth::login($fx['user']);
+
+    $order = makeOrder('FK-ACTUAL-VALIDATION-001', $fx);
+    addSnapshotRows($order, $fx['materialId']);
+    (new ProductionOrderController())->startProduction($order);
+
+    $request = \Illuminate\Http\Request::create(
+        '/admin/production-orders/'.$order->id.'/complete',
+        'POST',
+        [
+            'quantity_manufactured' => 1.20,
+            'quantity_produced' => 1.00,
+            'quantity_rejected' => 0.10,
+            'materials' => [[
+                'material_id' => $fx['materialId'],
+                'actual_quantity' => 1.0316,
+                'wastage_quantity' => 0,
+                'unit' => 'kg',
+            ]],
+        ]
+    );
+
+    expect(fn () => (new ProductionOrderController())->completeProduction($order->fresh(), $request))
+        ->toThrow(\Illuminate\Validation\ValidationException::class);
+
+    expect($order->fresh()->status)->toBe('in_progress');
+});
