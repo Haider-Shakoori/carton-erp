@@ -96,6 +96,7 @@ class ProductionQuantityService
                 + (float) $order->total_labor_cost
                 + (float) $order->total_overhead_cost;
             $order->status = ProductionOrder::STATUS_IN_PROGRESS;
+            $order->start_date = $order->start_date ?: now()->toDateString();
             $order->save();
 
             return [
