@@ -36,7 +36,9 @@ class ProductionService
             'item_count' => $saleItems->count(),
         ]);
 
-        // ─── Check material availability for all items ───
+        // Validate BOMs here, but do not reject a sale because stock is below
+        // the ordered quantity. Start Production now allocates the maximum quantity
+        // supported by current raw material and completion records the real output.
         foreach ($saleItems as $item) {
             $bom = $item->bom;
             if (!$bom) {
@@ -49,15 +51,6 @@ class ProductionService
 
             if (!$bom) {
                 throw new \Exception("No active BOM found for product: {$item->product->name}");
-            }
-
-            $availability = $this->checkMaterialAvailability($bom, $item->qty);
-            if ($availability['has_shortage']) {
-                $shortages = [];
-                foreach ($availability['shortages'] as $shortage) {
-                    $shortages[] = "{$shortage['material_name']}: Need {$shortage['total_required']} {$shortage['unit']}, Available: {$shortage['available_stock']} {$shortage['unit']}";
-                }
-                throw new \Exception("Material shortages for {$item->product->name}: " . implode(', ', $shortages));
             }
         }
 
@@ -314,95 +307,50 @@ class ProductionService
     /**
      * Start and complete production.
      */
-    public function startAndCompleteProduction($productionOrder, $sale = null)
-    {
-        if ($productionOrder->status !== 'pending') {
-            throw new \Exception('Only pending orders can be started.');
+    public function startAndCompleteProduction(
+        $productionOrder,
+        $sale = null,
+        ?float $actualQuantity = null
+    ) {
+        if ($actualQuantity === null) {
+            throw new \RuntimeException(
+                'Automatic production completion is disabled. Enter the real produced quantity when production ends.'
+            );
         }
 
-        Log::info('Starting and completing production order', [
-            'production_order_id' => $productionOrder->id,
-            'order_number' => $productionOrder->order_number,
-        ]);
+        $quantityService = app(\App\Services\ProductionQuantityService::class);
+        $quantityService->start($productionOrder, $sale);
 
-        // Consume materials
-        foreach ($productionOrder->materials as $material) {
-            $this->consumeMaterial($material);
-        }
-
-        // Update production order status
-        $productionOrder->status = 'in_progress';
-        $productionOrder->save();
-
-        // Complete production
-        $productionOrder->quantity_produced = $productionOrder->quantity_ordered;
-        $productionOrder->status = 'completed';
-        $productionOrder->completion_date = now();
-        $productionOrder->save();
-
-        Log::info('Production order completed', [
-            'production_order_id' => $productionOrder->id,
-            'quantity_produced' => $productionOrder->quantity_produced,
-        ]);
-
-        if ($sale) {
-            $sale->is_produced = true;
-            $sale->save();
-
-            Log::info('Sale marked as produced', [
-                'sale_id' => $sale->id,
-                'sale_no' => $sale->sale_no,
-                'production_order_id' => $productionOrder->id,
-            ]);
-        }
-
-        return $productionOrder;
+        return $quantityService->complete(
+            $productionOrder->fresh(),
+            $actualQuantity,
+            $sale
+        );
     }
 
-    /**
-     * Start production only.
-     */
     public function startProduction($productionOrder)
     {
-        if ($productionOrder->status !== 'pending') {
-            throw new \Exception('Only pending orders can be started.');
-        }
-
-        foreach ($productionOrder->materials as $material) {
-            $this->consumeMaterial($material);
-        }
-
-        $productionOrder->status = 'in_progress';
-        $productionOrder->save();
-
-        return $productionOrder;
+        return app(\App\Services\ProductionQuantityService::class)
+            ->start($productionOrder, $productionOrder->sale()->with('items')->first());
     }
 
-    /**
-     * Complete production only.
-     */
-    public function completeProduction($productionOrder, $sale = null)
-    {
-        if ($productionOrder->status !== 'in_progress') {
-            throw new \Exception('Only in-progress orders can be completed.');
+    public function completeProduction(
+        $productionOrder,
+        $sale = null,
+        ?float $actualQuantity = null
+    ) {
+        if ($actualQuantity === null) {
+            throw new \RuntimeException(
+                'Actual produced quantity is required to complete production.'
+            );
         }
 
-        $productionOrder->quantity_produced = $productionOrder->quantity_ordered;
-        $productionOrder->status = 'completed';
-        $productionOrder->completion_date = now();
-        $productionOrder->save();
+        app(\App\Services\ProductionQuantityService::class)
+            ->complete($productionOrder, $actualQuantity, $sale);
 
-        if ($sale) {
-            $sale->is_produced = true;
-            $sale->save();
-        }
-
-        return $productionOrder;
+        return $productionOrder->fresh();
     }
 
-    /**
-     * Consume material from inventory.
-     */
     private function consumeMaterial($material)
     {
         $purchaseItems = PurchaseItem::where('product_id', $material->product_id)
