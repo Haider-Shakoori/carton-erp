@@ -792,68 +792,130 @@
 
         @if($productionOrder->status === 'in_progress')
             <div class="modal fade" id="completeProductionModal" tabindex="-1" aria-labelledby="completeProductionModalLabel" aria-hidden="true">
-                <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
                     <div class="modal-content border-0 shadow-lg">
                         <form action="{{ route('production-orders.complete', $productionOrder) }}" method="POST">
                             @csrf
                             <div class="modal-header border-0 pb-0">
                                 <div>
-                                    <h5 class="modal-title fw-bold" id="completeProductionModalLabel">
-                                        Complete Production
-                                    </h5>
-                                    <div class="text-muted small">
-                                        Record the real finished quantity produced.
-                                    </div>
+                                    <h5 class="modal-title fw-bold" id="completeProductionModalLabel">Complete Production — Actual Results</h5>
+                                    <div class="text-muted small">Record the real output and raw material used on the shop floor.</div>
                                 </div>
                                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="{{ __('ui.close') }}"></button>
                             </div>
 
                             <div class="modal-body pt-3">
-                                <div class="rounded-3 p-3 mb-3" style="background:#eff6ff;border:1px solid #bfdbfe;">
-                                    <div class="d-flex justify-content-between mb-1">
-                                        <span class="text-muted">Customer ordered</span>
-                                        <strong>{{ number_format((float) $productionOrder->quantity_ordered, 2) }}</strong>
-                                    </div>
-                                    <div class="d-flex justify-content-between mb-1">
-                                        <span class="text-muted">Planned for this run</span>
-                                        <strong>{{ number_format((float) ($productionOrder->quantity_planned ?: $productionOrder->quantity_ordered), 2) }}</strong>
-                                    </div>
-                                    <div class="small text-muted">
-                                        Actual production may differ from both the customer order and the planned run quantity.
+                                <div class="rounded-3 p-3 mb-4" style="background:#eff6ff;border:1px solid #bfdbfe;">
+                                    <div class="row g-3">
+                                        <div class="col-md-4">
+                                            <div class="text-muted small">Customer Ordered</div>
+                                            <strong>{{ number_format((float) $productionOrder->quantity_ordered, 2) }}</strong>
+                                        </div>
+                                        <div class="col-md-4">
+                                            <div class="text-muted small">Planned for This Run</div>
+                                            <strong>{{ number_format((float) ($productionOrder->quantity_planned ?: $productionOrder->quantity_ordered), 2) }}</strong>
+                                        </div>
+                                        <div class="col-md-4">
+                                            <div class="text-muted small">Completion Rule</div>
+                                            <strong>Manufactured = Good + Rejected</strong>
+                                        </div>
                                     </div>
                                 </div>
 
-                                <label for="quantity_produced" class="form-label fw-semibold">
-                                    Actual Quantity Produced <span class="text-danger">*</span>
-                                </label>
-                                <input type="number"
-                                       class="form-control form-control-lg {{ isset($errors) && $errors->has('quantity_produced') ? 'is-invalid' : '' }}"
-                                       id="quantity_produced"
-                                       name="quantity_produced"
-                                       value="{{ old('quantity_produced', $productionOrder->quantity_planned ?: $productionOrder->quantity_ordered) }}"
-                                       min="0.01"
-                                       max="999999999.99"
-                                       step="0.01"
-                                       required
-                                       autofocus>
-                                @if(isset($errors) && $errors->has('quantity_produced'))
-                                    <div class="invalid-feedback">{{ $errors->first('quantity_produced') }}</div>
-                                @endif
+                                <h6 class="fw-bold mb-3">1. Finished Output</h6>
+                                <div class="row g-3 mb-4">
+                                    <div class="col-md-4">
+                                        <label for="quantity_manufactured" class="form-label fw-semibold">Manufactured Qty <span class="text-danger">*</span></label>
+                                        <input type="number" class="form-control form-control-lg @error('quantity_manufactured') is-invalid @enderror"
+                                               id="quantity_manufactured" name="quantity_manufactured"
+                                               value="{{ old('quantity_manufactured', $productionOrder->quantity_planned ?: $productionOrder->quantity_ordered) }}"
+                                               min="0.01" max="999999999.99" step="0.01" required autofocus>
+                                        @error('quantity_manufactured')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                                        <div class="form-text">All cartons physically manufactured, including rejected units.</div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label for="quantity_produced" class="form-label fw-semibold">Good / Actual Finished Qty <span class="text-danger">*</span></label>
+                                        <input type="number" class="form-control form-control-lg @error('quantity_produced') is-invalid @enderror"
+                                               id="quantity_produced" name="quantity_produced"
+                                               value="{{ old('quantity_produced', $productionOrder->quantity_planned ?: $productionOrder->quantity_ordered) }}"
+                                               min="0.01" max="999999999.99" step="0.01" required>
+                                        @error('quantity_produced')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                                        <div class="form-text">Usable cartons available for delivery/invoicing.</div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label for="quantity_rejected" class="form-label fw-semibold">Rejected / Scrap Qty <span class="text-danger">*</span></label>
+                                        <input type="number" class="form-control form-control-lg @error('quantity_rejected') is-invalid @enderror"
+                                               id="quantity_rejected" name="quantity_rejected"
+                                               value="{{ old('quantity_rejected', 0) }}"
+                                               min="0" max="999999999.99" step="0.01" required>
+                                        @error('quantity_rejected')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                                        <div class="form-text">Defective or unusable cartons from this run.</div>
+                                    </div>
+                                </div>
 
-                                <div class="alert alert-warning mt-3 mb-0 small">
+                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                    <h6 class="fw-bold mb-0">2. Actual Raw Material Consumption</h6>
+                                    <span class="badge bg-light text-dark border">BOM remains the planned baseline</span>
+                                </div>
+                                <p class="text-muted small mb-3">
+                                    Enter the total quantity that actually left inventory. Actual waste is part of that total; it is not deducted a second time.
+                                </p>
+
+                                @error('materials')<div class="alert alert-danger py-2">{{ $message }}</div>@enderror
+
+                                <div class="table-responsive border rounded-3">
+                                    <table class="table align-middle mb-0">
+                                        <thead class="table-light">
+                                            <tr>
+                                                <th>Material</th>
+                                                <th class="text-end">Planned</th>
+                                                <th style="min-width:180px;">Actual Used</th>
+                                                <th style="min-width:180px;">Actual Waste</th>
+                                                <th>Unit</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @forelse($completionMaterials as $index => $material)
+                                                <tr>
+                                                    <td class="fw-semibold">
+                                                        {{ $material['material_name'] }}
+                                                        <input type="hidden" name="materials[{{ $index }}][material_id]" value="{{ $material['material_id'] }}">
+                                                        <input type="hidden" name="materials[{{ $index }}][unit]" value="{{ $material['unit'] }}">
+                                                    </td>
+                                                    <td class="text-end">{{ number_format((float) $material['planned_quantity'], 4) }}</td>
+                                                    <td>
+                                                        <input type="number" class="form-control @error('materials.'.$index.'.actual_quantity') is-invalid @enderror"
+                                                               name="materials[{{ $index }}][actual_quantity]"
+                                                               value="{{ old('materials.'.$index.'.actual_quantity', $material['current_actual_quantity']) }}"
+                                                               min="0" step="0.000001" required>
+                                                        @error('materials.'.$index.'.actual_quantity')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                                                    </td>
+                                                    <td>
+                                                        <input type="number" class="form-control @error('materials.'.$index.'.wastage_quantity') is-invalid @enderror"
+                                                               name="materials[{{ $index }}][wastage_quantity]"
+                                                               value="{{ old('materials.'.$index.'.wastage_quantity', $material['current_wastage_quantity']) }}"
+                                                               min="0" step="0.000001" required>
+                                                        @error('materials.'.$index.'.wastage_quantity')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                                                    </td>
+                                                    <td>{{ $material['unit'] }}</td>
+                                                </tr>
+                                            @empty
+                                                <tr><td colspan="5" class="text-center text-danger py-4">No production materials are available for completion.</td></tr>
+                                            @endforelse
+                                        </tbody>
+                                    </table>
+                                </div>
+
+                                <div class="alert alert-warning mt-4 mb-0 small">
                                     <i class="bi bi-exclamation-triangle me-1"></i>
-                                    Completing production will reconcile raw-material consumption to this actual quantity.
-                                    If linked to a sale, the final invoice quantity, invoice amount, customer balance and profit will also be recalculated.
+                                    Completion reconciles FIFO stock and actual production cost to the quantities entered above. Only the good/actual finished quantity is invoiceable.
                                 </div>
                             </div>
 
                             <div class="modal-footer border-0 pt-0">
-                                <button type="button" class="btn btn-light" data-bs-dismiss="modal">
-                                    {{ __('ui.cancel') }}
-                                </button>
-                                <button type="submit" class="btn btn-success">
-                                    <i class="bi bi-check-circle me-1"></i>
-                                    Save Actual Output & Complete
+                                <button type="button" class="btn btn-light" data-bs-dismiss="modal">{{ __('ui.cancel') }}</button>
+                                <button type="submit" class="btn btn-success" @disabled(empty($completionMaterials))>
+                                    <i class="bi bi-check-circle me-1"></i> Save Actuals & Complete Production
                                 </button>
                             </div>
                         </form>
@@ -969,8 +1031,20 @@
                     <i class="bi bi-check-circle"></i>
                 </div>
                 <div class="stat-value green">{{ number_format($productionOrder->quantity_produced) }}</div>
-                <div class="stat-label">Produced Quantity</div>
+                <div class="stat-label">Good / Finished Qty</div>
             </div>
+            @if($productionOrder->quantity_manufactured !== null)
+                <div class="stat-card-modern">
+                    <div class="stat-icon blue"><i class="bi bi-boxes"></i></div>
+                    <div class="stat-value blue">{{ number_format((float) $productionOrder->quantity_manufactured) }}</div>
+                    <div class="stat-label">Manufactured Qty</div>
+                </div>
+                <div class="stat-card-modern">
+                    <div class="stat-icon orange"><i class="bi bi-trash3"></i></div>
+                    <div class="stat-value orange">{{ number_format((float) $productionOrder->quantity_rejected) }}</div>
+                    <div class="stat-label">Rejected / Scrap Qty</div>
+                </div>
+            @endif
             <div class="stat-card-modern">
                 <div class="stat-icon orange">
                     <i class="bi bi-percent"></i>
@@ -1095,13 +1169,13 @@
                                         <span class="value">{{ number_format($productionOrder->quantity_ordered) }}</span>
                                     </div>
                                     <div class="progress-stat-item">
-                                        <span class="label">Produced</span>
+                                        <span class="label">Good / Finished</span>
                                         <span class="value">{{ number_format($productionOrder->quantity_produced) }}</span>
                                     </div>
                                     <div class="progress-stat-item">
                                         <span class="label">Production Variance</span>
                                         @php
-                                            $productionVariance = (float) $productionOrder->quantity_produced - (float) $productionOrder->quantity_ordered;
+                                            $productionVariance = (float) ($productionOrder->quantity_manufactured ?? $productionOrder->quantity_produced) - (float) ($productionOrder->quantity_planned ?? $productionOrder->quantity_ordered);
                                         @endphp
                                         <span class="value {{ $productionVariance > 0 ? 'text-success' : ($productionVariance < 0 ? 'text-warning' : '') }}">
                                             {{ $productionVariance > 0 ? '+' : '' }}{{ number_format($productionVariance, 2) }}
@@ -1395,6 +1469,66 @@
             </div>
         @endif
 
+        @if(!empty($productionVariance) && ($productionVariance['has_actual'] ?? false))
+            <div class="card-modern mt-4">
+                <div class="card-header-modern">
+                    <h6>
+                        <i class="bi bi-clipboard-data me-2" style="color:#4f46e5;"></i>
+                        Planned vs Actual Production Variance
+                    </h6>
+                    <span class="badge bg-light text-dark border">Actual FIFO consumption</span>
+                </div>
+                <div class="card-body-modern">
+                    @php($output = $productionVariance['output'] ?? [])
+                    <div class="row g-3 mb-4">
+                        <div class="col-md-2 col-6"><div class="text-muted small">Planned</div><strong>{{ number_format((float) ($output['planned_quantity'] ?? 0), 2) }}</strong></div>
+                        <div class="col-md-2 col-6"><div class="text-muted small">Manufactured</div><strong>{{ number_format((float) ($output['manufactured_quantity'] ?? 0), 2) }}</strong></div>
+                        <div class="col-md-2 col-6"><div class="text-muted small">Good</div><strong class="text-success">{{ number_format((float) ($output['good_quantity'] ?? 0), 2) }}</strong></div>
+                        <div class="col-md-2 col-6"><div class="text-muted small">Rejected</div><strong class="text-warning">{{ number_format((float) ($output['rejected_quantity'] ?? 0), 2) }}</strong></div>
+                        <div class="col-md-2 col-6"><div class="text-muted small">Output Variance</div><strong>{{ number_format((float) ($output['manufactured_variance_quantity'] ?? 0), 2) }}</strong></div>
+                        <div class="col-md-2 col-6"><div class="text-muted small">Yield</div><strong>{{ number_format((float) ($output['yield_percentage'] ?? 0), 2) }}%</strong></div>
+                    </div>
+
+                    <div class="table-responsive">
+                        <table class="table table-sm align-middle mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Material</th>
+                                    <th class="text-end">Planned</th>
+                                    <th class="text-end">Actual</th>
+                                    <th class="text-end">Variance</th>
+                                    <th class="text-end">Actual Waste</th>
+                                    <th class="text-end">Cost Variance (USD)</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach($productionVariance['materials'] ?? [] as $row)
+                                    <tr>
+                                        <td>{{ $row['material_name'] }}</td>
+                                        <td class="text-end">{{ number_format((float) $row['planned_quantity'], 4) }} {{ $row['unit'] }}</td>
+                                        <td class="text-end">{{ number_format((float) $row['actual_quantity'], 4) }} {{ $row['unit'] }}</td>
+                                        <td class="text-end {{ $row['variance_quantity'] > 0 ? 'text-danger' : ($row['variance_quantity'] < 0 ? 'text-success' : '') }}">
+                                            {{ $row['variance_quantity'] > 0 ? '+' : '' }}{{ number_format((float) $row['variance_quantity'], 4) }}
+                                        </td>
+                                        <td class="text-end">{{ number_format((float) $row['actual_wastage_quantity'], 4) }}</td>
+                                        <td class="text-end {{ $row['cost_variance_usd'] > 0 ? 'text-danger' : ($row['cost_variance_usd'] < 0 ? 'text-success' : '') }}">
+                                            {{ $row['cost_variance_usd'] > 0 ? '+' : '' }}${{ number_format((float) $row['cost_variance_usd'], 4) }}
+                                        </td>
+                                    </tr>
+                                @endforeach
+                            </tbody>
+                            <tfoot>
+                                <tr>
+                                    <td colspan="5" class="text-end fw-bold">Total Material Cost Variance</td>
+                                    <td class="text-end fw-bold">${{ number_format((float) data_get($productionVariance, 'summary.material_cost_variance_usd', 0), 4) }}</td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        @endif
+
     </div>
 @endsection
 
@@ -1434,7 +1568,13 @@
             }
             @endif
 
-            @if(isset($errors) && $errors->has('quantity_produced'))
+            @if(isset($errors) && (
+                $errors->has('quantity_manufactured')
+                || $errors->has('quantity_produced')
+                || $errors->has('quantity_rejected')
+                || $errors->has('materials')
+                || collect($errors->keys())->contains(fn ($key) => str_starts_with($key, 'materials.'))
+            ))
             const completionModalElement = document.getElementById('completeProductionModal');
             if (completionModalElement && window.bootstrap) {
                 new bootstrap.Modal(completionModalElement).show();

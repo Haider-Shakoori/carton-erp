@@ -460,6 +460,56 @@ class ProductionOrderController extends Controller
             }
         }
 
+        // ─── COMPLETION DECLARATION DATA ───
+        // Planned quantities come from the frozen production-order material
+        // snapshot. Current actuals are the FIFO allocations made when production
+        // started; the operator can correct them to the real shop-floor amounts.
+        $completionMaterials = [];
+        if ($productionOrder->status === ProductionOrder::STATUS_IN_PROGRESS) {
+            try {
+                $plannedRunQty = (float) ($productionOrder->quantity_planned ?: $productionOrder->quantity_ordered);
+                $plannedRows = app(\App\Services\ProductionQuantityService::class)
+                    ->requirementsForQuantity($productionOrder, $plannedRunQty);
+
+                $currentConsumption = DB::table('production_material_consumptions')
+                    ->where('production_order_id', $productionOrder->id)
+                    ->selectRaw('material_id, SUM(actual_quantity) AS actual_quantity, SUM(wastage_quantity) AS wastage_quantity')
+                    ->groupBy('material_id')
+                    ->get()
+                    ->keyBy(fn ($row) => (int) $row->material_id);
+
+                $completionMaterials = collect($plannedRows)->map(function (array $row) use ($currentConsumption) {
+                    $materialId = (int) $row['material_id'];
+                    $current = $currentConsumption->get($materialId);
+
+                    return [
+                        'material_id' => $materialId,
+                        'material_name' => $row['material_name'] ?? ('Material #' . $materialId),
+                        'unit' => $row['unit'] ?? 'unit',
+                        'planned_quantity' => (float) ($row['quantity'] ?? 0),
+                        'current_actual_quantity' => (float) ($current->actual_quantity ?? 0),
+                        'current_wastage_quantity' => (float) ($current->wastage_quantity ?? 0),
+                    ];
+                })->values()->all();
+            } catch (\Throwable $e) {
+                Log::warning('Could not prepare production completion material rows', [
+                    'production_order_id' => $productionOrder->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        $productionVariance = null;
+        try {
+            $productionVariance = app(\App\Services\ProductionVarianceService::class)
+                ->forProductionOrder($productionOrder);
+        } catch (\Throwable $e) {
+            Log::warning('Could not calculate production variance', [
+                'production_order_id' => $productionOrder->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
         // ─── GET LINKED SALE ───
         $sale = Sale::where('production_order_id', $productionOrder->id)
             ->with(['currency', 'items', 'items.bom'])
@@ -590,6 +640,8 @@ class ProductionOrderController extends Controller
             return view('admin.production-orders.show', compact(
                 'productionOrder',
                 'maxProducibleQuantity',
+                'completionMaterials',
+                'productionVariance',
                 'progress',
                 'sale',
                 'currencyCode',
@@ -668,6 +720,8 @@ class ProductionOrderController extends Controller
         return view('admin.production-orders.show', compact(
             'productionOrder',
             'maxProducibleQuantity',
+            'completionMaterials',
+            'productionVariance',
             'progress',
             'sale',
             'currencyCode',
@@ -781,52 +835,148 @@ class ProductionOrderController extends Controller
             return back()->with('error', 'Only in-progress orders can be completed.');
         }
 
-        $request ??= request();
+        // Preserve legacy direct-controller calls used by existing regression
+        // tests and internal code. Normal HTTP completion always supplies the
+        // explicit completion form and therefore requires the actual materials.
+        if ($request === null) {
+            try {
+                $sale = Sale::where('production_order_id', $productionOrder->id)
+                    ->with(['items', 'currency'])
+                    ->first();
 
-        // Direct service/controller calls used by existing regression tests keep
-        // the historical default. Normal HTTP completion always submits the
-        // actual quantity through the completion form.
-        $actualInput = $request->input('quantity_produced');
-        $actualQuantity = $actualInput === null
-            ? (float) $productionOrder->quantity_ordered
-            : (float) $actualInput;
+                $legacyGoodQty = (float) $productionOrder->quantity_ordered;
 
-        if ($actualInput !== null) {
-            $request->validate([
-                'quantity_produced' => 'required|numeric|min:0.01|max:999999999.99',
-            ]);
+                app(\App\Services\ProductionQuantityService::class)->complete(
+                    $productionOrder,
+                    $legacyGoodQty,
+                    $sale,
+                    $legacyGoodQty,
+                    0.0,
+                    null
+                );
+
+                return redirect()->route('production-orders.show', $productionOrder)
+                    ->with('success', sprintf(
+                        'Production completed with actual output of %s units.',
+                        number_format($legacyGoodQty, 2)
+                    ));
+            } catch (\Throwable $e) {
+                Log::error('Legacy complete production failed', [
+                    'production_order_id' => $productionOrder->id,
+                    'error' => $e->getMessage(),
+                    'trace' => $e->getTraceAsString(),
+                ]);
+
+                return back()->with('error', 'Failed to complete production: ' . $e->getMessage());
+            }
         }
 
         try {
+            $validated = $request->validate([
+                'quantity_manufactured' => 'required|numeric|min:0.01|max:999999999.99',
+                'quantity_produced' => 'required|numeric|min:0.01|max:999999999.99',
+                'quantity_rejected' => 'required|numeric|min:0|max:999999999.99',
+                'materials' => 'required|array|min:1',
+                'materials.*.material_id' => 'required|integer|distinct|exists:products,id',
+                'materials.*.actual_quantity' => 'required|numeric|min:0|max:999999999.999999',
+                'materials.*.wastage_quantity' => 'nullable|numeric|min:0|max:999999999.999999',
+                'materials.*.unit' => 'nullable|string|max:50',
+            ]);
+
+            $manufacturedQuantity = (float) $validated['quantity_manufactured'];
+            $goodQuantity = (float) $validated['quantity_produced'];
+            $rejectedQuantity = (float) $validated['quantity_rejected'];
+
+            if (abs($manufacturedQuantity - ($goodQuantity + $rejectedQuantity)) > 0.01) {
+                throw \Illuminate\Validation\ValidationException::withMessages([
+                    'quantity_manufactured' => 'Manufactured Qty must equal Good / Actual Finished Qty + Rejected / Scrap Qty.',
+                ]);
+            }
+
+            $expectedMaterialIds = $productionOrder->materials()
+                ->pluck('product_id')
+                ->map(fn ($id) => (int) $id)
+                ->unique()
+                ->sort()
+                ->values();
+
+            // Older production orders may not have frozen order-material rows.
+            // In that case use the materials already allocated by Start Production.
+            if ($expectedMaterialIds->isEmpty()) {
+                $expectedMaterialIds = DB::table('production_material_consumptions')
+                    ->where('production_order_id', $productionOrder->id)
+                    ->pluck('material_id')
+                    ->map(fn ($id) => (int) $id)
+                    ->unique()
+                    ->sort()
+                    ->values();
+            }
+
+            $submittedMaterials = collect($validated['materials'])
+                ->map(function (array $row): array {
+                    return [
+                        'material_id' => (int) $row['material_id'],
+                        'actual_quantity' => (float) $row['actual_quantity'],
+                        'wastage_quantity' => (float) ($row['wastage_quantity'] ?? 0),
+                        'unit' => $row['unit'] ?? null,
+                    ];
+                });
+
+            $submittedIds = $submittedMaterials->pluck('material_id')->unique()->sort()->values();
+
+            if ($expectedMaterialIds->diff($submittedIds)->isNotEmpty()
+                || $submittedIds->diff($expectedMaterialIds)->isNotEmpty()) {
+                throw \Illuminate\Validation\ValidationException::withMessages([
+                    'materials' => 'Actual material consumption must be entered for exactly the materials allocated to this production order.',
+                ]);
+            }
+
+            foreach ($submittedMaterials as $index => $row) {
+                if ($row['wastage_quantity'] > $row['actual_quantity'] + 0.000001) {
+                    throw \Illuminate\Validation\ValidationException::withMessages([
+                        "materials.{$index}.wastage_quantity" => 'Actual waste cannot exceed total actual material consumed.',
+                    ]);
+                }
+            }
+
             $sale = Sale::where('production_order_id', $productionOrder->id)
                 ->with(['items', 'currency'])
                 ->first();
 
-            $result = app(\App\Services\ProductionQuantityService::class)
-                ->complete($productionOrder, $actualQuantity, $sale);
-
-            $variance = (float) $result['variance_quantity'];
-            $message = sprintf(
-                'Production completed with actual output of %s units.',
-                number_format($actualQuantity, 2)
+            $result = app(\App\Services\ProductionQuantityService::class)->complete(
+                $productionOrder,
+                $goodQuantity,
+                $sale,
+                $manufacturedQuantity,
+                $rejectedQuantity,
+                $submittedMaterials->all()
             );
 
-            if ($variance > 0.000001) {
+            $message = sprintf(
+                'Production completed: %s manufactured, %s good/usable, %s rejected. Yield: %s%%.',
+                number_format($manufacturedQuantity, 2),
+                number_format($goodQuantity, 2),
+                number_format($rejectedQuantity, 2),
+                number_format((float) $result['yield_percentage'], 2)
+            );
+
+            $manufacturedVariance = (float) $result['manufactured_variance_quantity'];
+            if ($manufacturedVariance > 0.000001) {
                 $message .= sprintf(
-                    ' This is %s units above the original order.',
-                    number_format($variance, 2)
+                    ' Manufactured output is %s units above the planned run.',
+                    number_format($manufacturedVariance, 2)
                 );
-            } elseif ($variance < -0.000001) {
+            } elseif ($manufacturedVariance < -0.000001) {
                 $message .= sprintf(
-                    ' This is %s units below the original order.',
-                    number_format(abs($variance), 2)
+                    ' Manufactured output is %s units below the planned run.',
+                    number_format(abs($manufacturedVariance), 2)
                 );
-            } else {
-                $message .= ' Actual output matches the original order.';
             }
 
+            $message .= ' FIFO stock and actual production cost were reconciled to the material quantities entered at completion.';
+
             if ($sale) {
-                $message .= ' The final invoice quantity and amount were updated to the actual production quantity.';
+                $message .= ' The final invoice quantity uses the good/usable finished quantity.';
 
                 $overpayment = (float) data_get($result, 'invoice.overpayment', 0);
                 if ($overpayment > 0) {
@@ -840,10 +990,12 @@ class ProductionOrderController extends Controller
 
             return redirect()->route('production-orders.show', $productionOrder)
                 ->with('success', $message);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            throw $e;
         } catch (\Throwable $e) {
             Log::error('Complete production failed', [
                 'production_order_id' => $productionOrder->id,
-                'actual_quantity' => $actualQuantity,
+                'request' => $request->except(['_token']),
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
             ]);

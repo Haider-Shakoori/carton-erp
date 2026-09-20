@@ -177,18 +177,37 @@ class ProductionVarianceService
 
     public function forProductionOrder(ProductionOrder $order): array
     {
-        $order->loadMissing(['materials.product', 'product', 'sale']);
+        $order->loadMissing(['materials.product', 'product']);
 
-        $planned = $order->materials->map(fn ($material) => [
-            'material_id' => (int) $material->product_id,
-            'material_name' => $material->product?->name ?? ('Material #' . $material->product_id),
-            'unit' => $material->unit ?: 'kg',
-            'planned_quantity' => (float) $material->required_quantity,
-            'planned_base_quantity' => (float) $material->required_quantity,
-            'planned_wastage_quantity' => 0.0,
-            'planned_cost_per_unit_usd' => (float) $material->cost_per_unit,
-            'planned_cost_usd' => (float) $material->total_cost,
-        ])->keyBy('material_id')->all();
+        $planned = $order->materials
+            ->map(fn ($material) => [
+                'material_id' => (int) $material->product_id,
+                'material_name' => $material->product?->name ?? ('Material #' . $material->product_id),
+                'unit' => $material->unit ?: 'kg',
+                'planned_quantity' => (float) $material->required_quantity,
+                'planned_base_quantity' => (float) $material->required_quantity,
+                'planned_wastage_quantity' => 0.0,
+                'planned_cost_per_unit_usd' => (float) $material->cost_per_unit,
+                'planned_cost_usd' => (float) $material->total_cost,
+            ])
+            ->groupBy('material_id')
+            ->map(function ($rows): array {
+                $first = $rows->first();
+                $quantity = (float) $rows->sum('planned_quantity');
+                $cost = (float) $rows->sum('planned_cost_usd');
+
+                return [
+                    'material_id' => (int) $first['material_id'],
+                    'material_name' => $first['material_name'],
+                    'unit' => $first['unit'],
+                    'planned_quantity' => $quantity,
+                    'planned_base_quantity' => (float) $rows->sum('planned_base_quantity'),
+                    'planned_wastage_quantity' => (float) $rows->sum('planned_wastage_quantity'),
+                    'planned_cost_per_unit_usd' => $quantity > 0 ? $cost / $quantity : 0.0,
+                    'planned_cost_usd' => $cost,
+                ];
+            })
+            ->all();
 
         $actual = ProductionMaterialConsumption::query()
             ->where('production_order_id', $order->id)
@@ -237,10 +256,26 @@ class ProductionVarianceService
             ];
         }
 
+        $plannedOutput = (float) ($order->quantity_planned ?: $order->quantity_ordered);
+        $manufacturedOutput = (float) ($order->quantity_manufactured ?? $order->quantity_produced ?? 0);
+        $goodOutput = (float) ($order->quantity_produced ?? 0);
+        $rejectedOutput = (float) ($order->quantity_rejected ?? 0);
+
         return [
             'has_actual' => $actual->isNotEmpty(),
             'production_order_id' => (int) $order->id,
-            'sale_id' => $order->sale?->id ? (int) $order->sale->id : null,
+            'sale_id' => $order->relationLoaded('sale') && $order->sale?->id ? (int) $order->sale->id : null,
+            'output' => [
+                'ordered_quantity' => (float) $order->quantity_ordered,
+                'planned_quantity' => $plannedOutput,
+                'manufactured_quantity' => $manufacturedOutput,
+                'good_quantity' => $goodOutput,
+                'rejected_quantity' => $rejectedOutput,
+                'manufactured_variance_quantity' => round($manufacturedOutput - $plannedOutput, 2),
+                'yield_percentage' => $manufacturedOutput > 0
+                    ? round(($goodOutput / $manufacturedOutput) * 100, 2)
+                    : 0.0,
+            ],
             'materials' => $rows,
             'summary' => [
                 'planned_material_cost_usd' => round($plannedTotal, 4),

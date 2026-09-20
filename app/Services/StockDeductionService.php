@@ -719,6 +719,64 @@ class StockDeductionService
     }
 
     /**
+     * Set actual waste for one material after total actual consumption has been
+     * reconciled. Waste is a subset of consumed stock and never causes another
+     * stock deduction.
+     */
+    public function setProductionMaterialWastage(
+        int $productionOrderId,
+        int $materialId,
+        float $wastageQuantity
+    ): void {
+        if ($wastageQuantity < -self::EPSILON) {
+            throw new RuntimeException('Actual wastage cannot be negative.');
+        }
+
+        DB::transaction(function () use ($productionOrderId, $materialId, $wastageQuantity): void {
+            $consumptions = ProductionMaterialConsumption::query()
+                ->where('production_order_id', $productionOrderId)
+                ->where('material_id', $materialId)
+                ->where('actual_quantity', '>', 0)
+                ->orderBy('id')
+                ->lockForUpdate()
+                ->get();
+
+            $totalActual = (float) $consumptions->sum('actual_quantity');
+
+            if ($wastageQuantity > $totalActual + self::EPSILON) {
+                throw new RuntimeException(sprintf(
+                    'Actual wastage %.6f cannot exceed actual consumption %.6f for material #%d.',
+                    $wastageQuantity,
+                    $totalActual,
+                    $materialId
+                ));
+            }
+
+            $remaining = max($wastageQuantity, 0.0);
+
+            foreach ($consumptions as $consumption) {
+                $actual = (float) $consumption->actual_quantity;
+                $assigned = min($actual, $remaining);
+
+                $consumption->wastage_quantity = $assigned;
+                $consumption->wastage_cost_usd = $assigned * (float) $consumption->cost_per_unit_usd;
+                $consumption->wastage_cost_afn = $assigned * (float) $consumption->cost_per_unit_afn;
+                $consumption->save();
+
+                $remaining -= $assigned;
+            }
+
+            if ($remaining > self::EPSILON) {
+                throw new RuntimeException(sprintf(
+                    'Unable to allocate %.6f units of actual wastage for material #%d.',
+                    $remaining,
+                    $materialId
+                ));
+            }
+        });
+    }
+
+    /**
      * Restore part of one material previously consumed by a production order.
      *
      * The newest FIFO consumption records are unwound first. This preserves the
