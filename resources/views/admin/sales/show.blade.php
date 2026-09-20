@@ -1591,12 +1591,10 @@
 
                 @if($sale->status === 'confirmed' && !$sale->is_produced)
                     @if($sale->productionOrder && $sale->productionOrder->status === 'pending')
-                        <form action="{{ route('admin.sales.start-production', $sale->id) }}" method="POST" class="d-inline">
-                            @csrf
-                            <button type="submit" class="btn btn-warning btn-action" onclick='return confirm(@json(__('ui.start_production_confirm')))'>
-                                <i class="bi bi-gear me-1"></i> {{ __('ui.start_production') }}
-                            </button>
-                        </form>
+                        <a href="{{ route('production-orders.show', $sale->productionOrder) }}"
+                           class="btn btn-warning btn-action">
+                            <i class="bi bi-calculator me-1"></i> Set Production Qty
+                        </a>
                     @endif
                 @endif
 
