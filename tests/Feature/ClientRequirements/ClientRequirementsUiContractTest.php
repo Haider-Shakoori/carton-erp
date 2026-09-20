@@ -45,6 +45,9 @@ it('locks the client-required production, quotation and invoice UI contracts', f
         ->toContain('name="quantity_planned"')
         ->toContain('Current Raw Material Supports')
         ->toContain('Calculate & Start Production')
-        ->toContain('Actual Quantity Produced')
-        ->toContain('Planned for this run');
+        ->toContain('Manufactured Qty')
+        ->toContain('Good / Actual Finished Qty')
+        ->toContain('Rejected / Scrap Qty')
+        ->toContain('Actual Raw Material Consumption')
+        ->toContain('Planned for This Run');
 });
