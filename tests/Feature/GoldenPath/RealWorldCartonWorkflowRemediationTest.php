@@ -958,6 +958,25 @@ it('accepts a manual selling price and quotation description without changing ph
         ->and($item->quotation_description)->toBe('120ml printed syrup carton, customer artwork revision B')
         ->and(abs((float) $item->cost_per_unit_usd - (float) $bomSummary['physical_production_cost_usd']))
         ->toBeLessThan(0.0001);
+
+    $physicalCostBefore = (float) $item->total_cost_usd;
+
+    $manualUpdate = $controller->updateManualPrice(
+        rwRequest('/admin/sales/item/'.$item->id.'/manual-price', 'PATCH', [
+            'unit_price' => 130.75,
+        ]),
+        $item->fresh()
+    );
+
+    expect($manualUpdate->getData(true)['success'])->toBeTrue();
+
+    $item->refresh();
+    $sale->refresh();
+
+    expect((float) $item->unit_price)->toBe(130.75)
+        ->and((float) $item->total)->toBe(13075.0)
+        ->and((float) $item->total_cost_usd)->toBe($physicalCostBefore)
+        ->and((float) $sale->grand_total)->toBe(13075.0);
 });
 
 it('creates a gate pass from the final produced invoice quantity and customer-facing line description on delivery', function () {
