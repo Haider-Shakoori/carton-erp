@@ -596,6 +596,7 @@ class SaleController extends Controller
                     'purchase_item_id' => null,
                     'sale_currency_id' => $sale->currency_id,
                     'qty' => $qty,
+                    'ordered_qty' => $qty,
                     'cost_per_unit_usd' => $costPerUnitUsd,
                     'total_cost_usd' => $totalCostUsd,
                     'unit_price' => $unitPrice,
