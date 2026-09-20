@@ -5,8 +5,11 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\StockReconciliation;
 use App\Models\StockReconciliationItem;
+use App\Models\StockAdjustmentItem;
+use App\Models\Product;
 use App\Services\StockReconciliationService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use RuntimeException;
 
@@ -28,7 +31,119 @@ class StockReconciliationController extends Controller
             ->paginate(20)
             ->withQueryString();
 
-        return view('admin.stock-reconciliations.index', compact('reconciliations'));
+        $stats = [
+            'counting' => StockReconciliation::where('status', StockReconciliation::STATUS_COUNTING)->count(),
+            'awaiting_approval' => StockReconciliation::where('status', StockReconciliation::STATUS_SUBMITTED)->count(),
+            'awaiting_post' => StockReconciliation::where('status', StockReconciliation::STATUS_APPROVED)->count(),
+            'last_posted_at' => StockReconciliation::where('status', StockReconciliation::STATUS_POSTED)->max('posted_at'),
+            'negative_variance_30d_usd' => abs((float) StockAdjustmentItem::query()
+                ->where('adjustment_value_usd', '<', 0)
+                ->whereHas('adjustment', fn ($q) => $q->where('posted_at', '>=', now()->subDays(30)))
+                ->sum('adjustment_value_usd')),
+        ];
+
+        return view('admin.stock-reconciliations.index', compact('reconciliations', 'stats'));
+    }
+
+    public function report(Request $request)
+    {
+        $query = $this->reportQuery($request);
+
+        $allRows = (clone $query)->get();
+        $rows = $query->paginate(30)->withQueryString();
+
+        $summary = [
+            'lines' => $allRows->count(),
+            'positive_value_usd' => (float) $allRows->where('adjustment_value_usd', '>', 0)->sum('adjustment_value_usd'),
+            'negative_value_usd' => (float) $allRows->where('adjustment_value_usd', '<', 0)->sum('adjustment_value_usd'),
+            'net_value_usd' => (float) $allRows->sum('adjustment_value_usd'),
+        ];
+
+        $topMaterials = $allRows
+            ->groupBy('product_id')
+            ->map(function ($items) {
+                $first = $items->first();
+                return [
+                    'name' => $first->product?->name ?? ('Product #' . $first->product_id),
+                    'occurrences' => $items->count(),
+                    'absolute_value_usd' => (float) $items->sum(fn ($row) => abs((float) $row->adjustment_value_usd)),
+                    'net_value_usd' => (float) $items->sum('adjustment_value_usd'),
+                ];
+            })
+            ->sortByDesc('absolute_value_usd')
+            ->take(10)
+            ->values();
+
+        $products = Product::query()->where('is_active', true)->orderBy('name')->get(['id', 'name']);
+        $reasonCodes = config('stock_reconciliation.reason_codes', []);
+
+        return view(
+            'admin.stock-reconciliations.report',
+            compact('rows', 'summary', 'topMaterials', 'products', 'reasonCodes')
+        );
+    }
+
+    public function exportCsv(Request $request)
+    {
+        $rows = $this->reportQuery($request)->get();
+        $reasonCodes = config('stock_reconciliation.reason_codes', []);
+
+        return response()->streamDownload(function () use ($rows, $reasonCodes): void {
+            $out = fopen('php://output', 'w');
+            fputcsv($out, [
+                'Adjustment',
+                'Count Reference',
+                'Date',
+                'Material',
+                'Batch ID',
+                'Unit',
+                'Before',
+                'Adjustment',
+                'After',
+                'Value USD',
+                'Reason',
+            ]);
+
+            foreach ($rows as $row) {
+                fputcsv($out, [
+                    $row->adjustment?->adjustment_no,
+                    $row->adjustment?->reconciliation?->reconciliation_no,
+                    $row->adjustment?->adjustment_date?->toDateString(),
+                    $row->product?->name,
+                    $row->purchase_item_id,
+                    $row->inventory_unit,
+                    $row->before_quantity,
+                    $row->adjustment_quantity,
+                    $row->after_quantity,
+                    $row->adjustment_value_usd,
+                    $reasonCodes[$row->reason_code] ?? $row->reason_code,
+                ]);
+            }
+
+            fclose($out);
+        }, 'stock-reconciliation-variance-'.now()->format('Ymd-His').'.csv', [
+            'Content-Type' => 'text/csv',
+        ]);
+    }
+
+    public function print(StockReconciliation $stockReconciliation, Request $request)
+    {
+        $stockReconciliation->load([
+            'creator',
+            'submitter',
+            'approver',
+            'poster',
+            'items.product',
+            'items.purchaseItem.purchase',
+        ]);
+
+        $blind = $request->boolean('blind');
+        $reasonCodes = config('stock_reconciliation.reason_codes', []);
+
+        return view(
+            'admin.stock-reconciliations.print',
+            compact('stockReconciliation', 'blind', 'reasonCodes')
+        );
     }
 
     public function create()
@@ -103,7 +218,7 @@ class StockReconciliationController extends Controller
         ]);
 
         try {
-            \DB::transaction(function () use ($validated, $stockReconciliation): void {
+            DB::transaction(function () use ($validated, $stockReconciliation): void {
                 foreach ($validated['items'] as $itemId => $row) {
                     if (! array_key_exists('physical_quantity', $row)
                         || $row['physical_quantity'] === null
@@ -159,6 +274,19 @@ class StockReconciliationController extends Controller
         }
     }
 
+    public function cancel(StockReconciliation $stockReconciliation)
+    {
+        try {
+            $this->service->cancel($stockReconciliation);
+
+            return redirect()
+                ->route('admin.stock-reconciliations.index')
+                ->with('success', 'Stock reconciliation cancelled. Inventory was not changed.');
+        } catch (RuntimeException $e) {
+            return back()->with('error', $e->getMessage());
+        }
+    }
+
     public function approve(StockReconciliation $stockReconciliation)
     {
         try {
@@ -210,4 +338,24 @@ class StockReconciliationController extends Controller
             return back()->with('error', $e->getMessage());
         }
     }
+    private function reportQuery(Request $request)
+    {
+        return StockAdjustmentItem::query()
+            ->with(['product', 'adjustment.reconciliation'])
+            ->whereHas('adjustment', function ($query) use ($request): void {
+                $query->when(
+                    $request->filled('from_date'),
+                    fn ($q) => $q->whereDate('adjustment_date', '>=', $request->date('from_date'))
+                )->when(
+                    $request->filled('to_date'),
+                    fn ($q) => $q->whereDate('adjustment_date', '<=', $request->date('to_date'))
+                );
+            })
+            ->when($request->filled('product_id'), fn ($q) => $q->where('product_id', (int) $request->product_id))
+            ->when($request->filled('reason_code'), fn ($q) => $q->where('reason_code', $request->reason_code))
+            ->when($request->get('direction') === 'shortage', fn ($q) => $q->where('adjustment_quantity', '<', 0))
+            ->when($request->get('direction') === 'surplus', fn ($q) => $q->where('adjustment_quantity', '>', 0))
+            ->latest('id');
+    }
+
 }
