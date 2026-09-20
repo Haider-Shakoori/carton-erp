@@ -1,6 +1,8 @@
 <?php
 
 use App\Models\StockReconciliation;
+use App\Models\PurchaseItem;
+use App\Models\StockAdjustment;
 use App\Services\StockReconciliationService;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -207,4 +209,130 @@ it('does not allow editing a submitted reconciliation', function () {
         $reconciliation->items->first()->fresh(),
         1
     ))->toThrow(RuntimeException::class, 'Only a reconciliation that is still being counted can be edited');
+});
+
+
+it('approves and posts signed batch adjustments with an immutable ledger', function () {
+    $fx = stockReconciliationFixture();
+    $service = app(StockReconciliationService::class);
+
+    $reconciliation = $service->createSnapshot();
+    $paper = $reconciliation->items->firstWhere('purchase_item_id', $fx['paperBatchId']);
+    $corn = $reconciliation->items->firstWhere('purchase_item_id', $fx['cornBatchId']);
+
+    $service->updateCount($reconciliation, $paper, 990, 'reel_weight_difference');
+    $service->updateCount($reconciliation, $corn, 55, 'material_found');
+
+    $service->submit($reconciliation);
+    $approved = $service->approve($reconciliation->fresh());
+
+    expect($approved->status)->toBe(StockReconciliation::STATUS_APPROVED)
+        ->and((float) PurchaseItem::find($fx['paperBatchId'])->qty_kg_available)->toBe(1000.0)
+        ->and((float) PurchaseItem::find($fx['cornBatchId'])->qty_available)->toBe(50.0);
+
+    $adjustment = $service->post($approved);
+
+    $paperBatch = PurchaseItem::findOrFail($fx['paperBatchId']);
+    $cornBatch = PurchaseItem::findOrFail($fx['cornBatchId']);
+    $reconciliation->refresh();
+
+    expect($reconciliation->status)->toBe(StockReconciliation::STATUS_POSTED)
+        ->and((float) $paperBatch->qty_kg_adjusted)->toBe(-10.0)
+        ->and((float) $paperBatch->qty_kg_available)->toBe(990.0)
+        ->and((float) $cornBatch->qty_adjusted)->toBe(5.0)
+        ->and((float) $cornBatch->qty_available)->toBe(55.0)
+        ->and($adjustment->items)->toHaveCount(2);
+
+    $paperLine = $adjustment->items->firstWhere('purchase_item_id', $fx['paperBatchId']);
+    $cornLine = $adjustment->items->firstWhere('purchase_item_id', $fx['cornBatchId']);
+
+    expect((float) $paperLine->before_quantity)->toBe(1000.0)
+        ->and((float) $paperLine->adjustment_quantity)->toBe(-10.0)
+        ->and((float) $paperLine->after_quantity)->toBe(990.0)
+        ->and((float) $paperLine->adjustment_value_usd)->toBe(-9.0)
+        ->and((float) $cornLine->before_quantity)->toBe(50.0)
+        ->and((float) $cornLine->adjustment_quantity)->toBe(5.0)
+        ->and((float) $cornLine->after_quantity)->toBe(55.0)
+        ->and(StockAdjustment::where('stock_reconciliation_id', $reconciliation->id)->count())->toBe(1);
+
+    expect(fn () => $service->post($reconciliation->fresh()))
+        ->toThrow(RuntimeException::class);
+});
+
+it('preserves legitimate stock movements after the snapshot by applying variance additively', function () {
+    $fx = stockReconciliationFixture();
+    $service = app(StockReconciliationService::class);
+
+    $reconciliation = $service->createSnapshot();
+    $paper = $reconciliation->items->firstWhere('purchase_item_id', $fx['paperBatchId']);
+    $corn = $reconciliation->items->firstWhere('purchase_item_id', $fx['cornBatchId']);
+
+    // Physical count at snapshot time found 10 kg less paper.
+    $service->updateCount($reconciliation, $paper, 990, 'reel_weight_difference');
+    $service->updateCount($reconciliation, $corn, 50);
+
+    $service->submit($reconciliation);
+    $service->approve($reconciliation->fresh());
+
+    // A legitimate 100 kg production movement happens after counting but before posting.
+    $paperBatch = PurchaseItem::findOrFail($fx['paperBatchId']);
+    $paperBatch->qty_kg_used = 100;
+    $paperBatch->save();
+
+    expect((float) $paperBatch->fresh()->qty_kg_available)->toBe(900.0);
+
+    $adjustment = $service->post($reconciliation->fresh());
+    $paperBatch->refresh();
+    $line = $adjustment->items->firstWhere('purchase_item_id', $fx['paperBatchId']);
+
+    // Current 900 - original count variance 10 = 890. The 100 kg movement is preserved.
+    expect((float) $paperBatch->qty_kg_available)->toBe(890.0)
+        ->and((float) $line->before_quantity)->toBe(900.0)
+        ->and((float) $line->adjustment_quantity)->toBe(-10.0)
+        ->and((float) $line->after_quantity)->toBe(890.0);
+});
+
+it('blocks posting when an old negative variance would make the current batch negative', function () {
+    $fx = stockReconciliationFixture();
+    $service = app(StockReconciliationService::class);
+
+    $reconciliation = $service->createSnapshot();
+    $paper = $reconciliation->items->firstWhere('purchase_item_id', $fx['paperBatchId']);
+    $corn = $reconciliation->items->firstWhere('purchase_item_id', $fx['cornBatchId']);
+
+    $service->updateCount($reconciliation, $paper, 0, 'reel_weight_difference');
+    $service->updateCount($reconciliation, $corn, 50);
+    $service->submit($reconciliation);
+    $service->approve($reconciliation->fresh());
+
+    // Leave only 500 kg after legitimate production movement. Applying the
+    // snapshot variance of -1000 kg would be invalid.
+    $paperBatch = PurchaseItem::findOrFail($fx['paperBatchId']);
+    $paperBatch->qty_kg_used = 500;
+    $paperBatch->save();
+
+    expect(fn () => $service->post($reconciliation->fresh()))
+        ->toThrow(RuntimeException::class, 'would make batch');
+
+    expect($reconciliation->fresh()->status)->toBe(StockReconciliation::STATUS_APPROVED)
+        ->and((float) PurchaseItem::find($fx['paperBatchId'])->qty_kg_available)->toBe(500.0)
+        ->and(StockAdjustment::where('stock_reconciliation_id', $reconciliation->id)->count())->toBe(0);
+});
+
+it('rejects a submitted reconciliation without changing inventory', function () {
+    $fx = stockReconciliationFixture();
+    $service = app(StockReconciliationService::class);
+
+    $reconciliation = $service->createSnapshot();
+    foreach ($reconciliation->items as $item) {
+        $service->updateCount($reconciliation, $item, (float) $item->system_quantity);
+    }
+    $service->submit($reconciliation);
+
+    $rejected = $service->reject($reconciliation->fresh(), 'Warehouse requested a recount.');
+
+    expect($rejected->status)->toBe(StockReconciliation::STATUS_REJECTED)
+        ->and($rejected->rejection_reason)->toBe('Warehouse requested a recount.')
+        ->and((float) PurchaseItem::find($fx['paperBatchId'])->qty_kg_available)->toBe(1000.0)
+        ->and((float) PurchaseItem::find($fx['cornBatchId'])->qty_available)->toBe(50.0);
 });
