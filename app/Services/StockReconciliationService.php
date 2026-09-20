@@ -5,6 +5,8 @@ namespace App\Services;
 use App\Models\PurchaseItem;
 use App\Models\StockReconciliation;
 use App\Models\StockReconciliationItem;
+use App\Models\StockAdjustment;
+use App\Models\StockAdjustmentItem;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -148,6 +150,165 @@ class StockReconciliationService
         });
     }
 
+    public function approve(StockReconciliation $reconciliation): StockReconciliation
+    {
+        return DB::transaction(function () use ($reconciliation): StockReconciliation {
+            $locked = StockReconciliation::query()
+                ->lockForUpdate()
+                ->findOrFail($reconciliation->id);
+
+            if ($locked->status !== StockReconciliation::STATUS_SUBMITTED) {
+                throw new RuntimeException('Only a submitted stock reconciliation can be approved.');
+            }
+
+            $locked->update([
+                'status' => StockReconciliation::STATUS_APPROVED,
+                'approved_by' => Auth::id(),
+                'approved_at' => now(),
+                'rejected_by' => null,
+                'rejected_at' => null,
+                'rejection_reason' => null,
+            ]);
+
+            return $locked->fresh(['items.product', 'creator', 'submitter', 'approver']);
+        });
+    }
+
+    public function reject(StockReconciliation $reconciliation, string $reason): StockReconciliation
+    {
+        if (trim($reason) === '') {
+            throw new RuntimeException('A rejection reason is required.');
+        }
+
+        return DB::transaction(function () use ($reconciliation, $reason): StockReconciliation {
+            $locked = StockReconciliation::query()
+                ->lockForUpdate()
+                ->findOrFail($reconciliation->id);
+
+            if ($locked->status !== StockReconciliation::STATUS_SUBMITTED) {
+                throw new RuntimeException('Only a submitted stock reconciliation can be rejected.');
+            }
+
+            $locked->update([
+                'status' => StockReconciliation::STATUS_REJECTED,
+                'rejected_by' => Auth::id(),
+                'rejected_at' => now(),
+                'rejection_reason' => trim($reason),
+            ]);
+
+            return $locked->fresh(['items.product', 'creator', 'submitter', 'rejecter']);
+        });
+    }
+
+    public function post(StockReconciliation $reconciliation): StockAdjustment
+    {
+        return DB::transaction(function () use ($reconciliation): StockAdjustment {
+            $locked = StockReconciliation::query()
+                ->with('items')
+                ->lockForUpdate()
+                ->findOrFail($reconciliation->id);
+
+            if ($locked->status !== StockReconciliation::STATUS_APPROVED) {
+                throw new RuntimeException('Only an approved stock reconciliation can be posted.');
+            }
+
+            if (StockAdjustment::where('stock_reconciliation_id', $locked->id)->exists()) {
+                throw new RuntimeException('This stock reconciliation has already been posted.');
+            }
+
+            $now = now();
+            $adjustment = StockAdjustment::create([
+                'adjustment_no' => $this->generateAdjustmentNumber(),
+                'stock_reconciliation_id' => $locked->id,
+                'adjustment_date' => $locked->count_date,
+                'type' => 'reconciliation',
+                'status' => 'posted',
+                'notes' => 'Posted from ' . $locked->reconciliation_no,
+                'created_by' => Auth::id(),
+                'posted_by' => Auth::id(),
+                'posted_at' => $now,
+            ]);
+
+            foreach ($locked->items as $item) {
+                if ($item->physical_quantity === null) {
+                    throw new RuntimeException(
+                        'Cannot post a reconciliation with an uncounted inventory line.'
+                    );
+                }
+
+                $variance = (float) $item->physical_quantity - (float) $item->system_quantity;
+
+                if (abs($variance) <= self::EPSILON) {
+                    continue;
+                }
+
+                $batch = PurchaseItem::query()
+                    ->lockForUpdate()
+                    ->findOrFail($item->purchase_item_id);
+
+                if ((int) $batch->product_id !== (int) $item->product_id) {
+                    throw new RuntimeException(
+                        'The purchase batch no longer belongs to the expected product.'
+                    );
+                }
+
+                $before = $batch->availableInventoryQuantity();
+                $after = $before + $variance;
+
+                if ($after < -self::EPSILON) {
+                    throw new RuntimeException(sprintf(
+                        'Posting %s would make batch %s negative: current %.6f %s, adjustment %.6f %s.',
+                        $locked->reconciliation_no,
+                        $item->batch_no ?: $item->purchase_item_id,
+                        $before,
+                        $item->inventory_unit,
+                        $variance,
+                        $item->inventory_unit
+                    ));
+                }
+
+                if ($batch->isRollBatch()) {
+                    $batch->qty_kg_adjusted = (float) ($batch->qty_kg_adjusted ?? 0) + $variance;
+                } else {
+                    $batch->qty_adjusted = (float) ($batch->qty_adjusted ?? 0) + $variance;
+                }
+
+                $batch->save();
+                $batch->refresh();
+
+                $actualAfter = $batch->availableInventoryQuantity();
+                if (abs($actualAfter - max($after, 0.0)) > 0.0001) {
+                    throw new RuntimeException(sprintf(
+                        'Inventory adjustment verification failed for batch %s.',
+                        $item->batch_no ?: $item->purchase_item_id
+                    ));
+                }
+
+                StockAdjustmentItem::create([
+                    'stock_adjustment_id' => $adjustment->id,
+                    'product_id' => $item->product_id,
+                    'purchase_item_id' => $item->purchase_item_id,
+                    'inventory_unit' => $item->inventory_unit,
+                    'before_quantity' => $before,
+                    'adjustment_quantity' => $variance,
+                    'after_quantity' => $actualAfter,
+                    'cost_per_unit_usd' => (float) $item->cost_per_unit_usd,
+                    'adjustment_value_usd' => $variance * (float) $item->cost_per_unit_usd,
+                    'reason_code' => $item->reason_code,
+                    'notes' => $item->notes,
+                ]);
+            }
+
+            $locked->update([
+                'status' => StockReconciliation::STATUS_POSTED,
+                'posted_by' => Auth::id(),
+                'posted_at' => $now,
+            ]);
+
+            return $adjustment->fresh(['items.product', 'items.purchaseItem', 'reconciliation']);
+        });
+    }
+
     public function reasonIsRequired(StockReconciliationItem $item): bool
     {
         if ($item->physical_quantity === null || $item->variance_quantity === null) {
@@ -172,6 +333,15 @@ class StockReconciliationService
 
         return $absoluteVariance > $absoluteTolerance
             && $percentage > $percentageTolerance;
+    }
+
+    private function generateAdjustmentNumber(): string
+    {
+        do {
+            $number = 'SA-' . now()->format('Ymd') . '-' . Str::upper(Str::random(6));
+        } while (StockAdjustment::where('adjustment_no', $number)->exists());
+
+        return $number;
     }
 
     private function generateNumber(): string

@@ -64,6 +64,9 @@ class StockReconciliationController extends Controller
             'submitter',
             'approver',
             'poster',
+            'rejecter',
+            'adjustment.items.product',
+            'adjustment.items.purchaseItem',
             'items.product',
             'items.purchaseItem.purchase',
         ]);
@@ -153,6 +156,45 @@ class StockReconciliationController extends Controller
             return back()->with('success', 'Physical count saved.');
         } catch (RuntimeException $e) {
             return back()->withInput()->with('error', $e->getMessage());
+        }
+    }
+
+    public function approve(StockReconciliation $stockReconciliation)
+    {
+        try {
+            $this->service->approve($stockReconciliation);
+
+            return back()->with('success', 'Stock reconciliation approved. No stock has changed yet; posting is still required.');
+        } catch (RuntimeException $e) {
+            return back()->with('error', $e->getMessage());
+        }
+    }
+
+    public function reject(Request $request, StockReconciliation $stockReconciliation)
+    {
+        $validated = $request->validate([
+            'rejection_reason' => ['required', 'string', 'max:2000'],
+        ]);
+
+        try {
+            $this->service->reject($stockReconciliation, $validated['rejection_reason']);
+
+            return back()->with('success', 'Stock reconciliation rejected without changing inventory.');
+        } catch (RuntimeException $e) {
+            return back()->withInput()->with('error', $e->getMessage());
+        }
+    }
+
+    public function post(StockReconciliation $stockReconciliation)
+    {
+        try {
+            $adjustment = $this->service->post($stockReconciliation);
+
+            return redirect()
+                ->route('admin.stock-reconciliations.show', $stockReconciliation)
+                ->with('success', 'Stock reconciliation posted as '.$adjustment->adjustment_no.'. FIFO batch balances are now adjusted with a full audit trail.');
+        } catch (RuntimeException $e) {
+            return back()->with('error', $e->getMessage());
         }
     }
 

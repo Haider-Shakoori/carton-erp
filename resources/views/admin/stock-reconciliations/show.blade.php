@@ -15,16 +15,44 @@
                 · Snapshot {{ $stockReconciliation->snapshot_at?->format('d M Y H:i:s') }}
             </div>
         </div>
-        <div class="d-flex gap-2 align-items-center">
-            <span class="badge fs-6 bg-{{ $stockReconciliation->status === 'submitted' ? 'warning' : ($stockReconciliation->status === 'posted' ? 'success' : 'info') }}">
-                {{ ucfirst($stockReconciliation->status) }}
-            </span>
+        <div class="d-flex gap-2 align-items-center flex-wrap justify-content-end">
+            @php
+                $statusBadge = match($stockReconciliation->status) {
+                    'posted' => 'success',
+                    'approved' => 'primary',
+                    'submitted' => 'warning',
+                    'rejected' => 'danger',
+                    'cancelled' => 'secondary',
+                    default => 'info',
+                };
+            @endphp
+            <span class="badge fs-6 bg-{{ $statusBadge }}">{{ ucfirst($stockReconciliation->status) }}</span>
+
             @if($stockReconciliation->status === 'counting')
                 @can('submit stock reconciliations')
                     <form method="POST" action="{{ route('admin.stock-reconciliations.submit', $stockReconciliation) }}"
                           onsubmit="return confirm('Submit this count for approval? Inventory will still NOT be changed.');">
                         @csrf
                         <button class="btn btn-success"><i class="bi bi-send-check me-1"></i> Submit for Approval</button>
+                    </form>
+                @endcan
+            @elseif($stockReconciliation->status === 'submitted')
+                @can('approve stock reconciliations')
+                    <form method="POST" action="{{ route('admin.stock-reconciliations.approve', $stockReconciliation) }}"
+                          onsubmit="return confirm('Approve this reconciliation? Stock will still not change until it is posted.');">
+                        @csrf
+                        <button class="btn btn-primary"><i class="bi bi-check2-circle me-1"></i> Approve</button>
+                    </form>
+                    <button type="button" class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#rejectReconciliationModal">
+                        <i class="bi bi-x-circle me-1"></i> Reject
+                    </button>
+                @endcan
+            @elseif($stockReconciliation->status === 'approved')
+                @can('post stock reconciliations')
+                    <form method="POST" action="{{ route('admin.stock-reconciliations.post', $stockReconciliation) }}"
+                          onsubmit="return confirm('POST this reconciliation? This will create immutable stock adjustments and change FIFO batch balances.');">
+                        @csrf
+                        <button class="btn btn-danger"><i class="bi bi-journal-check me-1"></i> Post Stock Adjustment</button>
                     </form>
                 @endcan
             @endif
@@ -59,6 +87,22 @@
         <strong>Snapshot rule:</strong> System Qty is frozen and never recalculated on this document.
         Saving counts and submitting for approval do not change purchase batches or FIFO stock.
     </div>
+
+    @if($stockReconciliation->status === 'approved')
+        <div class="alert alert-warning small">
+            <i class="bi bi-exclamation-triangle me-1"></i>
+            <strong>Approved, not posted:</strong> inventory is still unchanged. Posting will apply each stored variance as a signed batch adjustment while preserving stock movements that occurred after the snapshot.
+        </div>
+    @elseif($stockReconciliation->status === 'rejected')
+        <div class="alert alert-danger small">
+            <strong>Rejected:</strong> {{ $stockReconciliation->rejection_reason ?: 'No reason recorded.' }}
+        </div>
+    @elseif($stockReconciliation->status === 'posted')
+        <div class="alert alert-success small">
+            <i class="bi bi-check-circle me-1"></i>
+            <strong>Posted:</strong> FIFO batch balances were adjusted through an immutable stock-adjustment ledger.
+        </div>
+    @endif
 
     @if($stockReconciliation->status === 'counting')
         <form method="POST" action="{{ route('admin.stock-reconciliations.counts.update', $stockReconciliation) }}" id="countForm">
@@ -144,6 +188,80 @@
     </div>
 
     @if($stockReconciliation->status === 'counting')</form>@endif
+
+    @if($stockReconciliation->adjustment)
+        <div class="card border-0 shadow-sm mt-4">
+            <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                <div>
+                    <h5 class="mb-0"><i class="bi bi-journal-text me-2"></i>Posted Adjustment Ledger</h5>
+                    <small class="text-muted">{{ $stockReconciliation->adjustment->adjustment_no }}</small>
+                </div>
+                <span class="badge bg-success">Immutable / Posted</span>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-sm align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Material / Batch</th>
+                            <th class="text-end">Before</th>
+                            <th class="text-end">Adjustment</th>
+                            <th class="text-end">After</th>
+                            <th class="text-end">Value USD</th>
+                            <th>Reason</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @forelse($stockReconciliation->adjustment->items as $line)
+                            <tr>
+                                <td>
+                                    <div class="fw-semibold">{{ $line->product?->name ?? 'Unknown Material' }}</div>
+                                    <small class="text-muted">Batch #{{ $line->purchase_item_id }} · {{ $line->inventory_unit }}</small>
+                                </td>
+                                <td class="text-end">{{ number_format((float) $line->before_quantity, 4) }}</td>
+                                <td class="text-end {{ (float) $line->adjustment_quantity < 0 ? 'text-danger' : 'text-success' }}">
+                                    {{ (float) $line->adjustment_quantity > 0 ? '+' : '' }}{{ number_format((float) $line->adjustment_quantity, 4) }}
+                                </td>
+                                <td class="text-end fw-semibold">{{ number_format((float) $line->after_quantity, 4) }}</td>
+                                <td class="text-end {{ (float) $line->adjustment_value_usd < 0 ? 'text-danger' : 'text-success' }}">
+                                    {{ (float) $line->adjustment_value_usd >= 0 ? '+' : '-' }}${{ number_format(abs((float) $line->adjustment_value_usd), 2) }}
+                                </td>
+                                <td>{{ $reasonCodes[$line->reason_code] ?? ($line->reason_code ?: '—') }}</td>
+                            </tr>
+                        @empty
+                            <tr><td colspan="6" class="text-center py-4 text-muted">No quantity adjustment was necessary; physical stock matched the snapshot.</td></tr>
+                        @endforelse
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    @endif
+
+    @if($stockReconciliation->status === 'submitted')
+        @can('approve stock reconciliations')
+            <div class="modal fade" id="rejectReconciliationModal" tabindex="-1" aria-hidden="true">
+                <div class="modal-dialog modal-dialog-centered">
+                    <div class="modal-content">
+                        <form method="POST" action="{{ route('admin.stock-reconciliations.reject', $stockReconciliation) }}">
+                            @csrf
+                            <div class="modal-header">
+                                <h5 class="modal-title">Reject Stock Reconciliation</h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                            </div>
+                            <div class="modal-body">
+                                <label class="form-label fw-semibold">Reason <span class="text-danger">*</span></label>
+                                <textarea name="rejection_reason" rows="4" class="form-control" maxlength="2000" required></textarea>
+                                <div class="form-text">Rejection never changes inventory.</div>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+                                <button class="btn btn-danger">Reject</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        @endcan
+    @endif
 </div>
 @endsection
 
