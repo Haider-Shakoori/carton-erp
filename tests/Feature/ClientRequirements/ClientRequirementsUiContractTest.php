@@ -16,9 +16,9 @@ it('locks the client-required production, quotation and invoice UI contracts', f
         ->toContain("route('admin.sales.quotation'")
         ->toContain("route('admin.sales.gate-pass'")
         ->toContain('data-formula-type="carton_3d"')
-        ->toContain(".not($sourceRow)")
+        ->toContain('.not($sourceRow)')
         ->toContain(".find(fieldClass)")
-        ->toContain(".val($input.val())")
+        ->toContain('.val($input.val())')
         ->toContain('PO Rate (AFN/kg)')
         ->toContain('Auto-populated from latest arrived purchase order.')
         ->not->toContain('<span class="badge bg-primary">{{ $item->bom->code');
