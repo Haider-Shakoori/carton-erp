@@ -2225,14 +2225,21 @@ class SaleController extends Controller
                 return back()->with('error', 'No items found in this sale.');
             }
 
-            // Create production order from sale
+            // Create the production order, then start it. Completion is now
+            // intentionally separate because the operator must enter the real
+            // quantity produced at the end of the run.
             $productionOrder = $productionService->createProductionFromSale($sale);
 
-            // Start and complete production (consume materials, deliver to customer)
-            $productionService->startAndCompleteProduction($productionOrder, $sale);
+            $result = app(\App\Services\ProductionQuantityService::class)
+                ->start($productionOrder, $sale);
 
-            return redirect()->route('admin.sales.show', $sale)
-                ->with('success', 'Production completed and order ready for delivery!');
+            $message = sprintf(
+                'Production started with raw material allocated for %s units. Enter the real quantity produced when the run ends.',
+                number_format($result['allocation_quantity'], 2)
+            );
+
+            return redirect()->route('production-orders.show', $productionOrder)
+                ->with('success', $message);
 
         } catch (\Exception $e) {
             \Log::error('Production failed', [
