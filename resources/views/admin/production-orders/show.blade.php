@@ -1469,6 +1469,66 @@
             </div>
         @endif
 
+        @if(!empty($productionVariance) && ($productionVariance['has_actual'] ?? false))
+            <div class="card-modern mt-4">
+                <div class="card-header-modern">
+                    <h6>
+                        <i class="bi bi-clipboard-data me-2" style="color:#4f46e5;"></i>
+                        Planned vs Actual Production Variance
+                    </h6>
+                    <span class="badge bg-light text-dark border">Actual FIFO consumption</span>
+                </div>
+                <div class="card-body-modern">
+                    @php($output = $productionVariance['output'] ?? [])
+                    <div class="row g-3 mb-4">
+                        <div class="col-md-2 col-6"><div class="text-muted small">Planned</div><strong>{{ number_format((float) ($output['planned_quantity'] ?? 0), 2) }}</strong></div>
+                        <div class="col-md-2 col-6"><div class="text-muted small">Manufactured</div><strong>{{ number_format((float) ($output['manufactured_quantity'] ?? 0), 2) }}</strong></div>
+                        <div class="col-md-2 col-6"><div class="text-muted small">Good</div><strong class="text-success">{{ number_format((float) ($output['good_quantity'] ?? 0), 2) }}</strong></div>
+                        <div class="col-md-2 col-6"><div class="text-muted small">Rejected</div><strong class="text-warning">{{ number_format((float) ($output['rejected_quantity'] ?? 0), 2) }}</strong></div>
+                        <div class="col-md-2 col-6"><div class="text-muted small">Output Variance</div><strong>{{ number_format((float) ($output['manufactured_variance_quantity'] ?? 0), 2) }}</strong></div>
+                        <div class="col-md-2 col-6"><div class="text-muted small">Yield</div><strong>{{ number_format((float) ($output['yield_percentage'] ?? 0), 2) }}%</strong></div>
+                    </div>
+
+                    <div class="table-responsive">
+                        <table class="table table-sm align-middle mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Material</th>
+                                    <th class="text-end">Planned</th>
+                                    <th class="text-end">Actual</th>
+                                    <th class="text-end">Variance</th>
+                                    <th class="text-end">Actual Waste</th>
+                                    <th class="text-end">Cost Variance (USD)</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach($productionVariance['materials'] ?? [] as $row)
+                                    <tr>
+                                        <td>{{ $row['material_name'] }}</td>
+                                        <td class="text-end">{{ number_format((float) $row['planned_quantity'], 4) }} {{ $row['unit'] }}</td>
+                                        <td class="text-end">{{ number_format((float) $row['actual_quantity'], 4) }} {{ $row['unit'] }}</td>
+                                        <td class="text-end {{ $row['variance_quantity'] > 0 ? 'text-danger' : ($row['variance_quantity'] < 0 ? 'text-success' : '') }}">
+                                            {{ $row['variance_quantity'] > 0 ? '+' : '' }}{{ number_format((float) $row['variance_quantity'], 4) }}
+                                        </td>
+                                        <td class="text-end">{{ number_format((float) $row['actual_wastage_quantity'], 4) }}</td>
+                                        <td class="text-end {{ $row['cost_variance_usd'] > 0 ? 'text-danger' : ($row['cost_variance_usd'] < 0 ? 'text-success' : '') }}">
+                                            {{ $row['cost_variance_usd'] > 0 ? '+' : '' }}${{ number_format((float) $row['cost_variance_usd'], 4) }}
+                                        </td>
+                                    </tr>
+                                @endforeach
+                            </tbody>
+                            <tfoot>
+                                <tr>
+                                    <td colspan="5" class="text-end fw-bold">Total Material Cost Variance</td>
+                                    <td class="text-end fw-bold">${{ number_format((float) data_get($productionVariance, 'summary.material_cost_variance_usd', 0), 4) }}</td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        @endif
+
     </div>
 @endsection
 
@@ -1508,7 +1568,13 @@
             }
             @endif
 
-            @if(isset($errors) && $errors->has('quantity_produced'))
+            @if(isset($errors) && (
+                $errors->has('quantity_manufactured')
+                || $errors->has('quantity_produced')
+                || $errors->has('quantity_rejected')
+                || $errors->has('materials')
+                || collect($errors->keys())->contains(fn ($key) => str_starts_with($key, 'materials.'))
+            ))
             const completionModalElement = document.getElementById('completeProductionModal');
             if (completionModalElement && window.bootstrap) {
                 new bootstrap.Modal(completionModalElement).show();
