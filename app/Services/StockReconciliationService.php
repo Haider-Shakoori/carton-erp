@@ -150,6 +150,25 @@ class StockReconciliationService
         });
     }
 
+    public function cancel(StockReconciliation $reconciliation): StockReconciliation
+    {
+        return DB::transaction(function () use ($reconciliation): StockReconciliation {
+            $locked = StockReconciliation::query()
+                ->lockForUpdate()
+                ->findOrFail($reconciliation->id);
+
+            if ($locked->status !== StockReconciliation::STATUS_COUNTING) {
+                throw new RuntimeException('Only a reconciliation that is still being counted can be cancelled.');
+            }
+
+            $locked->update([
+                'status' => StockReconciliation::STATUS_CANCELLED,
+            ]);
+
+            return $locked->fresh(['items.product', 'creator']);
+        });
+    }
+
     public function approve(StockReconciliation $reconciliation): StockReconciliation
     {
         return DB::transaction(function () use ($reconciliation): StockReconciliation {

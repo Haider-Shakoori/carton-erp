@@ -112,12 +112,20 @@ Route::middleware(['auth'])->prefix('admin')->group(function () {
             ->name('create')->middleware('permission.feedback:create stock reconciliations');
         Route::post('/', [StockReconciliationController::class, 'store'])
             ->name('store')->middleware('permission.feedback:create stock reconciliations');
+        Route::get('/report', [StockReconciliationController::class, 'report'])
+            ->name('report')->middleware('permission.feedback:view stock reconciliations');
+        Route::get('/report/export-csv', [StockReconciliationController::class, 'exportCsv'])
+            ->name('report.export-csv')->middleware('permission.feedback:view stock reconciliations');
         Route::get('/{stockReconciliation}', [StockReconciliationController::class, 'show'])
             ->name('show')->middleware('permission.feedback:view stock reconciliations');
         Route::patch('/{stockReconciliation}/counts', [StockReconciliationController::class, 'updateCounts'])
             ->name('counts.update')->middleware('permission.feedback:update stock reconciliations');
         Route::patch('/{stockReconciliation}/items/{item}', [StockReconciliationController::class, 'updateItem'])
             ->name('items.update')->middleware('permission.feedback:update stock reconciliations');
+        Route::get('/{stockReconciliation}/print', [StockReconciliationController::class, 'print'])
+            ->name('print')->middleware('permission.feedback:view stock reconciliations');
+        Route::post('/{stockReconciliation}/cancel', [StockReconciliationController::class, 'cancel'])
+            ->name('cancel')->middleware('permission.feedback:cancel stock reconciliations');
         Route::post('/{stockReconciliation}/submit', [StockReconciliationController::class, 'submit'])
             ->name('submit')->middleware('permission.feedback:submit stock reconciliations');
         Route::post('/{stockReconciliation}/approve', [StockReconciliationController::class, 'approve'])

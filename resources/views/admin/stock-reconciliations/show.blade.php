@@ -27,6 +27,14 @@
                 };
             @endphp
             <span class="badge fs-6 bg-{{ $statusBadge }}">{{ ucfirst($stockReconciliation->status) }}</span>
+            <a href="{{ route('admin.stock-reconciliations.print', $stockReconciliation) }}" target="_blank" class="btn btn-outline-secondary">
+                <i class="bi bi-printer me-1"></i> Print
+            </a>
+            @if($stockReconciliation->status === 'counting')
+                <a href="{{ route('admin.stock-reconciliations.print', [$stockReconciliation, 'blind' => 1]) }}" target="_blank" class="btn btn-outline-dark">
+                    <i class="bi bi-eye-slash me-1"></i> Blind Count Sheet
+                </a>
+            @endif
 
             @if($stockReconciliation->status === 'counting')
                 @can('submit stock reconciliations')
@@ -34,6 +42,13 @@
                           onsubmit="return confirm('Submit this count for approval? Inventory will still NOT be changed.');">
                         @csrf
                         <button class="btn btn-success"><i class="bi bi-send-check me-1"></i> Submit for Approval</button>
+                    </form>
+                @endcan
+                @can('cancel stock reconciliations')
+                    <form method="POST" action="{{ route('admin.stock-reconciliations.cancel', $stockReconciliation) }}"
+                          onsubmit="return confirm('Cancel this cycle count? No stock will be changed.');">
+                        @csrf
+                        <button class="btn btn-outline-danger"><i class="bi bi-x-lg me-1"></i> Cancel Count</button>
                     </form>
                 @endcan
             @elseif($stockReconciliation->status === 'submitted')
