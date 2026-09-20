@@ -114,6 +114,8 @@ Route::middleware(['auth'])->prefix('admin')->group(function () {
             ->name('store')->middleware('permission.feedback:create stock reconciliations');
         Route::get('/{stockReconciliation}', [StockReconciliationController::class, 'show'])
             ->name('show')->middleware('permission.feedback:view stock reconciliations');
+        Route::patch('/{stockReconciliation}/counts', [StockReconciliationController::class, 'updateCounts'])
+            ->name('counts.update')->middleware('permission.feedback:update stock reconciliations');
         Route::patch('/{stockReconciliation}/items/{item}', [StockReconciliationController::class, 'updateItem'])
             ->name('items.update')->middleware('permission.feedback:update stock reconciliations');
         Route::post('/{stockReconciliation}/submit', [StockReconciliationController::class, 'submit'])
