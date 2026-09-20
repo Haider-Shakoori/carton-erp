@@ -116,6 +116,11 @@ class Sale extends Model
         return $this->hasMany(SaleItem::class);
     }
 
+    public function gatePass()
+    {
+        return $this->hasOne(GatePass::class);
+    }
+
     /**
      * Get the returns for this sale
      */
