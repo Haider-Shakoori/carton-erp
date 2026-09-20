@@ -20,7 +20,9 @@ class ProductionOrder extends Model
         'bom_id',
         'quantity_ordered',
         'quantity_planned',
+        'quantity_manufactured',
         'quantity_produced',
+        'quantity_rejected',
         'status',
         'start_date',
         'completion_date',
@@ -37,7 +39,9 @@ class ProductionOrder extends Model
     protected $casts = [
         'quantity_ordered' => 'decimal:2',
         'quantity_planned' => 'decimal:2',
+        'quantity_manufactured' => 'decimal:2',
         'quantity_produced' => 'decimal:2',
+        'quantity_rejected' => 'decimal:2',
         'total_material_cost' => 'decimal:4',
         'total_labor_cost' => 'decimal:4',
         'total_overhead_cost' => 'decimal:4',
@@ -130,6 +134,33 @@ class ProductionOrder extends Model
             return 0;
         }
         return min(100, ($this->quantity_produced / $this->quantity_ordered) * 100);
+    }
+
+    /**
+     * Usable finished quantity. Kept on the legacy quantity_produced column for
+     * backward compatibility with invoicing, costing and existing reports.
+     */
+    public function getGoodQuantityAttribute(): float
+    {
+        return (float) ($this->quantity_produced ?? 0);
+    }
+
+    public function getProductionVarianceQuantityAttribute(): float
+    {
+        $planned = (float) ($this->quantity_planned ?? $this->quantity_ordered ?? 0);
+        $manufactured = (float) ($this->quantity_manufactured ?? $this->quantity_produced ?? 0);
+
+        return $manufactured - $planned;
+    }
+
+    public function getYieldPercentageAttribute(): float
+    {
+        $manufactured = (float) ($this->quantity_manufactured ?? 0);
+        if ($manufactured <= 0) {
+            return 0.0;
+        }
+
+        return min(100, max(0, ((float) $this->quantity_produced / $manufactured) * 100));
     }
 
     public function getIsCompletedAttribute()
