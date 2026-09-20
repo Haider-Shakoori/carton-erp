@@ -34,7 +34,7 @@ it('exposes weekly cycle count reporting, blind print, approval and audit contro
         ->toContain('@unless($blind)<th class="right">System Qty</th>@endunless');
 
     expect($stockIndex)
-        ->toContain("route('admin.products.show', $product->id)")
+        ->toContain("route('admin.products.show', \$product->id)")
         ->toContain('Inventory history');
 
     expect($productHistory)
