@@ -615,13 +615,32 @@ it('completes below the customer order, restores unused raw material, and invoic
     $kraftAfterStart = (float) $fx['kraftItem']->fresh()->qty_kg_available;
     $flutingAfterStart = (float) $fx['flutingItem']->fresh()->qty_kg_available;
 
+    $underMaterials = DB::table('production_material_consumptions')
+        ->where('production_order_id', $production->id)
+        ->selectRaw('material_id, MAX(unit) AS unit, SUM(actual_quantity) AS actual_quantity')
+        ->groupBy('material_id')
+        ->get()
+        ->map(fn ($row) => [
+            'material_id' => (int) $row->material_id,
+            'actual_quantity' => (float) $row->actual_quantity * 0.8,
+            'wastage_quantity' => 0,
+            'unit' => $row->unit,
+        ])
+        ->values()
+        ->all();
+
     $completeRequest = rwRequest(
         '/admin/production-orders/'.$production->id.'/complete',
         'POST',
-        ['quantity_produced' => 80]
+        [
+            'quantity_manufactured' => 80,
+            'quantity_produced' => 80,
+            'quantity_rejected' => 0,
+            'materials' => $underMaterials,
+        ]
     );
     $complete = (new ProductionOrderController())->completeProduction($production, $completeRequest);
-    expect($complete->getSession()->get('success'))->toContain('actual output of 80.00');
+    expect($complete->getSession()->get('success'))->toContain('80.00 manufactured');
 
     $production->refresh();
     $sale->refresh()->load(['items', 'currency']);
@@ -685,13 +704,32 @@ it('completes above the customer order, consumes extra FIFO stock, and expands t
     $kraftAfterStart = (float) $fx['kraftItem']->fresh()->qty_kg_available;
     $flutingAfterStart = (float) $fx['flutingItem']->fresh()->qty_kg_available;
 
+    $overMaterials = DB::table('production_material_consumptions')
+        ->where('production_order_id', $production->id)
+        ->selectRaw('material_id, MAX(unit) AS unit, SUM(actual_quantity) AS actual_quantity')
+        ->groupBy('material_id')
+        ->get()
+        ->map(fn ($row) => [
+            'material_id' => (int) $row->material_id,
+            'actual_quantity' => (float) $row->actual_quantity * 1.2,
+            'wastage_quantity' => 0,
+            'unit' => $row->unit,
+        ])
+        ->values()
+        ->all();
+
     $completeRequest = rwRequest(
         '/admin/production-orders/'.$production->id.'/complete',
         'POST',
-        ['quantity_produced' => 120]
+        [
+            'quantity_manufactured' => 120,
+            'quantity_produced' => 120,
+            'quantity_rejected' => 0,
+            'materials' => $overMaterials,
+        ]
     );
     $complete = (new ProductionOrderController())->completeProduction($production, $completeRequest);
-    expect($complete->getSession()->get('success'))->toContain('above the original order');
+    expect($complete->getSession()->get('success'))->toContain('120.00 manufactured');
 
     $production->refresh();
     $sale->refresh()->load('items');
