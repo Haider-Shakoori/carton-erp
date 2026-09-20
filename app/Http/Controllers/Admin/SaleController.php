@@ -20,6 +20,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
 use App\Services\ProductionService;
 use App\Services\SaleProfitService;
+use App\Services\GatePassService;
 
 class SaleController extends Controller
 {
@@ -234,6 +235,7 @@ class SaleController extends Controller
             'items.purchaseItem.purchase',
             'items.purchaseItem.purchase.currency',
             'productionOrder',
+            'gatePass.items',
         ])->findOrFail($id);
 
         // ─── CALCULATE COGS AND PROFIT ───
@@ -1996,6 +1998,12 @@ class SaleController extends Controller
 
             $sale->save();
 
+            if ($newStatus === 'delivered') {
+                app(GatePassService::class)->createOrRefreshForSale(
+                    $sale->loadMissing('items.product')
+                );
+            }
+
             DB::commit();
 
             return redirect()->back()->with('success', "Sale status changed from {$oldStatus} to {$newStatus}");
@@ -2167,6 +2175,83 @@ class SaleController extends Controller
     /**
      * Print sale invoice.
      */
+    public function quotation($id)
+    {
+        $sale = Sale::with(['customer', 'currency', 'items.product'])->findOrFail($id);
+        $settings = Setting::first();
+
+        $currencySymbol = $sale->currency->symbol ?? '؋';
+        $currencyCode = $sale->currency->code ?? 'AFN';
+        $companyName = $settings->company_name ?? config('app.name', 'Your Company');
+        $companyAddress = $settings->address ?? '';
+        $companyPhone = $settings->contact ?? '';
+        $companyEmail = $settings->email ?? '';
+        $companyLogo = $settings->logo ?? null;
+
+        return view('admin.sales.quotation', compact(
+            'sale',
+            'currencySymbol',
+            'currencyCode',
+            'companyName',
+            'companyAddress',
+            'companyPhone',
+            'companyEmail',
+            'companyLogo'
+        ));
+    }
+
+    public function updateQuotationDescription(Request $request, SaleItem $item)
+    {
+        $validated = $request->validate([
+            'quotation_description' => 'nullable|string|max:2000',
+        ]);
+
+        $item->loadMissing('sale');
+
+        if ($item->sale && $item->sale->status === 'delivered') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Quotation description cannot be changed after delivery.',
+            ], 422);
+        }
+
+        $item->quotation_description = trim((string) ($validated['quotation_description'] ?? '')) ?: null;
+        $item->save();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Quotation description updated.',
+            'quotation_description' => $item->quotation_description,
+        ]);
+    }
+
+    public function gatePass($id)
+    {
+        $sale = Sale::with([
+            'customer',
+            'gatePass.items',
+            'gatePass.createdBy',
+        ])->findOrFail($id);
+
+        if ($sale->status !== 'delivered') {
+            return back()->with('error', 'Gate pass is available after the invoice is delivered.');
+        }
+
+        $gatePass = $sale->gatePass
+            ?: app(GatePassService::class)->createOrRefreshForSale($sale->loadMissing('items.product'));
+
+        $settings = Setting::first();
+
+        return view('admin.sales.gate-pass', [
+            'sale' => $sale,
+            'gatePass' => $gatePass,
+            'companyName' => $settings->company_name ?? config('app.name', 'Your Company'),
+            'companyAddress' => $settings->address ?? '',
+            'companyPhone' => $settings->contact ?? '',
+            'companyLogo' => $settings->logo ?? null,
+        ]);
+    }
+
     public function printInvoice($id)
     {
         $sale = Sale::with([
@@ -2260,24 +2345,26 @@ class SaleController extends Controller
     public function deliver($id)
     {
         try {
-            $sale = Sale::findOrFail($id);
+            $gatePass = DB::transaction(function () use ($id) {
+                $sale = Sale::with(['items.product'])->findOrFail($id);
 
-            if (!$sale->is_produced) {
-                return back()->with('error', 'Please complete production first.');
-            }
+                if (! $sale->is_produced) {
+                    throw new \RuntimeException('Please complete production first.');
+                }
 
-            if ($sale->status === 'delivered') {
-                return back()->with('error', 'This sale is already delivered.');
-            }
+                if ($sale->status !== 'delivered') {
+                    $sale->status = 'delivered';
+                    $sale->delivery_date = now();
+                    $sale->save();
+                }
 
-            $sale->status = 'delivered';
-            $sale->delivery_date = now();
-            $sale->save();
+                return app(GatePassService::class)->createOrRefreshForSale($sale);
+            });
 
-            return redirect()->route('admin.sales.show', $sale)
-                ->with('success', 'Order delivered successfully!');
+            return redirect()->route('admin.sales.show', $id)
+                ->with('success', "Order delivered successfully. Gate Pass {$gatePass->gate_pass_no} was created.");
 
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             return back()->with('error', 'Failed to deliver: ' . $e->getMessage());
         }
     }
