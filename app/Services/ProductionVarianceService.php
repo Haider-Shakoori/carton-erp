@@ -177,7 +177,7 @@ class ProductionVarianceService
 
     public function forProductionOrder(ProductionOrder $order): array
     {
-        $order->loadMissing(['materials.product', 'product', 'sale']);
+        $order->loadMissing(['materials.product', 'product']);
 
         $planned = $order->materials
             ->map(fn ($material) => [
@@ -264,7 +264,7 @@ class ProductionVarianceService
         return [
             'has_actual' => $actual->isNotEmpty(),
             'production_order_id' => (int) $order->id,
-            'sale_id' => $order->sale?->id ? (int) $order->sale->id : null,
+            'sale_id' => $order->relationLoaded('sale') && $order->sale?->id ? (int) $order->sale->id : null,
             'output' => [
                 'ordered_quantity' => (float) $order->quantity_ordered,
                 'planned_quantity' => $plannedOutput,
