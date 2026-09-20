@@ -2469,150 +2469,25 @@ class SaleController extends Controller
     public function startProductionFromSale($id)
     {
         try {
-            \Log::info('Starting production from sale', ['sale_id' => $id]);
+            $sale = Sale::with('productionOrder')->findOrFail($id);
 
-            DB::beginTransaction();
-
-            $sale = Sale::with(['productionOrder', 'items', 'items.product'])->findOrFail($id);
-
-            // ─── Validation checks ───
             if ($sale->is_produced) {
-                throw new \Exception('This sale has already been produced.');
+                return back()->with('error', 'This sale has already been produced.');
             }
 
-            if (!$sale->productionOrder) {
-                throw new \Exception('No production order found for this sale. Please create a production order first.');
+            if (! $sale->productionOrder) {
+                return back()->with('error', 'No production order found for this sale.');
             }
 
-            $productionOrder = $sale->productionOrder;
-
-            if ($productionOrder->status !== 'pending') {
-                throw new \Exception('Production order is not in pending status. Current status: ' . $productionOrder->status);
+            if ($sale->productionOrder->status !== 'pending') {
+                return redirect()->route('production-orders.show', $sale->productionOrder)
+                    ->with('error', 'Production is not pending. Current status: ' . $sale->productionOrder->status);
             }
 
-            // ─── Check material availability before starting ───
-            $bom = $productionOrder->bom;
-            $quantity = $productionOrder->quantity_ordered;
-
-            if (!$bom) {
-                throw new \Exception('No BOM found for this production order.');
-            }
-
-            // Check if BOM has items
-            if ($bom->items->count() === 0) {
-                throw new \Exception('BOM has no items defined.');
-            }
-
-            // ─── Use the production material snapshot as the authoritative requirement ───
-            $stockService = new \App\Services\StockDeductionService();
-            $materials = [];
-
-            $materialSnapshots = $productionOrder->materials()->get();
-            $bomItemsByMaterial = $bom->items->groupBy('material_id')->map->values();
-            $materialOccurrences = [];
-
-            foreach ($materialSnapshots as $snapshot) {
-                $materialId = (int) $snapshot->product_id;
-                $occurrence = $materialOccurrences[$materialId] ?? 0;
-                $bomItem = $bomItemsByMaterial->get($materialId)?->get($occurrence);
-                $materialOccurrences[$materialId] = $occurrence + 1;
-
-                $totalRequired = (float) $snapshot->required_quantity;
-                $wastagePercent = (float) ($bomItem->wastage_percentage ?? 0);
-                $requiredQty = $wastagePercent > 0
-                    ? $totalRequired / (1 + ($wastagePercent / 100))
-                    : $totalRequired;
-                $wastageQty = $totalRequired - $requiredQty;
-
-                $materials[] = [
-                    'material_id' => $materialId,
-                    'quantity' => $totalRequired,
-                    'planned_quantity' => $requiredQty,
-                    'wastage_quantity' => $wastageQty,
-                    'unit' => $snapshot->unit ?? 'unit',
-                    'material_name' => $snapshot->product->name ?? 'Unknown Material',
-                ];
-            }
-
-            if (empty($materials)) {
-                throw new \Exception('Production order has no material requirement snapshot.');
-            }
-
-            \Log::info('Checking material availability', [
-                'bom_id' => $bom->id,
-                'quantity' => $quantity,
-                'materials' => $materials
-            ]);
-
-            $availability = $stockService->checkAvailability($materials);
-
-            if (!$availability['available']) {
-                // ─── FIX: Use a helper variable to avoid complex expression in string ───
-                $shortageMessages = [];
-                foreach ($availability['materials'] as $material) {
-                    if (!$material['available']) {
-                        $materialName = $material['material_name'] ?? 'Material';
-                        $shortageMessages[] = $materialName . ': Shortage of ' . $material['shortage_quantity'] . ' ' . $material['unit'] . ' (Available: ' . $material['available_quantity'] . ')';
-                    }
-                }
-                $shortages = implode("\n", $shortageMessages);
-
-                throw new \Exception("Cannot start production. Material shortages:\n" . $shortages);
-            }
-
-            // ─── Start the production order using the service ───
-            \Log::info('Starting production order', ['production_order_id' => $productionOrder->id]);
-
-            // Update production order status to 'in_progress' BEFORE consuming materials
-            $productionOrder->update([
-                'status' => 'in_progress',
-                'started_at' => now(),
-            ]);
-
-            $deductionResult = $stockService->deductMaterials(
-                $productionOrder->id,
-                $sale->id,
-                $materials
-            );
-
-            \Log::info('Materials consumed', [
-                'production_order_id' => $productionOrder->id,
-                'deduction_count' => count($deductionResult),
-                'total_cost' => $deductionResult->sum('total_cost_usd')
-            ]);
-
-            DB::commit();
-
-            // ─── Return success response ───
-            if (request()->ajax() || request()->wantsJson()) {
-                return response()->json([
-                    'success' => true,
-                    'message' => 'Production started successfully! Materials have been consumed.',
-                    'production_order_id' => $productionOrder->id,
-                    'redirect' => route('production-orders.show', $productionOrder->id)
-                ]);
-            }
-
-            return redirect()->route('admin.sales.show', $sale)
-                ->with('success', 'Production started successfully! Materials have been consumed.');
-
-        } catch (\Exception $e) {
-            DB::rollBack();
-
-            \Log::error('Start production from sale failed', [
-                'sale_id' => $id ?? 'unknown',
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
-            ]);
-
-            if (request()->ajax() || request()->wantsJson()) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Failed to start production: ' . $e->getMessage()
-                ], 422);
-            }
-
-            return back()->with('error', 'Failed to start production: ' . $e->getMessage());
+            return redirect()->route('production-orders.show', $sale->productionOrder)
+                ->with('success', 'Enter the planned production quantity before starting. It may be above or below the customer order, subject to raw-material availability.');
+        } catch (\Throwable $e) {
+            return back()->with('error', 'Failed to open production order: ' . $e->getMessage());
         }
     }
 
