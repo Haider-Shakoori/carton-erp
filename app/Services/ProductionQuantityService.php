@@ -128,23 +128,53 @@ class ProductionQuantityService
     }
 
     /**
-     * Complete production at the real quantity entered by the operator.
+     * Complete production using real shop-floor quantities.
      *
-     * Material consumption is reconciled to that real output. Extra output
-     * consumes additional FIFO stock; lower output restores unused stock back
-     * to the exact source batches. The linked sale invoice is then resized to
-     * the actual quantity produced.
+     * quantity_produced remains the good/usable finished quantity for backward
+     * compatibility with invoices and existing reports. quantity_manufactured
+     * stores total physical output including rejected/scrap cartons.
+     *
+     * When actualMaterials is supplied, those quantities become authoritative
+     * for FIFO stock and actual production cost. The BOM remains the planned
+     * comparison baseline only.
      */
     public function complete(
         ProductionOrder $order,
-        float $actualQuantity,
-        ?Sale $sale = null
+        float $goodQuantity,
+        ?Sale $sale = null,
+        ?float $manufacturedQuantity = null,
+        ?float $rejectedQuantity = null,
+        ?array $actualMaterials = null
     ): array {
-        if ($actualQuantity <= self::EPSILON) {
-            throw new RuntimeException('Actual produced quantity must be greater than zero.');
+        if ($goodQuantity <= self::EPSILON) {
+            throw new RuntimeException('Good/actual finished quantity must be greater than zero.');
         }
 
-        return DB::transaction(function () use ($order, $actualQuantity, $sale): array {
+        $manufacturedQuantity ??= $goodQuantity;
+        $rejectedQuantity ??= max($manufacturedQuantity - $goodQuantity, 0.0);
+
+        if ($manufacturedQuantity <= self::EPSILON) {
+            throw new RuntimeException('Manufactured quantity must be greater than zero.');
+        }
+
+        if ($rejectedQuantity < -self::EPSILON) {
+            throw new RuntimeException('Rejected quantity cannot be negative.');
+        }
+
+        if (abs($manufacturedQuantity - ($goodQuantity + $rejectedQuantity)) > 0.01) {
+            throw new RuntimeException(
+                'Manufactured quantity must equal good/actual finished quantity plus rejected quantity.'
+            );
+        }
+
+        return DB::transaction(function () use (
+            $order,
+            $goodQuantity,
+            $sale,
+            $manufacturedQuantity,
+            $rejectedQuantity,
+            $actualMaterials
+        ): array {
             $order->refresh()->load(['materials.product', 'bom.items.material', 'product']);
 
             if ($order->status !== ProductionOrder::STATUS_IN_PROGRESS) {
@@ -154,12 +184,9 @@ class ProductionQuantityService
             $sale ??= $order->sale()->with(['items', 'currency'])->first();
             $saleItem = $sale ? $this->resolveSaleItem($sale, $order) : null;
 
-            $materialResult = $this->reconcileMaterialsToQuantity(
-                $order,
-                $actualQuantity,
-                $sale,
-                $saleItem
-            );
+            $materialResult = $actualMaterials !== null
+                ? $this->reconcileMaterialsToActuals($order, $actualMaterials, $sale, $saleItem)
+                : $this->reconcileMaterialsToQuantity($order, $goodQuantity, $sale, $saleItem);
 
             $costBasisQty = max(
                 (float) ($order->quantity_planned ?: $order->quantity_ordered),
@@ -168,10 +195,12 @@ class ProductionQuantityService
             $labourPerUnit = (float) $order->total_labor_cost / $costBasisQty;
             $overheadPerUnit = (float) $order->total_overhead_cost / $costBasisQty;
 
-            $order->quantity_produced = $actualQuantity;
+            $order->quantity_manufactured = $manufacturedQuantity;
+            $order->quantity_produced = $goodQuantity;
+            $order->quantity_rejected = $rejectedQuantity;
             $order->total_material_cost = $materialResult['material_cost_usd'];
-            $order->total_labor_cost = $labourPerUnit * $actualQuantity;
-            $order->total_overhead_cost = $overheadPerUnit * $actualQuantity;
+            $order->total_labor_cost = $labourPerUnit * $manufacturedQuantity;
+            $order->total_overhead_cost = $overheadPerUnit * $manufacturedQuantity;
             $order->total_cost = $order->total_material_cost
                 + $order->total_labor_cost
                 + $order->total_overhead_cost;
@@ -187,19 +216,30 @@ class ProductionQuantityService
                     );
                 }
 
+                // Only good/usable cartons are invoiceable/deliverable.
                 $invoiceResult = $this->syncFinalInvoice(
                     $sale,
                     $saleItem,
                     $order,
-                    $actualQuantity,
+                    $goodQuantity,
                     $materialResult['material_cost_usd']
                 );
             }
 
+            $plannedQty = (float) ($order->quantity_planned ?: $order->quantity_ordered);
+
             return [
                 'ordered_quantity' => (float) $order->quantity_ordered,
-                'actual_quantity' => $actualQuantity,
-                'variance_quantity' => $actualQuantity - (float) $order->quantity_ordered,
+                'planned_quantity' => $plannedQty,
+                'manufactured_quantity' => $manufacturedQuantity,
+                'actual_quantity' => $goodQuantity,
+                'good_quantity' => $goodQuantity,
+                'rejected_quantity' => $rejectedQuantity,
+                'variance_quantity' => $goodQuantity - (float) $order->quantity_ordered,
+                'manufactured_variance_quantity' => $manufacturedQuantity - $plannedQty,
+                'yield_percentage' => $manufacturedQuantity > self::EPSILON
+                    ? ($goodQuantity / $manufacturedQuantity) * 100
+                    : 0.0,
                 'material_cost_usd' => $materialResult['material_cost_usd'],
                 'material_cost_afn' => $materialResult['material_cost_afn'],
                 'invoice' => $invoiceResult,
@@ -314,6 +354,179 @@ class ProductionQuantityService
             })
             ->values()
             ->all();
+    }
+
+    /**
+     * Reconcile the FIFO allocation made at production start to the operator's
+     * real material declaration at completion.
+     *
+     * actual_quantity is the total quantity that left inventory, including
+     * waste. wastage_quantity is only a classified subset of actual_quantity.
+     */
+    private function reconcileMaterialsToActuals(
+        ProductionOrder $order,
+        array $actualMaterials,
+        ?Sale $sale,
+        ?SaleItem $saleItem
+    ): array {
+        $rows = collect($actualMaterials)
+            ->map(function ($row): array {
+                $materialId = (int) ($row['material_id'] ?? 0);
+                $actual = (float) ($row['actual_quantity'] ?? 0);
+                $wastage = (float) ($row['wastage_quantity'] ?? 0);
+
+                if ($materialId <= 0) {
+                    throw new RuntimeException('Every actual material row requires a valid material_id.');
+                }
+
+                if ($actual < -self::EPSILON) {
+                    throw new RuntimeException("Actual consumption for material #{$materialId} cannot be negative.");
+                }
+
+                if ($wastage < -self::EPSILON) {
+                    throw new RuntimeException("Actual wastage for material #{$materialId} cannot be negative.");
+                }
+
+                if ($wastage > $actual + self::EPSILON) {
+                    throw new RuntimeException(
+                        "Actual wastage for material #{$materialId} cannot exceed actual consumption."
+                    );
+                }
+
+                return [
+                    'material_id' => $materialId,
+                    'actual_quantity' => max($actual, 0.0),
+                    'wastage_quantity' => max($wastage, 0.0),
+                    'unit' => isset($row['unit']) ? (string) $row['unit'] : null,
+                ];
+            })
+            ->groupBy('material_id')
+            ->map(function ($group): array {
+                $first = $group->first();
+
+                return [
+                    'material_id' => (int) $first['material_id'],
+                    'actual_quantity' => (float) $group->sum('actual_quantity'),
+                    'wastage_quantity' => (float) $group->sum('wastage_quantity'),
+                    'unit' => $first['unit'],
+                ];
+            })
+            ->keyBy('material_id');
+
+        $expectedMaterialIds = $order->materials
+            ->pluck('product_id')
+            ->map(fn ($id) => (int) $id)
+            ->merge(
+                ProductionMaterialConsumption::query()
+                    ->where('production_order_id', $order->id)
+                    ->pluck('material_id')
+                    ->map(fn ($id) => (int) $id)
+            )
+            ->unique()
+            ->sort()
+            ->values();
+
+        if ($expectedMaterialIds->isEmpty()) {
+            throw new RuntimeException('Production order has no material plan to reconcile.');
+        }
+
+        $missing = $expectedMaterialIds->diff($rows->keys());
+        if ($missing->isNotEmpty()) {
+            throw new RuntimeException(
+                'Actual consumption must be entered for every production material. Missing material IDs: '
+                . $missing->implode(', ')
+            );
+        }
+
+        $unexpected = $rows->keys()->diff($expectedMaterialIds);
+        if ($unexpected->isNotEmpty()) {
+            throw new RuntimeException(
+                'Actual consumption contains materials that are not part of this production order: '
+                . $unexpected->implode(', ')
+            );
+        }
+
+        $current = ProductionMaterialConsumption::query()
+            ->where('production_order_id', $order->id)
+            ->selectRaw('material_id, SUM(actual_quantity) AS actual_quantity')
+            ->groupBy('material_id')
+            ->get()
+            ->keyBy(fn ($row) => (int) $row->material_id);
+
+        $additional = [];
+
+        foreach ($expectedMaterialIds as $materialId) {
+            $row = $rows->get((int) $materialId);
+            $target = (float) $row['actual_quantity'];
+            $consumed = (float) data_get($current->get((int) $materialId), 'actual_quantity', 0);
+            $difference = $target - $consumed;
+
+            if ($difference > self::EPSILON) {
+                $additional[] = [
+                    'material_id' => (int) $materialId,
+                    'quantity' => $difference,
+                    // This is real variance beyond the start allocation, not
+                    // additional planned BOM quantity.
+                    'planned_quantity' => 0.0,
+                    'wastage_quantity' => 0.0,
+                    'unit' => $row['unit']
+                        ?: ($order->materials->firstWhere('product_id', $materialId)?->unit ?: 'unit'),
+                    'sale_item_id' => $saleItem?->id,
+                ];
+            } elseif ($difference < -self::EPSILON) {
+                $this->stockService->restoreProductionMaterialQuantity(
+                    $order->id,
+                    (int) $materialId,
+                    abs($difference)
+                );
+            }
+        }
+
+        if ($additional !== []) {
+            $availability = $this->stockService->checkAvailability($additional);
+
+            if (! $availability['available']) {
+                $shortages = collect($availability['materials'])
+                    ->filter(fn (array $row) => ! $row['available'])
+                    ->map(fn (array $row) => sprintf(
+                        '%s: additional %.4f %s required, only %.4f available',
+                        $row['material_name'] ?? ('Material #' . $row['material_id']),
+                        $row['required_quantity'],
+                        $row['unit'] ?? 'unit',
+                        $row['available_quantity']
+                    ))
+                    ->implode('; ');
+
+                throw new RuntimeException(
+                    'Actual material consumption exceeds available stock. ' . $shortages
+                );
+            }
+
+            $this->stockService->deductMaterials(
+                $order->id,
+                $sale?->id,
+                $additional
+            );
+        }
+
+        foreach ($expectedMaterialIds as $materialId) {
+            $row = $rows->get((int) $materialId);
+
+            $this->stockService->setProductionMaterialWastage(
+                $order->id,
+                (int) $materialId,
+                (float) $row['wastage_quantity']
+            );
+        }
+
+        return [
+            'material_cost_usd' => (float) ProductionMaterialConsumption::query()
+                ->where('production_order_id', $order->id)
+                ->sum('total_cost_usd'),
+            'material_cost_afn' => (float) ProductionMaterialConsumption::query()
+                ->where('production_order_id', $order->id)
+                ->sum('total_cost_afn'),
+        ];
     }
 
     private function reconcileMaterialsToQuantity(
