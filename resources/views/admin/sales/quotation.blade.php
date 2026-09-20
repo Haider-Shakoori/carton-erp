@@ -102,7 +102,7 @@
     </div>
 
     <div class="footer">
-        This quotation intentionally contains no BOM, raw-material, costing, or internal production details.
+        Internal costing and production details are not included in this customer quotation.
     </div>
 </div>
 </body>
