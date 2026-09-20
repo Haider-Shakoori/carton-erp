@@ -572,9 +572,23 @@ class BOMController extends Controller
                     $isFormulaBased = isset($itemData['is_formula_based']) && $itemData['is_formula_based'];
                     $formulaType = $isFormulaBased ? ($itemData['formula_type'] ?? 'fixed') : 'fixed';
 
+                    // The per-gram/per-kg paper rate is purchase-driven. Do not
+                    // persist a manually typed or stale template value for paper.
+                    if ($isFormulaBased && in_array($formulaType, ['carton_3d', 'cut_roll'], true)) {
+                        $latestPurchaseCost = app(\App\Services\BOMCostingService::class)
+                            ->latestInventoryCost((int) $material->id, $exchangeRate, false);
+
+                        if (($latestPurchaseCost['found'] ?? false)
+                            && ($latestPurchaseCost['basis_unit'] ?? null) === 'kg'
+                            && (float) ($latestPurchaseCost['cost_afn'] ?? 0) > 0) {
+                            $itemData['per_gram_rate'] = (float) $latestPurchaseCost['cost_afn'];
+                        }
+                    }
+
                     Log::info("BOM Store - Formula Check", [
                         'is_formula_based' => $isFormulaBased,
                         'formula_type' => $formulaType,
+                        'per_gram_rate_from_purchase' => $itemData['per_gram_rate'] ?? null,
                     ]);
 
                     // ─── Calculate roll weight based on formula type ───
@@ -1000,6 +1014,18 @@ class BOMController extends Controller
 
                 $isFormulaBased = isset($itemData['is_formula_based']) && $itemData['is_formula_based'];
                 $formulaType = $isFormulaBased ? ($itemData['formula_type'] ?? 'fixed') : 'fixed';
+
+                if ($isFormulaBased && in_array($formulaType, ['carton_3d', 'cut_roll'], true)) {
+                    $latestPurchaseCost = app(\App\Services\BOMCostingService::class)
+                        ->latestInventoryCost((int) $material->id, $exchangeRate, false);
+
+                    if (($latestPurchaseCost['found'] ?? false)
+                        && ($latestPurchaseCost['basis_unit'] ?? null) === 'kg'
+                        && (float) ($latestPurchaseCost['cost_afn'] ?? 0) > 0) {
+                        $itemData['per_gram_rate'] = (float) $latestPurchaseCost['cost_afn'];
+                    }
+                }
+
                 $rollWeight = $this->calculateRollWeight($itemData, $formulaType, $quantity);
 
                 if (isset($itemData['id']) && in_array($itemData['id'], $existingItemIds)) {
