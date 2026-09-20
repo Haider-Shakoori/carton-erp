@@ -88,6 +88,46 @@ class StockReconciliationController extends Controller
         );
     }
 
+    public function updateCounts(Request $request, StockReconciliation $stockReconciliation)
+    {
+        $reasonCodes = array_keys(config('stock_reconciliation.reason_codes', []));
+
+        $validated = $request->validate([
+            'items' => ['required', 'array'],
+            'items.*.physical_quantity' => ['nullable', 'numeric', 'min:0', 'max:999999999999.999999'],
+            'items.*.reason_code' => ['nullable', Rule::in($reasonCodes)],
+            'items.*.notes' => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        try {
+            \DB::transaction(function () use ($validated, $stockReconciliation): void {
+                foreach ($validated['items'] as $itemId => $row) {
+                    if (! array_key_exists('physical_quantity', $row)
+                        || $row['physical_quantity'] === null
+                        || $row['physical_quantity'] === '') {
+                        continue;
+                    }
+
+                    $item = StockReconciliationItem::query()
+                        ->where('stock_reconciliation_id', $stockReconciliation->id)
+                        ->findOrFail((int) $itemId);
+
+                    $this->service->updateCount(
+                        $stockReconciliation,
+                        $item,
+                        (float) $row['physical_quantity'],
+                        $row['reason_code'] ?? null,
+                        $row['notes'] ?? null
+                    );
+                }
+            });
+
+            return back()->with('success', 'Physical counts saved. Inventory has not been changed.');
+        } catch (RuntimeException $e) {
+            return back()->withInput()->with('error', $e->getMessage());
+        }
+    }
+
     public function updateItem(
         Request $request,
         StockReconciliation $stockReconciliation,
