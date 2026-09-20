@@ -1555,6 +1555,7 @@ class SaleController extends Controller
                 ->where('unit_price', $unitPrice)
                 ->where('rate', $exchangeRate)
                 ->where('remarks', $remarks)
+                ->where('quotation_description', trim((string) ($validated['quotation_description'] ?? '')) ?: null)
                 ->where('created_at', '>', now()->subMinutes(2))
                 ->first();
 
