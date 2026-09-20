@@ -132,7 +132,9 @@ class ProductionOrder extends Model
 
     public function getIsCompletedAttribute()
     {
-        return $this->quantity_produced >= $this->quantity_ordered;
+        // A production order may validly finish below or above the customer
+        // order quantity. Completion is a workflow state, not a quantity test.
+        return $this->status === self::STATUS_COMPLETED;
     }
 
     public function getCostPerUnitAttribute()
