@@ -42,6 +42,10 @@ class CategorySeeder extends Seeder
                 'name' => 'Chemicals & Lubricants',
                 'description' => 'Machine oil, grease, degreaser, cleaning solvents, and other industrial chemicals.',
             ],
+            [
+                'name' => 'Mixing Materials',
+                'description' => 'Glue-mixing ingredients used in corrugated 3D carton production, including Seligate, corn flour, Borax and Caustic Soda.',
+            ],
         ];
 
         // ============================================================
@@ -82,7 +86,8 @@ class CategorySeeder extends Seeder
 
         $rawCount = Category::whereIn('name', [
             'Paper Materials', 'Printing Consumables', 'Adhesives & Glues',
-            'Packaging Supplies', 'Machine Parts & Consumables', 'Chemicals & Lubricants'
+            'Packaging Supplies', 'Machine Parts & Consumables', 'Chemicals & Lubricants',
+            'Mixing Materials'
         ])->count();
 
         $finishedCount = Category::whereIn('name', [
