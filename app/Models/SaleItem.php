@@ -17,6 +17,7 @@ class SaleItem extends Model
         'purchase_item_id',
         'sale_currency_id',
         'qty',
+        'ordered_qty',
         'cost_per_unit_usd',
         'total_cost_usd',
         'unit_price',
@@ -46,6 +47,7 @@ class SaleItem extends Model
 
     protected $casts = [
         'qty' => 'decimal:2',
+        'ordered_qty' => 'decimal:2',
         'cost_per_unit_usd' => 'decimal:4',
         'total_cost_usd' => 'decimal:2',
         'unit_price' => 'decimal:4',
