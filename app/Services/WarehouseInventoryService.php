@@ -142,21 +142,60 @@ class WarehouseInventoryService
         ProductionMaterialConsumption $consumption,
         PurchaseItem $batch
     ): void {
-        DB::transaction(function () use ($consumption, $batch): void {
+        $this->restoreForProductionQuantity(
+            $consumption,
+            $batch,
+            (float) $consumption->actual_quantity
+        );
+    }
+
+    public function restoreForProductionQuantity(
+        ProductionMaterialConsumption $consumption,
+        PurchaseItem $batch,
+        float $quantity
+    ): void {
+        if ($quantity <= self::EPSILON) {
+            return;
+        }
+
+        DB::transaction(function () use ($consumption, $batch, $quantity): void {
+            $remaining = $quantity;
+
             $movements = InventoryMovement::query()
                 ->where('reference_type', 'production_material_consumption')
                 ->where('reference_id', $consumption->id)
                 ->where('movement_type', 'production_consumption')
                 ->where('direction', 'out')
-                ->whereNotIn('id', function ($query) {
-                    $query->select('reversal_of_id')
-                        ->from('inventory_movements')
-                        ->whereNotNull('reversal_of_id');
-                })
+                ->orderByDesc('id')
                 ->lockForUpdate()
                 ->get();
 
             foreach ($movements as $movement) {
+                if ($remaining <= self::EPSILON) {
+                    break;
+                }
+
+                $reversedQty = (float) InventoryMovement::query()
+                    ->where('reversal_of_id', $movement->id)
+                    ->where('direction', 'in')
+                    ->sum($batch->isRollBatch() ? 'quantity_kg' : 'quantity');
+
+                $movementAmount = $batch->isRollBatch()
+                    ? (float) $movement->quantity_kg
+                    : (float) $movement->quantity;
+
+                $availableToRestore = max($movementAmount - $reversedQty, 0);
+
+                if ($availableToRestore <= self::EPSILON) {
+                    continue;
+                }
+
+                $restore = min($availableToRestore, $remaining);
+                $nativeQuantity = $batch->isRollBatch()
+                    ? $restore / max((float) $batch->kg_per_roll, self::EPSILON)
+                    : $restore;
+                $kgQuantity = $batch->isRollBatch() ? $restore : 0;
+
                 $balance = InventoryLocationBalance::query()
                     ->where('purchase_item_id', $batch->id)
                     ->where('warehouse_id', $movement->warehouse_id)
@@ -182,8 +221,8 @@ class WarehouseInventoryService
                     ]);
                 }
 
-                $balance->quantity = (float) $balance->quantity + (float) $movement->quantity;
-                $balance->quantity_kg = (float) $balance->quantity_kg + (float) $movement->quantity_kg;
+                $balance->quantity = (float) $balance->quantity + $nativeQuantity;
+                $balance->quantity_kg = (float) $balance->quantity_kg + $kgQuantity;
                 $balance->save();
 
                 InventoryMovement::create([
@@ -193,8 +232,8 @@ class WarehouseInventoryService
                     'warehouse_location_id' => $movement->warehouse_location_id,
                     'movement_type' => 'production_reversal',
                     'direction' => 'in',
-                    'quantity' => $movement->quantity,
-                    'quantity_kg' => $movement->quantity_kg,
+                    'quantity' => $nativeQuantity,
+                    'quantity_kg' => $kgQuantity,
                     'unit' => $movement->unit,
                     'unit_cost_usd' => $movement->unit_cost_usd,
                     'reference_type' => $movement->reference_type,
@@ -202,8 +241,21 @@ class WarehouseInventoryService
                     'reversal_of_id' => $movement->id,
                     'actor_id' => Auth::id(),
                     'occurred_at' => now(),
-                    'metadata' => ['reversal' => true],
+                    'metadata' => [
+                        'reversal' => true,
+                        'partial' => $restore + self::EPSILON < $movementAmount,
+                    ],
                 ]);
+
+                $remaining -= $restore;
+            }
+
+            if ($remaining > self::EPSILON) {
+                throw new RuntimeException(sprintf(
+                    'Unable to restore %.6f units to the original warehouse allocation for production consumption #%d.',
+                    $remaining,
+                    $consumption->id
+                ));
             }
         });
     }
