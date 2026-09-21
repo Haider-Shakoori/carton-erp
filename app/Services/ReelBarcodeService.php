@@ -35,7 +35,7 @@ class ReelBarcodeService
 
     public function scanKey(PurchaseItemReel $reel): string
     {
-        return 'REEL-'.str_pad((string) $reel->getKey(), 8, '0', STR_PAD_LEFT);
+        return $reel->scannerKey();
     }
 
     public function resolve(string $input): ?PurchaseItemReel
