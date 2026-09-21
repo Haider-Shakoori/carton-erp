@@ -22,7 +22,6 @@ class DeliverManagementNotificationChannel implements ShouldQueue
     public function __construct(
         public readonly int $deliveryId
     ) {
-        $this->onQueue('notifications');
     }
 
     public function backoff(): array
