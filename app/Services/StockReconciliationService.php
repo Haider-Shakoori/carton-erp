@@ -352,7 +352,7 @@ class StockReconciliationService
                     ));
                 }
 
-                StockAdjustmentItem::create([
+                $adjustmentItem = StockAdjustmentItem::create([
                     'stock_adjustment_id' => $adjustment->id,
                     'product_id' => $item->product_id,
                     'purchase_item_id' => $item->purchase_item_id,
@@ -365,6 +365,9 @@ class StockReconciliationService
                     'reason_code' => $item->reason_code,
                     'notes' => $item->notes,
                 ]);
+
+                app(StockVarianceInvestigationService::class)
+                    ->openIfRequired($adjustmentItem->load('adjustment'));
             }
 
             $locked->update([
