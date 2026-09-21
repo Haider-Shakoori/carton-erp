@@ -60,9 +60,10 @@ class WarehouseInventoryService
         DB::transaction(function () use ($consumption, $batch): void {
             $remaining = (float) $consumption->actual_quantity;
 
+            $defaultWarehouseId = $this->defaultWarehouse()->id;
             $balances = InventoryLocationBalance::query()
                 ->where('purchase_item_id', $batch->id)
-                ->orderByDesc('warehouse_id', $this->defaultWarehouse()->id)
+                ->orderByRaw('warehouse_id = ? DESC', [$defaultWarehouseId])
                 ->orderBy('id')
                 ->lockForUpdate()
                 ->get();
