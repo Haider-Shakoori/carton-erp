@@ -316,7 +316,18 @@
                     @forelse($sale->items as $soxLine)
                         @php
                             $soxManualOverride = ($soxLine->price_adjustment_type ?? 'none') === 'manual';
-                            $soxStandardPrice = (float) ($soxLine->base_price ?: $soxLine->original_unit_price ?: $soxLine->unit_price);
+                            $soxLineSnapshot = is_array($soxLine->manual_bom_snapshot ?? null) ? $soxLine->manual_bom_snapshot : [];
+                            $soxStandardPriceAfn = 0.0;
+                            if (count($soxLineSnapshot) > 0) {
+                                foreach ($soxLineSnapshot as $soxPriceRow) {
+                                    $soxStandardPriceAfn += (float) ($soxPriceRow['row_net_rate'] ?? $soxPriceRow['final_rate_afn'] ?? 0);
+                                }
+                            } elseif ($soxLine->bom) {
+                                $soxStandardPriceAfn = (float) ($soxLine->bom->selling_price_afn ?? 0);
+                            }
+                            $soxStandardPrice = $soxStandardPriceAfn > 0
+                                ? ($soxIsUsd ? $soxStandardPriceAfn / $soxExchangeRate : $soxStandardPriceAfn)
+                                : (float) ($soxLine->base_price ?: $soxLine->original_unit_price ?: $soxLine->unit_price);
                             $soxEffectivePrice = (float) $soxLine->unit_price;
                             $soxQty = max((float) $soxLine->qty, 0.000001);
                             $soxEstimatedLineCost = (float) ($soxLine->total_cost_usd ?? 0) * ($soxIsUsd ? 1 : $soxExchangeRate);
