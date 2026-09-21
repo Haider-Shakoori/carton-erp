@@ -8,6 +8,7 @@ on:
       - feat/stock-reconciliation-reporting
       - feat/stock-reconciliation-inventory-history
       - feat/stock-reconciliation-controls
+      - feat/stock-reconciliation-planning-analysis
   workflow_dispatch:
 
 permissions:
@@ -90,6 +91,8 @@ jobs:
           php -l app/Models/StockAdjustment.php
           php -l app/Models/StockAdjustmentItem.php
           php -l app/Services/StockReconciliationService.php
+          php -l app/Services/StockCycleCountPlanningService.php
+          php -l app/Services/InventoryControlAnalysisService.php
           php -l app/Http/Controllers/Admin/StockReconciliationController.php
           php -l database/migrations/2026_09_21_010000_create_stock_reconciliations_table.php
           php -l database/migrations/2026_09_21_010100_create_stock_reconciliation_items_table.php
@@ -105,6 +108,7 @@ jobs:
       - name: Focused stock reconciliation tests
         run: |
           php artisan test tests/Feature/Inventory/StockReconciliationFoundationTest.php
+          php artisan test tests/Feature/Inventory/StockReconciliationPlanningAnalysisTest.php
           php artisan test tests/Feature/Inventory/StockReconciliationUiContractTest.php
 
       - name: Complete PHP test suite
