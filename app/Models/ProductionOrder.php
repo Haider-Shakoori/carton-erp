@@ -33,6 +33,14 @@ class ProductionOrder extends Model
         'created_by',
         'approved_by',
         'approved_at',
+        'approval_notes',
+        'closed_at',
+        'closed_by',
+        'reopened_at',
+        'reopened_by',
+        'reversed_at',
+        'reversed_by',
+        'reversal_reason',
         'notes',
     ];
 
@@ -49,6 +57,9 @@ class ProductionOrder extends Model
         'start_date' => 'date',
         'completion_date' => 'date',
         'approved_at' => 'datetime',
+        'closed_at' => 'datetime',
+        'reopened_at' => 'datetime',
+        'reversed_at' => 'datetime',
     ];
 
     // Status constants
@@ -94,6 +105,26 @@ class ProductionOrder extends Model
     public function approvedBy()
     {
         return $this->belongsTo(User::class, 'approved_by');
+    }
+
+    public function closedBy()
+    {
+        return $this->belongsTo(User::class, 'closed_by');
+    }
+
+    public function reopenedBy()
+    {
+        return $this->belongsTo(User::class, 'reopened_by');
+    }
+
+    public function reversedBy()
+    {
+        return $this->belongsTo(User::class, 'reversed_by');
+    }
+
+    public function controlEvents()
+    {
+        return $this->hasMany(ProductionOrderControlEvent::class)->orderBy('id');
     }
 
     public function materials()
@@ -158,6 +189,16 @@ class ProductionOrder extends Model
         }
 
         return min(100, max(0, ((float) $this->quantity_produced / $manufactured) * 100));
+    }
+
+    public function getControlStateAttribute(): string
+    {
+        return app(\App\Services\ProductionOrderGovernanceService::class)->state($this);
+    }
+
+    public function getIsLockedAttribute(): bool
+    {
+        return $this->closed_at !== null || $this->reversed_at !== null;
     }
 
     public function getIsCompletedAttribute()
