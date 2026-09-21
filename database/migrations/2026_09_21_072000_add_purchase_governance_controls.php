@@ -9,7 +9,7 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('purchases', function (Blueprint $table) {
-            $table->unsignedBigInteger('approved_by')->nullable()->after('created_by');
+            $table->unsignedBigInteger('approved_by')->nullable()->after('notes');
             $table->timestamp('approved_at')->nullable()->after('approved_by');
             $table->text('approval_notes')->nullable()->after('approved_at');
             $table->unsignedBigInteger('received_by')->nullable()->after('approval_notes');
