@@ -78,7 +78,10 @@ class StockVarianceInvestigation extends Model
 
         $end = $this->resolved_at ?: now();
 
-        return max((int) $start->startOfDay()->diffInDays($end->startOfDay()), 0);
+        return max(
+            (int) $start->copy()->startOfDay()->diffInDays($end->copy()->startOfDay()),
+            0
+        );
     }
 
     public function getIsOverdueAttribute(): bool
