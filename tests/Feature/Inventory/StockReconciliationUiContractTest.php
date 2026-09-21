@@ -14,6 +14,9 @@ it('exposes weekly cycle count reporting, blind print, approval and audit contro
     $investigationIndex = file_get_contents(resource_path('views/admin/stock-reconciliations/investigations/index.blade.php'));
     $investigationShow = file_get_contents(resource_path('views/admin/stock-reconciliations/investigations/show.blade.php'));
     $preventionIntelligence = file_get_contents(resource_path('views/admin/stock-reconciliations/investigations/intelligence.blade.php'));
+    $managementControl = file_get_contents(resource_path('views/admin/stock-reconciliations/management-control/index.blade.php'));
+    $managementEscalation = file_get_contents(resource_path('views/admin/stock-reconciliations/management-control/escalation.blade.php'));
+    $managementReview = file_get_contents(resource_path('views/admin/stock-reconciliations/management-control/review.blade.php'));
 
     expect($index)
         ->toContain('New Cycle Count')
@@ -26,7 +29,8 @@ it('exposes weekly cycle count reporting, blind print, approval and audit contro
         ->toContain('Variance Trends')
         ->toContain('Production → Physical')
         ->toContain('Investigations')
-        ->toContain('Prevention');
+        ->toContain('Prevention')
+        ->toContain('Management Control');
 
     expect($show)
         ->toContain('Blind Count Sheet')
@@ -101,5 +105,27 @@ it('exposes weekly cycle count reporting, blind print, approval and audit contro
         ->toContain('Recurring Root-Cause Patterns')
         ->toContain('Material Variance Hotspots')
         ->toContain('Corrective-Action Follow-up')
-        ->toContain('do not prove causation');
+        ->toContain('do not prove causation')
+        ->toContain('Management Control');
+
+    expect($managementControl)
+        ->toContain('Stock Management Control')
+        ->toContain('Current Weekly Control Review')
+        ->toContain('Management Escalations')
+        ->toContain('Recent Weekly Reviews')
+        ->toContain('Level 3 = critical management attention');
+
+    expect($managementEscalation)
+        ->toContain('Management Signal')
+        ->toContain('Ownership & Review Deadline')
+        ->toContain('Acknowledge Escalation')
+        ->toContain('Close Management Escalation')
+        ->toContain('Escalation Audit Timeline');
+
+    expect($managementReview)
+        ->toContain('Weekly Control Review')
+        ->toContain('Escalations Included in This Review')
+        ->toContain('Management Decisions / Actions')
+        ->toContain('Complete Weekly Review')
+        ->toContain('freezes its weekly management notes');
 });
