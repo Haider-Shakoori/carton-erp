@@ -19,6 +19,8 @@ it('exposes weekly cycle count reporting, blind print, approval and audit contro
     $managementReview = file_get_contents(resource_path('views/admin/stock-reconciliations/management-control/review.blade.php'));
     $stockNotifications = file_get_contents(resource_path('views/admin/stock-notifications/index.blade.php'));
     $navbar = file_get_contents(resource_path('views/layouts/admin/navbar.blade.php'));
+    $reelIndex = file_get_contents(resource_path('views/admin/stock-reels/index.blade.php'));
+    $reelShow = file_get_contents(resource_path('views/admin/stock-reels/show.blade.php'));
 
     expect($index)
         ->toContain('New Cycle Count')
@@ -59,7 +61,8 @@ it('exposes weekly cycle count reporting, blind print, approval and audit contro
 
     expect($stockIndex)
         ->toContain("route('admin.products.show', \$product->id)")
-        ->toContain('Inventory history');
+        ->toContain('Inventory history')
+        ->toContain('Physical Reels');
 
     expect($productHistory)
         ->toContain('Reconciliation Adjustment History')
@@ -145,4 +148,18 @@ it('exposes weekly cycle count reporting, blind print, approval and audit contro
         ->toContain("route('admin.stock-notifications.open'")
         ->toContain("route('admin.stock-notifications.index')")
         ->not->toContain('8 New');
+
+    expect($reelIndex)
+        ->toContain('Physical Reel Tracking')
+        ->toContain('Out of Sync')
+        ->toContain('Open Remnant Reels')
+        ->toContain('measurements are observational');
+
+    expect($reelShow)
+        ->toContain('Physical Reels & Remnant Weights')
+        ->toContain('System Remaining')
+        ->toContain('Measured Remnant')
+        ->toContain('Re-baseline From Measurements')
+        ->toContain('Recent Production Reel Lineage')
+        ->toContain('Measurement History');
 });
