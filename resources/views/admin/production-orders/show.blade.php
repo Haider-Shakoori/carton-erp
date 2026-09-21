@@ -899,6 +899,145 @@
                                                     </td>
                                                     <td>{{ $material['unit'] }}</td>
                                                 </tr>
+
+                                                @if(!empty($material['reel_options']))
+                                                    @php
+                                                        $useReelSelection = (bool) old(
+                                                            'materials.'.$index.'.use_reel_selection',
+                                                            false
+                                                        );
+                                                    @endphp
+                                                    <tr class="bg-light">
+                                                        <td colspan="5" class="p-0">
+                                                            <div class="p-3 border-top">
+                                                                <div class="d-flex flex-column flex-lg-row justify-content-between gap-3 align-items-lg-center">
+                                                                    <div class="form-check form-switch mb-0">
+                                                                        <input class="form-check-input reel-selection-toggle"
+                                                                               type="checkbox"
+                                                                               role="switch"
+                                                                               id="useReelSelection{{ $index }}"
+                                                                               name="materials[{{ $index }}][use_reel_selection]"
+                                                                               value="1"
+                                                                               data-target="reelSelectionPanel{{ $index }}"
+                                                                               @checked($useReelSelection)>
+                                                                        <label class="form-check-label fw-semibold" for="useReelSelection{{ $index }}">
+                                                                            Use physical reel declaration
+                                                                        </label>
+                                                                        <div class="form-text">
+                                                                            Optional. Leave this off to keep normal FIFO allocation.
+                                                                        </div>
+                                                                    </div>
+
+                                                                    <div class="input-group input-group-sm" style="max-width:360px;">
+                                                                        <span class="input-group-text"><i class="bi bi-upc-scan"></i></span>
+                                                                        <input type="text"
+                                                                               class="form-control reel-scan-input"
+                                                                               data-target="reelSelectionPanel{{ $index }}"
+                                                                               placeholder="Scan / enter reel code">
+                                                                    </div>
+                                                                </div>
+
+                                                                <div id="reelSelectionPanel{{ $index }}"
+                                                                     class="reel-selection-panel mt-3"
+                                                                     style="{{ $useReelSelection ? '' : 'display:none;' }}">
+                                                                    @error('materials.'.$index.'.reels')
+                                                                        <div class="alert alert-danger py-2 mb-3">{{ $message }}</div>
+                                                                    @enderror
+
+                                                                    <div class="table-responsive border rounded-3">
+                                                                        <table class="table table-sm align-middle mb-0">
+                                                                            <thead class="table-light">
+                                                                                <tr>
+                                                                                    <th>Reel / Source</th>
+                                                                                    <th>Status</th>
+                                                                                    <th class="text-end">Available for this run</th>
+                                                                                    <th style="min-width:160px;">Consumed kg</th>
+                                                                                    <th style="min-width:180px;">Final weighed remainder</th>
+                                                                                </tr>
+                                                                            </thead>
+                                                                            <tbody>
+                                                                                @foreach($material['reel_options'] as $reelIndex => $reel)
+                                                                                    <tr class="reel-option-row"
+                                                                                        data-reel-code="{{ strtoupper($reel['reel_code']) }}"
+                                                                                        data-selectable="{{ $reel['selectable'] ? '1' : '0' }}">
+                                                                                        <td>
+                                                                                            <div class="fw-semibold">{{ $reel['reel_code'] }}</div>
+                                                                                            <small class="text-muted">
+                                                                                                Batch {{ $reel['batch_no'] ?: '—' }}
+                                                                                                @if($reel['purchase_no'])
+                                                                                                    · {{ $reel['purchase_no'] }}
+                                                                                                @endif
+                                                                                            </small>
+                                                                                            <input type="hidden"
+                                                                                                   name="materials[{{ $index }}][reels][{{ $reelIndex }}][reel_id]"
+                                                                                                   value="{{ $reel['id'] }}">
+                                                                                        </td>
+                                                                                        <td>
+                                                                                            @if($reel['selectable'])
+                                                                                                <span class="badge bg-success-subtle text-success border border-success-subtle">
+                                                                                                    {{ $reel['status'] === 'consumed' ? 'Used in this run' : ucfirst($reel['status']) }}
+                                                                                                </span>
+                                                                                            @else
+                                                                                                <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle">
+                                                                                                    {{ ucfirst($reel['status']) }} · unavailable
+                                                                                                </span>
+                                                                                            @endif
+                                                                                        </td>
+                                                                                        <td class="text-end">
+                                                                                            <strong>{{ number_format((float) $reel['available_for_run_kg'], 4) }} kg</strong>
+                                                                                            @if((float) $reel['current_run_consumed_kg'] > 0)
+                                                                                                <div class="small text-muted">
+                                                                                                    {{ number_format((float) $reel['current_run_consumed_kg'], 4) }} kg provisionally allocated
+                                                                                                </div>
+                                                                                            @endif
+                                                                                        </td>
+                                                                                        <td>
+                                                                                            <input type="number"
+                                                                                                   class="form-control form-control-sm reel-consumed-input"
+                                                                                                   name="materials[{{ $index }}][reels][{{ $reelIndex }}][consumed_kg]"
+                                                                                                   value="{{ old('materials.'.$index.'.reels.'.$reelIndex.'.consumed_kg') }}"
+                                                                                                   min="0"
+                                                                                                   step="0.000001"
+                                                                                                   placeholder="Actual kg"
+                                                                                                   @disabled(!$reel['selectable'])>
+                                                                                        </td>
+                                                                                        <td>
+                                                                                            <input type="number"
+                                                                                                   class="form-control form-control-sm"
+                                                                                                   name="materials[{{ $index }}][reels][{{ $reelIndex }}][final_remaining_kg]"
+                                                                                                   value="{{ old('materials.'.$index.'.reels.'.$reelIndex.'.final_remaining_kg') }}"
+                                                                                                   min="0"
+                                                                                                   step="0.000001"
+                                                                                                   placeholder="Optional scale weight"
+                                                                                                   @disabled(!$reel['selectable'])>
+                                                                                        </td>
+                                                                                    </tr>
+                                                                                @endforeach
+                                                                            </tbody>
+                                                                        </table>
+                                                                    </div>
+
+                                                                    <div class="row g-2 mt-2 align-items-start">
+                                                                        <div class="col-lg-7">
+                                                                            <div class="form-text">
+                                                                                Enter consumed kg, or leave it blank and enter the final weighed remainder so consumption can be inferred.
+                                                                                If both are entered, consumed kg drives inventory and the weighed remainder is recorded separately as remnant variance.
+                                                                            </div>
+                                                                        </div>
+                                                                        <div class="col-lg-5">
+                                                                            <input type="text"
+                                                                                   class="form-control form-control-sm"
+                                                                                   name="materials[{{ $index }}][selection_note]"
+                                                                                   value="{{ old('materials.'.$index.'.selection_note') }}"
+                                                                                   maxlength="1000"
+                                                                                   placeholder="Optional reel / scale note">
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                @endif
                                             @empty
                                                 <tr><td colspan="5" class="text-center text-danger py-4">No production materials are available for completion.</td></tr>
                                             @endforelse
@@ -908,7 +1047,7 @@
 
                                 <div class="alert alert-warning mt-4 mb-0 small">
                                     <i class="bi bi-exclamation-triangle me-1"></i>
-                                    Completion reconciles FIFO stock and actual production cost to the quantities entered above. Only the good/actual finished quantity is invoiceable.
+                                    Completion is atomic. Materials without a physical reel declaration keep FIFO. An explicit reel declaration replaces only that material's provisional allocation and preserves the landed cost of each selected source batch. Scale remainders are observational and never overwrite stock directly.
                                 </div>
                             </div>
 
@@ -1580,6 +1719,80 @@
                 new bootstrap.Modal(completionModalElement).show();
             }
             @endif
+
+            // ─── OPTIONAL PHYSICAL REEL DECLARATION ───
+            document.querySelectorAll('.reel-selection-toggle').forEach(function(toggle) {
+                const panel = document.getElementById(toggle.dataset.target);
+                const syncPanel = function() {
+                    if (panel) {
+                        panel.style.display = toggle.checked ? '' : 'none';
+                    }
+                };
+
+                toggle.addEventListener('change', syncPanel);
+                syncPanel();
+            });
+
+            document.querySelectorAll('.reel-scan-input').forEach(function(input) {
+                input.addEventListener('keydown', function(event) {
+                    if (event.key !== 'Enter') {
+                        return;
+                    }
+
+                    event.preventDefault();
+                    const code = input.value.trim().toUpperCase();
+                    if (!code) {
+                        return;
+                    }
+
+                    const panel = document.getElementById(input.dataset.target);
+                    if (!panel) {
+                        return;
+                    }
+
+                    const rows = Array.from(
+                        panel.querySelectorAll('.reel-option-row')
+                    );
+                    const match = rows.find(function(row) {
+                        return row.dataset.reelCode === code;
+                    });
+
+                    if (!match) {
+                        alert('Reel code not found for this material.');
+                        return;
+                    }
+
+                    if (match.dataset.selectable !== '1') {
+                        alert('This reel is currently blocked or unavailable for production.');
+                        return;
+                    }
+
+                    const toggle = document.querySelector(
+                        '.reel-selection-toggle[data-target="' + input.dataset.target + '"]'
+                    );
+                    if (toggle && !toggle.checked) {
+                        toggle.checked = true;
+                        toggle.dispatchEvent(new Event('change'));
+                    }
+
+                    match.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'center'
+                    });
+                    match.classList.add('table-success');
+
+                    const consumedInput = match.querySelector(
+                        '.reel-consumed-input'
+                    );
+                    if (consumedInput) {
+                        consumedInput.focus();
+                    }
+
+                    window.setTimeout(function() {
+                        match.classList.remove('table-success');
+                    }, 1800);
+                });
+            });
 
             // ─── CONFIRM DIALOG FOR START PRODUCTION ───
             const startForm = document.getElementById('startProductionForm');
