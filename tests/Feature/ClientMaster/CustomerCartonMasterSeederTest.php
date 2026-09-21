@@ -97,9 +97,9 @@ it('keeps duplicate customer carton names as distinct source variants', function
             && (float) $spec->height === 300.0
         );
 
-    expect($duplicateSizedVariants)->toHaveCount(2)
-        ->and($duplicateSizedVariants->pluck('product_id')->unique())->toHaveCount(2)
-        ->and($duplicateSizedVariants->pluck('product.name')->unique())->toHaveCount(2);
+    expect($duplicateSizedVariants)->toHaveCount(3)
+        ->and($duplicateSizedVariants->pluck('product_id')->unique())->toHaveCount(3)
+        ->and($duplicateSizedVariants->pluck('product.name')->unique())->toHaveCount(3);
 });
 
 it('creates draft technical BOMs only for customer cartons with complete dimensions and supported ply', function () {
