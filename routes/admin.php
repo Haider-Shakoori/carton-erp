@@ -43,6 +43,7 @@ use App\Http\Controllers\Admin\TransactionsController;
 use App\Http\Controllers\Admin\UsersController;
 use App\Http\Controllers\WhatsAppController;
 use App\Http\Controllers\Admin\BOMController;
+use App\Http\Controllers\Admin\BusinessUnitSwitchController;
 use App\Http\Controllers\Admin\CartonQuotationController;
 use App\Http\Controllers\Admin\ProductionOrderController;
 use App\Http\Controllers\Admin\WorkOrderController;
@@ -86,6 +87,9 @@ Route::middleware(['auth'])->prefix('admin')->group(function () {
     })->middleware('permission.feedback:update transactions');
 
     // Dashboard
+    Route::post('/business-unit/switch/{businessUnit}', BusinessUnitSwitchController::class)
+        ->name('admin.business-units.switch');
+
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('admin.dashboard')->middleware('permission.feedback:view dashboard');
     Route::get('/dashboard/stats', [DashboardController::class, 'getStats'])->name('admin.dashboard.stats')->middleware('permission.feedback:view dashboard');
     Route::get('/dashboard/charts', [DashboardController::class, 'getChartData'])->name('admin.dashboard.charts')->middleware('permission.feedback:view dashboard');
