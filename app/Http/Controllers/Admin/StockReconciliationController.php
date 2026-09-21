@@ -40,6 +40,13 @@ class StockReconciliationController extends Controller
                 ->where('adjustment_value_usd', '<', 0)
                 ->whereHas('adjustment', fn ($q) => $q->where('posted_at', '>=', now()->subDays(30)))
                 ->sum('adjustment_value_usd')),
+            'unresolved_count' => StockAdjustmentItem::query()
+                ->whereIn('reason_code', config('stock_reconciliation.unresolved_reason_codes', ['unknown']))
+                ->count(),
+            'unresolved_value_usd' => (float) StockAdjustmentItem::query()
+                ->whereIn('reason_code', config('stock_reconciliation.unresolved_reason_codes', ['unknown']))
+                ->get()
+                ->sum(fn ($row) => abs((float) $row->adjustment_value_usd)),
         ];
 
         return view('admin.stock-reconciliations.index', compact('reconciliations', 'stats'));
@@ -52,11 +59,20 @@ class StockReconciliationController extends Controller
         $allRows = (clone $query)->get();
         $rows = $query->paginate(30)->withQueryString();
 
+        $unresolvedReasonCodes = config(
+            'stock_reconciliation.unresolved_reason_codes',
+            ['unknown']
+        );
+
         $summary = [
             'lines' => $allRows->count(),
             'positive_value_usd' => (float) $allRows->where('adjustment_value_usd', '>', 0)->sum('adjustment_value_usd'),
             'negative_value_usd' => (float) $allRows->where('adjustment_value_usd', '<', 0)->sum('adjustment_value_usd'),
             'net_value_usd' => (float) $allRows->sum('adjustment_value_usd'),
+            'unresolved_lines' => $allRows->whereIn('reason_code', $unresolvedReasonCodes)->count(),
+            'unresolved_value_usd' => (float) $allRows
+                ->whereIn('reason_code', $unresolvedReasonCodes)
+                ->sum(fn ($row) => abs((float) $row->adjustment_value_usd)),
         ];
 
         $topMaterials = $allRows
@@ -79,7 +95,14 @@ class StockReconciliationController extends Controller
 
         return view(
             'admin.stock-reconciliations.report',
-            compact('rows', 'summary', 'topMaterials', 'products', 'reasonCodes')
+            compact(
+                'rows',
+                'summary',
+                'topMaterials',
+                'products',
+                'reasonCodes',
+                'unresolvedReasonCodes'
+            )
         );
     }
 
@@ -187,6 +210,12 @@ class StockReconciliationController extends Controller
         ]);
 
         $reasonCodes = config('stock_reconciliation.reason_codes', []);
+        $requiresIndependentApproval = $this->service
+            ->requiresIndependentApproval($stockReconciliation);
+        $independentApprovalThresholdUsd = (float) config(
+            'stock_reconciliation.independent_approval_required_above_usd',
+            100.00
+        );
 
         $summary = [
             'lines' => $stockReconciliation->items->count(),
@@ -202,7 +231,13 @@ class StockReconciliationController extends Controller
 
         return view(
             'admin.stock-reconciliations.show',
-            compact('stockReconciliation', 'reasonCodes', 'summary')
+            compact(
+                'stockReconciliation',
+                'reasonCodes',
+                'summary',
+                'requiresIndependentApproval',
+                'independentApprovalThresholdUsd'
+            )
         );
     }
 
@@ -353,6 +388,13 @@ class StockReconciliationController extends Controller
             })
             ->when($request->filled('product_id'), fn ($q) => $q->where('product_id', (int) $request->product_id))
             ->when($request->filled('reason_code'), fn ($q) => $q->where('reason_code', $request->reason_code))
+            ->when(
+                $request->boolean('unresolved'),
+                fn ($q) => $q->whereIn(
+                    'reason_code',
+                    config('stock_reconciliation.unresolved_reason_codes', ['unknown'])
+                )
+            )
             ->when($request->get('direction') === 'shortage', fn ($q) => $q->where('adjustment_quantity', '<', 0))
             ->when($request->get('direction') === 'surplus', fn ($q) => $q->where('adjustment_quantity', '>', 0))
             ->latest('id');
