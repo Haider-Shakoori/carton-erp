@@ -210,6 +210,23 @@ class ReelInventoryService
                 );
             }
 
+            $batchChangedAt = $locked->updated_at;
+            $staleMeasurements = $reels->filter(
+                fn (PurchaseItemReel $reel) =>
+                    ! $reel->last_measured_at
+                    || (
+                        $batchChangedAt
+                        && $reel->last_measured_at->lt($batchChangedAt)
+                    )
+            );
+
+            if ($staleMeasurements->isNotEmpty()) {
+                throw new RuntimeException(
+                    'Reel measurements are stale relative to the latest batch stock change. '
+                    .'Re-weigh every registered reel before re-baselining.'
+                );
+            }
+
             $measuredTotal = (float) $reels->sum(
                 fn (PurchaseItemReel $reel) =>
                     (float) $reel->last_measured_weight_kg
@@ -468,6 +485,13 @@ class ReelInventoryService
                     'Unable to restore %.4f kg to the original physical reel lineage.',
                     $remaining
                 ));
+            }
+
+            $batch = PurchaseItem::query()->find(
+                $consumption->purchase_item_id
+            );
+            if ($batch) {
+                $this->assertAligned($batch);
             }
 
             return $restored;
