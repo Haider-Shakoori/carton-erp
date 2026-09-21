@@ -24,6 +24,17 @@
     @if(session('success'))<div class="alert alert-success">{{ session('success') }}</div>@endif
     @if(session('error'))<div class="alert alert-danger">{{ session('error') }}</div>@endif
 
+    @php
+        $readiness = $summary['measurement_readiness'];
+        $readinessAlert = match($readiness['state']) {
+            'aligned' => 'success',
+            'reconcile' => 'primary',
+            'stale' => 'danger',
+            'incomplete' => 'warning',
+            default => 'secondary',
+        };
+    @endphp
+
     @if($summary['tracked'] && ! $summary['healthy'])
         <div class="alert alert-danger">
             <strong>Reel tracking is out of sync with the authoritative batch balance.</strong>
@@ -68,6 +79,31 @@
         <strong>Damaged / Quarantined</strong> are production-control states only; their weight remains in authoritative inventory until the normal approval-based reconciliation posts an adjustment.
     </div>
 
+    @if($summary['tracked'])
+        <div class="alert alert-{{ $readinessAlert }}">
+            <div class="d-flex flex-column flex-lg-row justify-content-between gap-2">
+                <div>
+                    <strong>Measurement Readiness: {{ $readiness['label'] }}</strong>
+                    <div>{{ $readiness['message'] }}</div>
+                </div>
+                @if($readiness['active_count'] > 0)
+                    <div class="text-lg-end small">
+                        <div>{{ $readiness['fresh_count'] }}/{{ $readiness['active_count'] }} active reels fresh</div>
+                        <div>
+                            Measured {{ number_format($readiness['measured_total_kg'], 4) }} kg
+                            · ERP {{ number_format($readiness['batch_available_kg'], 4) }} kg
+                        </div>
+                        @if($readiness['complete'])
+                            <div class="fw-semibold">
+                                Variance {{ $readiness['variance_kg'] > 0 ? '+' : '' }}{{ number_format($readiness['variance_kg'], 4) }} kg
+                            </div>
+                        @endif
+                    </div>
+                @endif
+            </div>
+        </div>
+    @endif
+
     @if(! $summary['tracked'])
         @can('update stock')
         <div class="card border-primary shadow-sm mb-4">
@@ -103,6 +139,8 @@
                     <form method="POST" action="{{ route('admin.stock-reels.reconciliation', $purchaseItem) }}">
                         @csrf
                         <button class="btn btn-outline-primary"
+                                @disabled(! $readiness['needs_reconciliation'])
+                                title="{{ $readiness['needs_reconciliation'] ? 'Create a controlled draft reconciliation from the fresh measured variance.' : $readiness['message'] }}"
                                 onclick="return confirm('Create a draft stock reconciliation from the latest reel measurements? Inventory will remain unchanged until normal approval and posting.')">
                             <i class="bi bi-clipboard-check me-1"></i> Reconcile Measured Total
                         </button>
@@ -112,6 +150,8 @@
                     <form method="POST" action="{{ route('admin.stock-reels.rebaseline', $purchaseItem) }}">
                         @csrf
                         <button class="btn btn-outline-danger"
+                                @disabled(! $readiness['can_rebaseline'])
+                                title="{{ $readiness['can_rebaseline'] ? 'Align reel system weights to the fresh measurements without changing batch stock.' : $readiness['message'] }}"
                                 onclick="return confirm('Re-baseline reel system weights to the latest measurements? This does not change the batch stock total or release control holds.')">
                             <i class="bi bi-arrow-repeat me-1"></i> Re-baseline From Measurements
                         </button>
@@ -156,6 +196,21 @@
                             $variance = $reel->measurement_variance_kg !== null
                                 ? (float) $reel->measurement_variance_kg
                                 : null;
+                            $isUnmeasured = in_array(
+                                (int) $reel->id,
+                                $readiness['unmeasured_reel_ids'],
+                                true
+                            );
+                            $isStale = in_array(
+                                (int) $reel->id,
+                                $readiness['stale_reel_ids'],
+                                true
+                            );
+                            $isFresh = in_array(
+                                (int) $reel->id,
+                                $readiness['fresh_reel_ids'],
+                                true
+                            );
                         @endphp
                         <tr class="{{ $reel->isBlockedFromProduction() ? 'table-warning' : '' }}">
                             <td>
@@ -187,6 +242,13 @@
                                 @endif
                             </td>
                             <td>
+                                @if($isStale)
+                                    <span class="badge bg-danger mb-1">Stale · re-weigh</span><br>
+                                @elseif($isUnmeasured)
+                                    <span class="badge bg-warning text-dark mb-1">Measurement required</span><br>
+                                @elseif($isFresh)
+                                    <span class="badge bg-success mb-1">Fresh</span><br>
+                                @endif
                                 @if($reel->last_measured_at)
                                     {{ $reel->last_measured_at->format('d M Y H:i') }}
                                     <br><small class="text-muted">{{ $reel->measuredBy?->name ?? 'Unknown user' }} · {{ $reel->measurement_age_days }}d ago</small>
