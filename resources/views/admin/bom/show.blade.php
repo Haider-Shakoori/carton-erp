@@ -880,10 +880,12 @@
                             <th>#</th>
                             <th>{{ __('ui.material') }}</th>
                             <th>{{ __('ui.currency') }}</th>
-                            <th>{{ __('ui.quantity') }}</th>
+                            <th>Usage / Carton</th>
+                            <th>Usage + Waste</th>
                             <th>{{ __('ui.unit') }}</th>
                             <th>{{ __('ui.wastage_percent') }}</th>
-                            <th>{{ __('ui.cost_unit_usd') }}</th>
+                            <th>Rate USD / Unit</th>
+                            <th>Rate AFN / Unit</th>
                             <th>{{ __('ui.total_cost_usd') }}</th>
                             <th>{{ __('ui.total_cost_afn') }}</th>
                             <th>{{ __('ui.row_net_rate') }}</th>
@@ -931,7 +933,8 @@
                                 // Get item costs
                                 $costUsd = floatval($item->cost_per_unit_usd ?? 0);
                                 $costAfn = floatval($item->cost_per_unit_afn ?? 0);
-                                $quantity = floatval($item->quantity ?? 0);
+                                $quantity = (float) $item->calculateStockRequirement(1, false);
+                                $quantityWithWaste = (float) $item->calculateStockRequirement(1, true);
                                 $wastage = floatval($item->wastage_percentage ?? 0);
                                 $totalCostUsd = floatval($item->total_cost_usd ?? 0);
                                 $totalCostAfn = floatval($item->total_cost_afn ?? 0);
@@ -952,11 +955,13 @@
                                         {{ $item->purchase_currency ?? 'AFN' }}
                                     </span>
                                 </td>
-                                <td class="num-cell">{{ number_format($quantity, 4) }}</td>
+                                <td class="num-cell fw-semibold">{{ number_format($quantity, 6) }}</td>
+                                <td class="num-cell">{{ number_format($quantityWithWaste, 6) }}</td>
                                 <td>{{ $item->unit ?? '-' }}</td>
                                 <td class="num-cell">{{ number_format($wastage, 2) }}%</td>
-                                <td class="num-cell">${{ number_format($costUsd, 4) }}</td>
-                                <td class="num-cell fw-semibold">${{ number_format($totalCostUsd, 2) }}</td>
+                                <td class="num-cell">${{ number_format($costUsd, 6) }}</td>
+                                <td class="num-cell">؋{{ number_format($costAfn, 4) }}</td>
+                                <td class="num-cell fw-semibold">${{ number_format($totalCostUsd, 4) }}</td>
                                 <td class="num-cell fw-semibold">؋{{ number_format($totalCostAfn, 2) }}</td>
                                 <td class="num-cell fw-semibold text-primary row-net-rate-cell">
                                     @if($bom->formula_type === 'carton_3d')
@@ -980,7 +985,7 @@
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="12" class="text-center py-4">
+                                <td colspan="14" class="text-center py-4">
                                     <i class="bi bi-box-seam" style="font-size: 2rem; display: block; margin-bottom: 0.5rem; color: #cbd5e1;"></i>
                                     No materials found for this BOM.
                                 </td>
