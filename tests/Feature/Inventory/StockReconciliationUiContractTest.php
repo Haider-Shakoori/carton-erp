@@ -152,14 +152,21 @@ it('exposes weekly cycle count reporting, blind print, approval and audit contro
     expect($reelIndex)
         ->toContain('Physical Reel Tracking')
         ->toContain('Out of Sync')
-        ->toContain('Open Remnant Reels')
+        ->toContain('Partial Reels')
+        ->toContain('Blocked Reels')
+        ->toContain('Roll Inventory Value')
+        ->toContain('Age:')
         ->toContain('measurements are observational');
 
     expect($reelShow)
         ->toContain('Physical Reels & Remnant Weights')
         ->toContain('System Remaining')
         ->toContain('Measured Remnant')
+        ->toContain('Reel Control Status')
+        ->toContain('Damaged / Quarantined')
+        ->toContain('Release Hold')
         ->toContain('Re-baseline From Measurements')
         ->toContain('Recent Production Reel Lineage')
+        ->toContain('Status History')
         ->toContain('Measurement History');
 });
