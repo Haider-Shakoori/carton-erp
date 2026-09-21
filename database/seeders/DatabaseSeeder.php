@@ -122,6 +122,7 @@ class DatabaseSeeder extends Seeder
             ],
         ], ['id']);
 
+        $this->call(EnterpriseControlPermissionSeeder::class);
         $this->call(PermissionsSeeder::class);
         $this->call(HRPermissionSeeder::class);
         $this->call(ShareholderPermissionSeeder::class);
