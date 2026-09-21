@@ -680,7 +680,10 @@ class CartonSpecificationService
         return [
             'bom_id' => $bomId,
             'material_id' => (int) $row['material_id'],
-            'quantity' => 1,
+            // Persist the actual base material usage per finished carton.
+            // Formula rows still calculate dynamically from their technical
+            // parameters; this quantity is the human-readable BOM usage value.
+            'quantity' => (float) ($row['kg_per_unit'] ?? 0),
             'unit' => 'kg',
             'wastage_percentage' => (float) ($row['wastage_percentage'] ?? 0),
             'cost_per_unit_usd' => $costUsd,

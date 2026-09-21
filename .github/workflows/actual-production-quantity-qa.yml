@@ -8,6 +8,7 @@ on:
       - feat/production-completion-consumption-ux
       - test/real-client-cnp-uat
       - feat/all-finished-goods-boms-clean-currencies
+      - feat/seed-opening-stock-and-bom-usage
   workflow_dispatch:
 
 permissions:
@@ -95,6 +96,9 @@ jobs:
           php -l database/seeders/CustomerCartonBomSeeder.php
           php -l database/seeders/DatabaseSeeder.php
           php -l database/seeders/CurrencySeeder.php
+          php -l database/seeders/ClientCartonOpeningStockSeeder.php
+          php -l app/Services/BOMCostingService.php
+          php -l app/Services/CartonSpecificationService.php
           php -l app/Models/ProductionOrder.php
           php -l app/Models/Sale.php
           php -l app/Models/SaleItem.php
