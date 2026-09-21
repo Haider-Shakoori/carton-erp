@@ -413,14 +413,20 @@ class StockControlNotificationService
             $eventType,
             $data
         ): bool {
-            $existing = StockNotificationDelivery::query()
-                ->where('user_id', $user->id)
-                ->where('event_key', $eventKey)
-                ->where('channel', 'in_app')
-                ->lockForUpdate()
-                ->first();
+            $delivery = StockNotificationDelivery::firstOrCreate(
+                [
+                    'user_id' => $user->id,
+                    'event_key' => $eventKey,
+                    'channel' => 'in_app',
+                ],
+                [
+                    'event_type' => $eventType,
+                    'status' => StockNotificationDelivery::STATUS_PENDING,
+                    'metadata' => $data,
+                ]
+            );
 
-            if ($existing) {
+            if (! $delivery->wasRecentlyCreated) {
                 return false;
             }
 
@@ -437,15 +443,10 @@ class StockControlNotificationService
                 'updated_at' => now(),
             ]);
 
-            StockNotificationDelivery::create([
+            $delivery->update([
                 'notification_id' => $notificationId,
-                'user_id' => $user->id,
-                'event_key' => $eventKey,
-                'event_type' => $eventType,
-                'channel' => 'in_app',
                 'status' => StockNotificationDelivery::STATUS_SENT,
                 'sent_at' => now(),
-                'metadata' => $data,
             ]);
 
             return true;
@@ -460,26 +461,24 @@ class StockControlNotificationService
         string $recipient,
         array $data
     ): bool {
-        $delivery = StockNotificationDelivery::query()
-            ->where('user_id', $user->id)
-            ->where('event_key', $eventKey)
-            ->where('channel', $channel)
-            ->first();
+        $delivery = StockNotificationDelivery::firstOrCreate(
+            [
+                'user_id' => $user->id,
+                'event_key' => $eventKey,
+                'channel' => $channel,
+            ],
+            [
+                'event_type' => $eventType,
+                'status' => StockNotificationDelivery::STATUS_QUEUED,
+                'recipient' => $recipient,
+                'queued_at' => now(),
+                'metadata' => $data,
+            ]
+        );
 
-        if ($delivery) {
+        if (! $delivery->wasRecentlyCreated) {
             return false;
         }
-
-        $delivery = StockNotificationDelivery::create([
-            'user_id' => $user->id,
-            'event_key' => $eventKey,
-            'event_type' => $eventType,
-            'channel' => $channel,
-            'status' => StockNotificationDelivery::STATUS_QUEUED,
-            'recipient' => $recipient,
-            'queued_at' => now(),
-            'metadata' => $data,
-        ]);
 
         DB::afterCommit(
             fn () => DeliverStockControlNotification::dispatch($delivery->id)
@@ -496,27 +495,21 @@ class StockControlNotificationService
         array $data,
         string $reason
     ): bool {
-        $existing = StockNotificationDelivery::query()
-            ->where('user_id', $user->id)
-            ->where('event_key', $eventKey)
-            ->where('channel', $channel)
-            ->exists();
+        $delivery = StockNotificationDelivery::firstOrCreate(
+            [
+                'user_id' => $user->id,
+                'event_key' => $eventKey,
+                'channel' => $channel,
+            ],
+            [
+                'event_type' => $eventType,
+                'status' => StockNotificationDelivery::STATUS_SKIPPED,
+                'last_error' => $reason,
+                'metadata' => $data,
+            ]
+        );
 
-        if ($existing) {
-            return false;
-        }
-
-        StockNotificationDelivery::create([
-            'user_id' => $user->id,
-            'event_key' => $eventKey,
-            'event_type' => $eventType,
-            'channel' => $channel,
-            'status' => StockNotificationDelivery::STATUS_SKIPPED,
-            'last_error' => $reason,
-            'metadata' => $data,
-        ]);
-
-        return true;
+        return $delivery->wasRecentlyCreated;
     }
 
     private function escalationRecipients(
