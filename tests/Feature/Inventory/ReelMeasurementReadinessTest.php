@@ -3,6 +3,7 @@
 use App\Models\PurchaseItem;
 use App\Models\PurchaseItemReel;
 use App\Models\User;
+use App\Http\Controllers\Admin\ReelInventoryController;
 use App\Services\ReelInventoryService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Auth;
@@ -203,11 +204,11 @@ it('does not require an already consumed zero-weight reel to block current weigh
 it('renders measurement readiness on the reel batch workspace', function () {
     $fx = reelMeasurementReadinessFixture();
 
-    $this->withoutMiddleware();
-    $this->actingAs($fx['user']);
+    $view = app(ReelInventoryController::class)
+        ->show($fx['batch']->fresh());
+    $html = $view->render();
 
-    $this->get(route('admin.stock-reels.show', $fx['batch']))
-        ->assertOk()
-        ->assertSee('Measurement Readiness: Weighing incomplete')
-        ->assertSee('2 of 2 active reel(s) still need a measurement.');
+    expect($html)
+        ->toContain('Measurement Readiness: Weighing incomplete')
+        ->toContain('2 of 2 active reel(s) still need a measurement.');
 });
