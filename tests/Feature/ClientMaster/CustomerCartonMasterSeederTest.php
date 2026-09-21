@@ -8,6 +8,10 @@ use App\Models\FinishedGoodSpecification;
 use App\Models\Product;
 use App\Models\Purchase;
 use App\Models\PurchaseItem;
+use App\Models\ProductionMaterialConsumption;
+use App\Models\ProductionOrder;
+use App\Models\User;
+use App\Services\ProductionQuantityService;
 use Database\Seeders\ClientCartonOpeningStockSeeder;
 use Database\Seeders\ClientCartonRawMaterialSeeder;
 use Database\Seeders\CurrencySeeder;
@@ -15,6 +19,7 @@ use Database\Seeders\CustomerCartonSizeSeeder;
 use Database\Seeders\DatabaseSeeder;
 use Database\Seeders\ProductSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Auth;
 
 uses(RefreshDatabase::class);
 
@@ -245,6 +250,101 @@ it('seeds one arrived opening-stock purchase with all ten client materials avail
         } else {
             expect($item->inventoryCostBasisUnit())->toBe('kg');
         }
+    }
+});
+
+it('consumes seeded opening stock through the production FIFO landed-cost flow', function () {
+    $this->seed(DatabaseSeeder::class);
+
+    $user = User::factory()->create();
+    Auth::login($user);
+
+    $bom = BOM::query()
+        ->where('code', 'like', 'BOM-CLIENT-%')
+        ->where('description', 'not like', '[REVIEW REQUIRED]%')
+        ->with('items.material')
+        ->firstOrFail();
+
+    $openingPurchase = Purchase::query()
+        ->where('purchase_no', ClientCartonOpeningStockSeeder::PURCHASE_NO)
+        ->firstOrFail();
+
+    $openingBatchIds = PurchaseItem::query()
+        ->where('purchase_id', $openingPurchase->id)
+        ->pluck('id')
+        ->all();
+
+    $before = PurchaseItem::query()
+        ->whereIn('id', $openingBatchIds)
+        ->get()
+        ->keyBy('id')
+        ->map(fn (PurchaseItem $item) => [
+            'available' => $item->availableInventoryQuantity(),
+            'landed_cost_usd' => $item->landedCostPerInventoryUnitUsd(),
+        ]);
+
+    $order = ProductionOrder::create([
+        'order_number' => 'OPENING-STOCK-FIFO-001',
+        'product_id' => $bom->product_id,
+        'bom_id' => $bom->id,
+        'quantity_ordered' => 1,
+        'status' => ProductionOrder::STATUS_PENDING,
+        'created_by' => $user->id,
+        'start_date' => today()->toDateString(),
+    ]);
+
+    $result = app(ProductionQuantityService::class)->start($order, null, 1);
+
+    $consumptions = ProductionMaterialConsumption::query()
+        ->where('production_order_id', $order->id)
+        ->get();
+
+    $expectedMaterialIds = $bom->items
+        ->filter(fn ($item) => (float) $item->calculateStockRequirement(1, true) > 0)
+        ->pluck('material_id')
+        ->map(fn ($id) => (int) $id)
+        ->unique()
+        ->sort()
+        ->values()
+        ->all();
+
+    $actualMaterialIds = $consumptions
+        ->pluck('material_id')
+        ->map(fn ($id) => (int) $id)
+        ->unique()
+        ->sort()
+        ->values()
+        ->all();
+
+    expect($order->fresh()->status)->toBe(ProductionOrder::STATUS_IN_PROGRESS)
+        ->and((float) $result['material_cost_usd'])->toBeGreaterThan(0)
+        ->and($consumptions->isNotEmpty())->toBeTrue()
+        ->and($actualMaterialIds)->toBe($expectedMaterialIds)
+        ->and($consumptions->pluck('purchase_item_id')->diff($openingBatchIds)->count())->toBe(0);
+
+    foreach ($consumptions as $consumption) {
+        $batch = PurchaseItem::query()->findOrFail($consumption->purchase_item_id);
+        $beforeRow = $before->get($batch->id);
+
+        $persistedUnitCost = (float) $consumption->cost_per_unit_usd;
+        $persistedActual = (float) $consumption->actual_quantity;
+        $persistedTotal = (float) $consumption->total_cost_usd;
+
+        // PMC quantity/total are DECIMAL(18,4), while unit cost is DECIMAL(18,6).
+        // Allow only the maximum rounding introduced by those persisted scales.
+        $storageTolerance = 0.00005 + (0.00005 * abs($persistedUnitCost)) + 0.000001;
+
+        expect($beforeRow)->not->toBeNull()
+            ->and(abs(
+                $persistedUnitCost
+                - (float) $beforeRow['landed_cost_usd']
+            ))->toBeLessThan(0.000001)
+            ->and(abs(
+                $persistedTotal
+                - ($persistedActual * $persistedUnitCost)
+            ))->toBeLessThan($storageTolerance)
+            ->and($batch->availableInventoryQuantity())
+            ->toBeLessThan((float) $beforeRow['available']);
     }
 });
 

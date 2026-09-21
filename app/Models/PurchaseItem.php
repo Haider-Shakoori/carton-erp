@@ -54,10 +54,13 @@ class PurchaseItem extends Model
         'usd_expense_per_item' => 'decimal:4',
         'cost_per_unit' => 'decimal:4',
         'total_cost' => 'decimal:2',
-        'qty_available' => 'decimal:2',
-        'qty_sold' => 'decimal:2',
-        'qty_used' => 'decimal:2',
-        'qty_wasted' => 'decimal:2',
+        // These columns are DECIMAL(15,4) in the database. Keeping the
+        // model at the same scale is required for small kg-based production
+        // consumptions (for example adhesive ingredients) to reduce stock.
+        'qty_available' => 'decimal:4',
+        'qty_sold' => 'decimal:4',
+        'qty_used' => 'decimal:4',
+        'qty_wasted' => 'decimal:4',
         'qty_adjusted' => 'decimal:6',
         'kg_per_roll' => 'decimal:4',
         'total_weight_kg' => 'decimal:4',
