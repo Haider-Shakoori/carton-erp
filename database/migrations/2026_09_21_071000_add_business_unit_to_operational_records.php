@@ -8,6 +8,7 @@ return new class extends Migration
 {
     private array $tables = [
         'sales',
+        'sale_returns',
         'purchases',
         'production_orders',
         'work_orders',
