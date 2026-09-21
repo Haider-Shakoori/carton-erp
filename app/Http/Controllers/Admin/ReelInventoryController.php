@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\ProductionReelConsumption;
 use App\Models\PurchaseItem;
 use App\Models\PurchaseItemReel;
+use App\Services\ReelBarcodeService;
 use App\Services\ReelInventoryService;
 use Illuminate\Http\Request;
 use RuntimeException;
@@ -13,7 +14,8 @@ use RuntimeException;
 class ReelInventoryController extends Controller
 {
     public function __construct(
-        private readonly ReelInventoryService $service
+        private readonly ReelInventoryService $service,
+        private readonly ReelBarcodeService $barcodeService
     ) {
     }
 
@@ -156,6 +158,67 @@ class ReelInventoryController extends Controller
                 'recentConsumptions'
             )
         );
+    }
+
+    public function label(PurchaseItemReel $reel)
+    {
+        $label = $this->barcodeService->labelData($reel);
+
+        return view('admin.stock-reels.labels', [
+            'labels' => collect([$label]),
+            'title' => 'Reel Label · '.$reel->reel_code,
+        ]);
+    }
+
+    public function batchLabels(PurchaseItem $purchaseItem)
+    {
+        $this->ensureRollBatch($purchaseItem);
+
+        $reels = $purchaseItem->reels()
+            ->with(['purchaseItem.product', 'purchaseItem.purchase'])
+            ->orderBy('sequence_no')
+            ->get();
+
+        if ($reels->isEmpty()) {
+            return redirect()
+                ->route('admin.stock-reels.show', $purchaseItem)
+                ->with('error', 'No physical reels are registered for this batch.');
+        }
+
+        return view('admin.stock-reels.labels', [
+            'labels' => $this->barcodeService->labelsFor($reels),
+            'title' => 'Reel Labels · '.($purchaseItem->batch_no ?: 'Batch #'.$purchaseItem->id),
+        ]);
+    }
+
+    public function scan(Request $request)
+    {
+        $validated = $request->validate([
+            'code' => ['required', 'string', 'max:160'],
+        ]);
+
+        $reel = $this->barcodeService->resolve($validated['code']);
+
+        if (! $reel) {
+            return redirect()
+                ->route('admin.stock-reels.index')
+                ->with('error', 'No physical reel matched the scanned code.');
+        }
+
+        $reel->loadMissing('purchaseItem');
+
+        if (! $reel->purchaseItem) {
+            return redirect()
+                ->route('admin.stock-reels.index')
+                ->with('error', 'The scanned reel is missing its source inventory batch.');
+        }
+
+        return redirect()
+            ->to(
+                route('admin.stock-reels.show', $reel->purchaseItem)
+                .'#reel-'.$reel->id
+            )
+            ->with('success', 'Reel identified: '.$reel->reel_code);
     }
 
     public function initialize(
