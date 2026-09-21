@@ -25,6 +25,9 @@
             <a href="{{ route('admin.stock-reconciliations.investigations.intelligence') }}" class="btn btn-outline-success">
                 <i class="bi bi-shield-check me-1"></i> Prevention
             </a>
+            <a href="{{ route('admin.stock-reconciliations.management-control.index') }}" class="btn btn-dark">
+                <i class="bi bi-clipboard2-pulse me-1"></i> Management Control
+            </a>
             <a href="{{ route('admin.stock-reconciliations.report') }}" class="btn btn-outline-primary">
                 <i class="bi bi-bar-chart me-1"></i> Variance Report
             </a>
