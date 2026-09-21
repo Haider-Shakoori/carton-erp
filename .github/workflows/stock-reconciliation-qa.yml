@@ -17,6 +17,7 @@ on:
       - feat/reel-remnant-tracking
       - feat/reel-remnant-controls-reporting
       - feat/reel-production-selection
+      - feat/reel-reconciliation-handoff
   workflow_dispatch:
 
 permissions:
@@ -155,6 +156,7 @@ jobs:
           php artisan test tests/Feature/Inventory/StockControlManagementTest.php
           php artisan test tests/Feature/Inventory/StockControlNotificationTest.php
           php artisan test tests/Feature/Inventory/ReelRemnantTrackingTest.php
+          php artisan test tests/Feature/Inventory/ReelReconciliationHandoffTest.php
           php artisan test tests/Feature/Inventory/StockReconciliationUiContractTest.php
           php artisan test tests/Feature/Production/ActualProductionQuantityUiContractTest.php
 

@@ -122,6 +122,8 @@ Route::middleware(['auth'])->prefix('admin')->group(function () {
             ->name('show')->middleware('permission.feedback:view stock');
         Route::post('/batches/{purchaseItem}/initialize', [ReelInventoryController::class, 'initialize'])
             ->name('initialize')->middleware('permission.feedback:update stock');
+        Route::post('/batches/{purchaseItem}/reconciliation', [ReelInventoryController::class, 'startReconciliation'])
+            ->name('reconciliation')->middleware('permission.feedback:create stock reconciliations');
         Route::post('/reels/{reel}/measure', [ReelInventoryController::class, 'measure'])
             ->name('measure')->middleware('permission.feedback:update stock');
         Route::patch('/reels/{reel}/status', [ReelInventoryController::class, 'status'])

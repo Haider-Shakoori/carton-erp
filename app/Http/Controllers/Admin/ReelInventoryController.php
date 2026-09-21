@@ -7,6 +7,7 @@ use App\Models\ProductionReelConsumption;
 use App\Models\PurchaseItem;
 use App\Models\PurchaseItemReel;
 use App\Services\ReelInventoryService;
+use App\Services\StockReconciliationService;
 use Illuminate\Http\Request;
 use RuntimeException;
 
@@ -259,6 +260,27 @@ class ReelInventoryController extends Controller
             return back()
                 ->withInput()
                 ->with('error', $e->getMessage());
+        }
+    }
+
+    public function startReconciliation(
+        PurchaseItem $purchaseItem,
+        StockReconciliationService $reconciliationService
+    ) {
+        $this->ensureRollBatch($purchaseItem);
+
+        try {
+            $reconciliation = $reconciliationService
+                ->createFromReelMeasurements($purchaseItem);
+
+            return redirect()
+                ->route('admin.stock-reconciliations.show', $reconciliation)
+                ->with(
+                    'success',
+                    'Draft reconciliation created from the latest reel measurements. Inventory has not changed; normal submission, approval and posting are still required.'
+                );
+        } catch (RuntimeException $e) {
+            return back()->with('error', $e->getMessage());
         }
     }
 

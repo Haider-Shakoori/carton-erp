@@ -99,6 +99,157 @@ class StockReconciliationService
         });
     }
 
+    public function createFromReelMeasurements(
+        PurchaseItem $batch,
+        ?string $notes = null
+    ): StockReconciliation {
+        return DB::transaction(function () use ($batch, $notes): StockReconciliation {
+            $locked = PurchaseItem::query()
+                ->with(['purchase', 'product'])
+                ->lockForUpdate()
+                ->findOrFail($batch->id);
+
+            if (! $locked->isRollBatch()) {
+                throw new RuntimeException(
+                    'Reel measurement handoff is only available for roll-based inventory batches.'
+                );
+            }
+
+            if (! $locked->purchase || $locked->purchase->status !== 'arrived') {
+                throw new RuntimeException(
+                    'Only arrived inventory can be reconciled from reel measurements.'
+                );
+            }
+
+            if (! $locked->product || ! $locked->product->is_active) {
+                throw new RuntimeException(
+                    'The source material must be active before a reconciliation can be created.'
+                );
+            }
+
+            $reels = $locked->reels()
+                ->orderBy('sequence_no')
+                ->lockForUpdate()
+                ->get();
+
+            if ($reels->isEmpty()) {
+                throw new RuntimeException(
+                    'No physical reels are registered for this inventory batch.'
+                );
+            }
+
+            $reelsToMeasure = $reels->filter(
+                fn ($reel) =>
+                    $reel->status !== \App\Models\PurchaseItemReel::STATUS_CONSUMED
+                    || (float) ($reel->last_measured_weight_kg ?? 0) > self::EPSILON
+            );
+
+            $unmeasured = $reelsToMeasure->filter(
+                fn ($reel) => $reel->last_measured_weight_kg === null
+            );
+
+            if ($unmeasured->isNotEmpty()) {
+                throw new RuntimeException(
+                    'Every active physical reel must be weighed before creating a reconciliation from reel measurements.'
+                );
+            }
+
+            $batchChangedAt = $locked->updated_at;
+            $stale = $reelsToMeasure->filter(
+                fn ($reel) =>
+                    ! $reel->last_measured_at
+                    || (
+                        $batchChangedAt
+                        && $reel->last_measured_at->lt($batchChangedAt)
+                    )
+            );
+
+            if ($stale->isNotEmpty()) {
+                throw new RuntimeException(
+                    'Reel measurements are stale relative to the latest stock movement. Re-weigh every active reel before starting reconciliation.'
+                );
+            }
+
+            $measuredTotal = (float) $reelsToMeasure->sum(
+                fn ($reel) => (float) $reel->last_measured_weight_kg
+            );
+            $systemQuantity = $locked->availableInventoryQuantity();
+            $variance = $measuredTotal - $systemQuantity;
+
+            if (abs($variance) <= 0.05) {
+                throw new RuntimeException(
+                    'Measured reel total already matches the authoritative batch balance; no reconciliation is required.'
+                );
+            }
+
+            $existing = StockReconciliationItem::query()
+                ->where('purchase_item_id', $locked->id)
+                ->whereHas('reconciliation', fn ($query) => $query->whereIn('status', [
+                    StockReconciliation::STATUS_COUNTING,
+                    StockReconciliation::STATUS_SUBMITTED,
+                    StockReconciliation::STATUS_APPROVED,
+                ]))
+                ->with('reconciliation:id,reconciliation_no,status')
+                ->first();
+
+            if ($existing) {
+                throw new RuntimeException(sprintf(
+                    'Batch %s is already included in open reconciliation %s.',
+                    $locked->batch_no ?: $locked->id,
+                    $existing->reconciliation?->reconciliation_no ?: $existing->stock_reconciliation_id
+                ));
+            }
+
+            $snapshotAt = now();
+            $reconciliation = StockReconciliation::create([
+                'reconciliation_no' => $this->generateNumber(),
+                'count_date' => today()->toDateString(),
+                'snapshot_at' => $snapshotAt,
+                'status' => StockReconciliation::STATUS_COUNTING,
+                'notes' => trim((string) ($notes ?: sprintf(
+                    'Created from physical reel measurements for batch %s.',
+                    $locked->batch_no ?: $locked->id
+                ))),
+                'created_by' => Auth::id(),
+            ]);
+
+            $measurementAt = $reelsToMeasure
+                ->max(fn ($reel) => $reel->last_measured_at?->getTimestamp());
+            $measurementLabel = $measurementAt
+                ? \Illuminate\Support\Carbon::createFromTimestamp($measurementAt)->toDateTimeString()
+                : 'unknown time';
+
+            StockReconciliationItem::create([
+                'stock_reconciliation_id' => $reconciliation->id,
+                'product_id' => $locked->product_id,
+                'purchase_item_id' => $locked->id,
+                'batch_no' => $locked->batch_no,
+                'purchase_no' => $locked->purchase?->purchase_no,
+                'inventory_unit' => $locked->inventoryCostBasisUnit(),
+                'system_quantity' => $systemQuantity,
+                'physical_quantity' => $measuredTotal,
+                'variance_quantity' => $variance,
+                'cost_per_unit_usd' => $locked->landedCostPerInventoryUnitUsd(),
+                'variance_value_usd' => $variance * $locked->landedCostPerInventoryUnitUsd(),
+                'reason_code' => 'reel_weight_difference',
+                'notes' => sprintf(
+                    'Prefilled from %d current reel measurement(s); latest measurement %s. Inventory remains unchanged until normal approval and posting.',
+                    $reelsToMeasure->count(),
+                    $measurementLabel
+                ),
+                'batch_updated_at_snapshot' => $locked->updated_at,
+                'batch_native_quantity_snapshot' => (float) ($locked->qty_available ?? 0),
+                'batch_kg_quantity_snapshot' => (float) ($locked->qty_kg_available ?? 0),
+            ]);
+
+            return $reconciliation->fresh([
+                'items.product',
+                'items.purchaseItem',
+                'creator',
+            ]);
+        });
+    }
+
     public function updateCount(
         StockReconciliation $reconciliation,
         StockReconciliationItem $item,

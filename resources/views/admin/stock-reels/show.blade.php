@@ -98,15 +98,26 @@
                     <strong>Physical Reels & Remnant Weights</strong>
                     <div class="small text-muted">Full/partial identity, measured remainder and warehouse control state are independent but fully traceable.</div>
                 </div>
-                @can('update stock')
-                <form method="POST" action="{{ route('admin.stock-reels.rebaseline', $purchaseItem) }}">
-                    @csrf
-                    <button class="btn btn-outline-danger"
-                            onclick="return confirm('Re-baseline reel system weights to the latest measurements? This does not change the batch stock total or release control holds.')">
-                        <i class="bi bi-arrow-repeat me-1"></i> Re-baseline From Measurements
-                    </button>
-                </form>
-                @endcan
+                <div class="d-flex flex-wrap gap-2">
+                    @can('create stock reconciliations')
+                    <form method="POST" action="{{ route('admin.stock-reels.reconciliation', $purchaseItem) }}">
+                        @csrf
+                        <button class="btn btn-outline-primary"
+                                onclick="return confirm('Create a draft stock reconciliation from the latest reel measurements? Inventory will remain unchanged until normal approval and posting.')">
+                            <i class="bi bi-clipboard-check me-1"></i> Reconcile Measured Total
+                        </button>
+                    </form>
+                    @endcan
+                    @can('update stock')
+                    <form method="POST" action="{{ route('admin.stock-reels.rebaseline', $purchaseItem) }}">
+                        @csrf
+                        <button class="btn btn-outline-danger"
+                                onclick="return confirm('Re-baseline reel system weights to the latest measurements? This does not change the batch stock total or release control holds.')">
+                            <i class="bi bi-arrow-repeat me-1"></i> Re-baseline From Measurements
+                        </button>
+                    </form>
+                    @endcan
+                </div>
             </div>
             <div class="table-responsive">
                 <table class="table table-hover align-middle mb-0">
