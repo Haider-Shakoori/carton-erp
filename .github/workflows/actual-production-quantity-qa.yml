@@ -90,6 +90,7 @@ jobs:
           php -l app/Http/Controllers/Admin/ProductionOrderController.php
           php -l app/Http/Controllers/Admin/SaleController.php
           php -l app/Models/ProductionOrder.php
+          php -l app/Models/Sale.php
           php -l app/Models/SaleItem.php
           php -l database/migrations/2026_09_20_073000_add_ordered_qty_to_sale_items.php
           php -l database/migrations/2026_09_21_000000_add_production_completion_quantities.php
