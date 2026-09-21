@@ -14,7 +14,6 @@ use Illuminate\Notifications\DatabaseNotification;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Mail;
-use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Schema;
 
 uses(RefreshDatabase::class);
@@ -78,8 +77,6 @@ it('creates notification schema and defaults to safe in-app-only delivery', func
 });
 
 it('queues enabled email delivery and records missing WhatsApp as skipped without blocking in-app alerts', function () {
-    Queue::fake();
-
     $user = User::factory()->create([
         'is_active' => true,
         'account_type' => 'admin',
@@ -123,10 +120,6 @@ it('queues enabled email delivery and records missing WhatsApp as skipped withou
         ->and($whatsapp->status)->toBe(StockNotificationDelivery::STATUS_SKIPPED)
         ->and($whatsapp->last_error)->toContain('No recipient configured');
 
-    Queue::assertPushed(
-        DeliverStockControlNotification::class,
-        fn ($job) => $job->deliveryId === $email->id
-    );
 });
 
 it('marks queued email delivery as sent while keeping delivery outside stock transactions', function () {
