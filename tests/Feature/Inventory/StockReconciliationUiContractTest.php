@@ -138,6 +138,10 @@ it('exposes weekly cycle count reporting, blind print, approval and audit contro
         ->toContain('Email / WhatsApp Delivery Audit')
         ->toContain('Notification Settings')
         ->toContain('Email and WhatsApp are opt-in')
+        ->toContain('Assignment alerts')
+        ->toContain('Retry')
+        ->toContain('maskedNotificationEmail')
+        ->toContain('maskedNotificationPhone')
         ->toContain('Save Notification Settings');
 
     expect($navbar)
