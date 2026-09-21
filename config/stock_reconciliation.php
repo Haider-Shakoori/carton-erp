@@ -43,4 +43,19 @@ return [
     ],
 
     'trend_default_days' => 90,
+
+    'investigation' => [
+        'default_due_days' => 7,
+        'root_cause_codes' => [
+            'production_recording_gap' => 'Production Recording Gap',
+            'production_process_loss' => 'Production Process Loss',
+            'warehouse_handling_damage' => 'Warehouse Handling / Damage',
+            'receiving_difference' => 'Receiving Difference',
+            'measurement_scale_error' => 'Measurement / Scale Error',
+            'counting_error' => 'Counting Error',
+            'data_entry_error' => 'Data Entry Error',
+            'material_misallocation' => 'Material Misallocation',
+            'other' => 'Other',
+        ],
+    ],
 ];
