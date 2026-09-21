@@ -43,6 +43,29 @@
         </div></div></div>
     </div>
 
+    <div class="row g-3 mb-4">
+        <div class="col-xl-3 col-md-6"><div class="card border-warning shadow-sm"><div class="card-body">
+            <div class="text-muted small">Weighing Incomplete</div>
+            <div class="fs-4 fw-bold text-warning">{{ $stats['weighing_incomplete'] }}</div>
+            <small class="text-muted">Tracked batches with active reels still unmeasured.</small>
+        </div></div></div>
+        <div class="col-xl-3 col-md-6"><div class="card border-danger shadow-sm"><div class="card-body">
+            <div class="text-muted small">Re-weigh Required</div>
+            <div class="fs-4 fw-bold text-danger">{{ $stats['measurements_stale'] }}</div>
+            <small class="text-muted">Measurements invalidated by a later stock movement.</small>
+        </div></div></div>
+        <div class="col-xl-3 col-md-6"><div class="card border-primary shadow-sm"><div class="card-body">
+            <div class="text-muted small">Ready to Reconcile</div>
+            <div class="fs-4 fw-bold text-primary">{{ $stats['ready_to_reconcile'] }}</div>
+            <small class="text-muted">Fresh full weighing with a physical-vs-ERP variance.</small>
+        </div></div></div>
+        <div class="col-xl-3 col-md-6"><div class="card border-success shadow-sm"><div class="card-body">
+            <div class="text-muted small">Fresh & Aligned</div>
+            <div class="fs-4 fw-bold text-success">{{ $stats['measurements_aligned'] }}</div>
+            <small class="text-muted">Fresh complete weighing already matches ERP stock.</small>
+        </div></div></div>
+    </div>
+
     <div class="card border-0 shadow-sm mb-4"><div class="card-body">
         <form method="GET" class="row g-2 align-items-end">
             <div class="col-md-4">
@@ -78,7 +101,18 @@
                 </thead>
                 <tbody>
                 @forelse($batches as $batch)
-                    @php $s = $summaries[$batch->id]; @endphp
+                    @php
+                        $s = $summaries[$batch->id];
+                        $r = $s['measurement_readiness'];
+                        $readinessBadge = match($r['state']) {
+                            'aligned' => 'success',
+                            'reconcile' => 'primary',
+                            'stale' => 'danger',
+                            'incomplete' => 'warning',
+                            'no_active' => 'secondary',
+                            default => 'secondary',
+                        };
+                    @endphp
                     <tr class="{{ $s['tracked'] && ! $s['healthy'] ? 'table-danger' : '' }}">
                         <td>
                             <div class="fw-semibold">{{ $batch->product?->name ?? 'Unknown material' }}</div>
@@ -109,9 +143,27 @@
                             {{ $s['tracked'] ? number_format($s['tracked_system_kg'], 4).' kg' : '—' }}
                         </td>
                         <td class="text-end">
-                            @if($s['measured_count'] > 0)
-                                {{ number_format($s['latest_measured_total_kg'], 4) }} kg
-                                <br><small class="text-muted">{{ $s['measured_count'] }}/{{ $s['reel_count'] }} measured</small>
+                            @if($s['tracked'])
+                                <span class="badge bg-{{ $readinessBadge }}">{{ $r['label'] }}</span>
+                                @if($r['active_count'] > 0)
+                                    <div class="small mt-1">
+                                        {{ number_format($r['measured_total_kg'], 4) }} kg measured
+                                    </div>
+                                    <small class="text-muted">
+                                        {{ $r['fresh_count'] }}/{{ $r['active_count'] }} fresh
+                                        @if($r['unmeasured_count'] > 0)
+                                            · {{ $r['unmeasured_count'] }} unmeasured
+                                        @endif
+                                        @if($r['stale_count'] > 0)
+                                            · {{ $r['stale_count'] }} stale
+                                        @endif
+                                    </small>
+                                    @if($r['complete'])
+                                        <div class="small {{ abs($r['variance_kg']) > 0.05 ? 'text-danger' : 'text-success' }}">
+                                            Variance {{ $r['variance_kg'] > 0 ? '+' : '' }}{{ number_format($r['variance_kg'], 4) }} kg
+                                        </div>
+                                    @endif
+                                @endif
                             @else
                                 —
                             @endif
