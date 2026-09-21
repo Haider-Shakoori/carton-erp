@@ -54,13 +54,32 @@
                         @endforeach
                     </select>
                 </div>
-                <div class="col-12 d-flex gap-2 justify-content-end mt-3">
+                <div class="col-lg-3 col-md-6">
+                    <div class="form-check mt-4 pt-2">
+                        <input class="form-check-input" type="checkbox" name="unresolved" value="1" id="unresolvedOnly" @checked(request()->boolean('unresolved'))>
+                        <label class="form-check-label" for="unresolvedOnly">
+                            Unresolved investigations only
+                        </label>
+                    </div>
+                </div>
+                <div class="col-lg-9 col-md-6 d-flex gap-2 justify-content-end mt-3">
                     <a href="{{ route('admin.stock-reconciliations.report') }}" class="btn btn-light">Reset</a>
                     <button class="btn btn-primary"><i class="bi bi-funnel me-1"></i> Apply Filters</button>
                 </div>
             </form>
         </div>
     </div>
+
+    @if(request()->boolean('unresolved'))
+        <div class="alert alert-warning d-flex align-items-center justify-content-between gap-3">
+            <div>
+                <strong>Unresolved variance queue:</strong>
+                showing posted adjustments whose reason still requires investigation.
+                Stock has already been corrected operationally; these lines remain visible until management resolves the root cause.
+            </div>
+            <a href="{{ route('admin.stock-reconciliations.report') }}" class="btn btn-sm btn-outline-dark">Show all</a>
+        </div>
+    @endif
 
     <div class="row g-3 mb-4">
         <div class="col-md-3"><div class="card border-0 shadow-sm"><div class="card-body">
@@ -77,6 +96,11 @@
             <div class="fs-4 fw-bold {{ $summary['net_value_usd'] < 0 ? 'text-danger' : 'text-success' }}">
                 {{ $summary['net_value_usd'] >= 0 ? '+' : '-' }}${{ number_format(abs($summary['net_value_usd']), 2) }}
             </div>
+        </div></div></div>
+        <div class="col-md-3"><div class="card border-warning shadow-sm"><div class="card-body">
+            <div class="text-muted small">Unresolved Investigation</div>
+            <div class="fs-4 fw-bold text-warning">{{ $summary['unresolved_lines'] }}</div>
+            <div class="small text-muted">${{ number_format($summary['unresolved_value_usd'], 2) }} absolute value</div>
         </div></div></div>
     </div>
 
@@ -141,7 +165,12 @@
                             <td class="text-end {{ (float) $row->adjustment_value_usd < 0 ? 'text-danger' : 'text-success' }}">
                                 {{ (float) $row->adjustment_value_usd >= 0 ? '+' : '-' }}${{ number_format(abs((float) $row->adjustment_value_usd), 2) }}
                             </td>
-                            <td>{{ $reasonCodes[$row->reason_code] ?? ($row->reason_code ?: '—') }}</td>
+                            <td>
+                                {{ $reasonCodes[$row->reason_code] ?? ($row->reason_code ?: '—') }}
+                                @if(in_array($row->reason_code, $unresolvedReasonCodes, true))
+                                    <span class="badge bg-warning text-dark ms-1">Unresolved</span>
+                                @endif
+                            </td>
                         </tr>
                     @empty
                         <tr><td colspan="7" class="text-center py-5 text-muted">No posted reconciliation variances match these filters.</td></tr>
