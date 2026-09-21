@@ -226,6 +226,8 @@ class StockReconciliationController extends Controller
                 'After',
                 'Value USD',
                 'Reason',
+                'Investigation Status',
+                'Investigation Owner',
             ]);
 
             foreach ($rows as $row) {
@@ -241,6 +243,8 @@ class StockReconciliationController extends Controller
                     $row->after_quantity,
                     $row->adjustment_value_usd,
                     $reasonCodes[$row->reason_code] ?? $row->reason_code,
+                    $row->investigation?->status,
+                    $row->investigation?->assignee?->name,
                 ]);
             }
 
@@ -306,6 +310,7 @@ class StockReconciliationController extends Controller
             'rejecter',
             'adjustment.items.product',
             'adjustment.items.purchaseItem',
+            'adjustment.items.investigation.assignee',
             'items.product',
             'items.purchaseItem.purchase',
         ]);
