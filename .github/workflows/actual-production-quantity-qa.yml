@@ -5,6 +5,7 @@ on:
     branches:
       - feat/actual-production-quantity-20260920
       - feat/production-completion-actuals-v2
+      - feat/production-completion-consumption-ux
   workflow_dispatch:
 
 permissions:
