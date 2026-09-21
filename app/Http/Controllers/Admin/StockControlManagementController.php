@@ -7,6 +7,7 @@ use App\Models\StockControlEscalation;
 use App\Models\StockControlReview;
 use App\Models\User;
 use App\Services\StockControlManagementService;
+use App\Services\StockControlNotificationService;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 use RuntimeException;
@@ -14,7 +15,8 @@ use RuntimeException;
 class StockControlManagementController extends Controller
 {
     public function __construct(
-        private readonly StockControlManagementService $service
+        private readonly StockControlManagementService $service,
+        private readonly StockControlNotificationService $notifications
     ) {
     }
 
@@ -99,6 +101,7 @@ class StockControlManagementController extends Controller
     {
         $result = $this->service->syncEscalations();
         $this->service->ensureWeeklyReview();
+        $this->notifications->syncSafely();
 
         return back()->with(
             'success',
@@ -153,6 +156,7 @@ class StockControlManagementController extends Controller
                 $validated['review_due_date'] ?? null,
                 $validated['notes'] ?? null
             );
+            $this->notifications->syncSafely();
 
             return back()->with('success', 'Escalation ownership updated.');
         } catch (RuntimeException $e) {
@@ -238,6 +242,7 @@ class StockControlManagementController extends Controller
                     : null,
                 $validated['review_notes'] ?? null
             );
+            $this->notifications->syncSafely();
 
             return back()->with('success', 'Weekly control review updated.');
         } catch (RuntimeException $e) {

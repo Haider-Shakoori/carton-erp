@@ -17,6 +17,8 @@ it('exposes weekly cycle count reporting, blind print, approval and audit contro
     $managementControl = file_get_contents(resource_path('views/admin/stock-reconciliations/management-control/index.blade.php'));
     $managementEscalation = file_get_contents(resource_path('views/admin/stock-reconciliations/management-control/escalation.blade.php'));
     $managementReview = file_get_contents(resource_path('views/admin/stock-reconciliations/management-control/review.blade.php'));
+    $stockNotifications = file_get_contents(resource_path('views/admin/stock-notifications/index.blade.php'));
+    $navbar = file_get_contents(resource_path('views/layouts/admin/navbar.blade.php'));
 
     expect($index)
         ->toContain('New Cycle Count')
@@ -113,7 +115,8 @@ it('exposes weekly cycle count reporting, blind print, approval and audit contro
         ->toContain('Current Weekly Control Review')
         ->toContain('Management Escalations')
         ->toContain('Recent Weekly Reviews')
-        ->toContain('Level 3 = critical management attention');
+        ->toContain('Level 3 = critical management attention')
+        ->toContain('Notifications');
 
     expect($managementEscalation)
         ->toContain('Management Signal')
@@ -128,4 +131,18 @@ it('exposes weekly cycle count reporting, blind print, approval and audit contro
         ->toContain('Management Decisions / Actions')
         ->toContain('Complete Weekly Review')
         ->toContain('freezes its weekly management notes');
+
+    expect($stockNotifications)
+        ->toContain('Stock Control Notifications')
+        ->toContain('Notification Center')
+        ->toContain('Email / WhatsApp Delivery Audit')
+        ->toContain('Notification Settings')
+        ->toContain('Email and WhatsApp are opt-in')
+        ->toContain('Save Notification Settings');
+
+    expect($navbar)
+        ->toContain('unreadNotifications()->count()')
+        ->toContain("route('admin.stock-notifications.open'")
+        ->toContain("route('admin.stock-notifications.index')")
+        ->not->toContain('8 New');
 });

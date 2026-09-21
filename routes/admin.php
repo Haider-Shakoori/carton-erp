@@ -32,6 +32,7 @@ use App\Http\Controllers\Admin\StockController;
 use App\Http\Controllers\Admin\StockReconciliationController;
 use App\Http\Controllers\Admin\StockVarianceInvestigationController;
 use App\Http\Controllers\Admin\StockControlManagementController;
+use App\Http\Controllers\Admin\StockNotificationController;
 use App\Http\Controllers\Admin\SupplierController;
 use App\Http\Controllers\Admin\HR\DepartmentController;
 use App\Http\Controllers\Admin\HR\HRDashboardController;
@@ -97,6 +98,20 @@ Route::middleware(['auth'])->prefix('admin')->group(function () {
         ->name('admin.notifications.low-stock.export')->middleware('permission.feedback:view stock');
     Route::get('/exchange/get-latest', [App\Http\Controllers\Admin\ExchangeRateController::class, 'getLatestRate'])
         ->name('admin.exchange.get-latest')->middleware('permission.feedback:view exchange rates');
+
+    // Stock Control Notifications
+    Route::prefix('stock-notifications')->name('admin.stock-notifications.')->group(function () {
+        Route::get('/', [StockNotificationController::class, 'index'])
+            ->name('index')->middleware('permission.feedback:view stock reconciliations');
+        Route::get('/{notification}/open', [StockNotificationController::class, 'open'])
+            ->name('open')->middleware('permission.feedback:view stock reconciliations');
+        Route::post('/{notification}/read', [StockNotificationController::class, 'markRead'])
+            ->name('read')->middleware('permission.feedback:view stock reconciliations');
+        Route::post('/read-all', [StockNotificationController::class, 'markAllRead'])
+            ->name('read-all')->middleware('permission.feedback:view stock reconciliations');
+        Route::patch('/settings', [StockNotificationController::class, 'updateSettings'])
+            ->name('settings')->middleware('permission.feedback:view stock reconciliations');
+    });
 
     // Stock
     Route::get('stock', [StockController::class, 'index'])->name('admin.stock.index')->middleware('permission.feedback:view stock');

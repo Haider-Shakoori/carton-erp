@@ -13,6 +13,9 @@
             <p class="text-muted mb-0">Escalate recurring inventory-control signals and complete a documented weekly management review.</p>
         </div>
         <div class="d-flex gap-2 flex-wrap">
+            <a href="{{ route('admin.stock-notifications.index') }}" class="btn btn-outline-primary">
+                <i class="bi bi-bell me-1"></i> Notifications
+            </a>
             <a href="{{ route('admin.stock-reconciliations.investigations.intelligence') }}" class="btn btn-outline-success">
                 <i class="bi bi-shield-check me-1"></i> Prevention Intelligence
             </a>

@@ -12,6 +12,7 @@ on:
       - feat/stock-variance-investigations
       - feat/inventory-prevention-intelligence
       - feat/stock-control-escalation-reviews
+      - feat/stock-control-notifications
   workflow_dispatch:
 
 permissions:
@@ -99,21 +100,27 @@ jobs:
           php -l app/Models/StockControlEscalationEvent.php
           php -l app/Models/StockControlReview.php
           php -l app/Models/StockControlReviewItem.php
+          php -l app/Models/StockNotificationPreference.php
+          php -l app/Models/StockNotificationDelivery.php
           php -l app/Services/StockReconciliationService.php
           php -l app/Services/StockCycleCountPlanningService.php
           php -l app/Services/InventoryControlAnalysisService.php
           php -l app/Services/StockVarianceInvestigationService.php
           php -l app/Services/InventoryPreventionIntelligenceService.php
           php -l app/Services/StockControlManagementService.php
+          php -l app/Services/StockControlNotificationService.php
+          php -l app/Jobs/DeliverStockControlNotification.php
           php -l app/Http/Controllers/Admin/StockReconciliationController.php
           php -l app/Http/Controllers/Admin/StockVarianceInvestigationController.php
           php -l app/Http/Controllers/Admin/StockControlManagementController.php
+          php -l app/Http/Controllers/Admin/StockNotificationController.php
           php -l database/migrations/2026_09_21_010000_create_stock_reconciliations_table.php
           php -l database/migrations/2026_09_21_010100_create_stock_reconciliation_items_table.php
           php -l database/migrations/2026_09_21_020000_add_reconciliation_adjustments_to_purchase_items.php
           php -l database/migrations/2026_09_21_020100_create_stock_adjustments_tables.php
           php -l database/migrations/2026_09_21_030000_create_stock_variance_investigations.php
           php -l database/migrations/2026_09_21_040000_create_stock_control_escalations_and_reviews.php
+          php -l database/migrations/2026_09_21_050000_create_stock_control_notifications.php
 
       - name: Fresh MySQL install
         run: php artisan migrate:fresh --seed --force
@@ -128,6 +135,7 @@ jobs:
           php artisan test tests/Feature/Inventory/StockVarianceInvestigationTest.php
           php artisan test tests/Feature/Inventory/StockPreventionIntelligenceTest.php
           php artisan test tests/Feature/Inventory/StockControlManagementTest.php
+          php artisan test tests/Feature/Inventory/StockControlNotificationTest.php
           php artisan test tests/Feature/Inventory/StockReconciliationUiContractTest.php
 
       - name: Complete PHP test suite

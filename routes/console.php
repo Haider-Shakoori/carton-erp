@@ -4,6 +4,7 @@ use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
 use App\Services\StockControlManagementService;
+use App\Services\StockControlNotificationService;
 
 Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
@@ -57,4 +58,20 @@ Schedule::command('stock-control:weekly-review')
             '08:30'
         )
     )
+    ->withoutOverlapping();
+
+
+Artisan::command('stock-notifications:sync', function () {
+    $result = app(StockControlNotificationService::class)->sync();
+
+    $this->info(sprintf(
+        'Stock notifications synchronized: %d in-app created, %d external queued, %d skipped.',
+        $result['created'],
+        $result['queued'],
+        $result['skipped']
+    ));
+})->purpose('Create and queue stock-control management notifications');
+
+Schedule::command('stock-notifications:sync')
+    ->everyFifteenMinutes()
     ->withoutOverlapping();
