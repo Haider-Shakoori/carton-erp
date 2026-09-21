@@ -80,6 +80,12 @@ class PurchaseItem extends Model
         return $this->belongsTo(Product::class, 'product_id');
     }
 
+    public function reels()
+    {
+        return $this->hasMany(PurchaseItemReel::class)
+            ->orderBy('sequence_no');
+    }
+
     public function saleItems()
     {
         return $this->hasMany(SaleItem::class, 'purchase_item_id');

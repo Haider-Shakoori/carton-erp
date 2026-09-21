@@ -74,7 +74,7 @@ class ProductionCostRecorder
 
             $batch->save();
 
-            return ProductionMaterialConsumption::create([
+            $record = ProductionMaterialConsumption::create([
                 'production_order_id' => $productionOrderId,
                 'sale_id' => $saleId,
                 'sale_item_id' => $saleItemId,
@@ -93,6 +93,13 @@ class ProductionCostRecorder
                 'consumed_at' => now(),
                 'created_by' => Auth::id(),
             ]);
+
+            if ($isRoll) {
+                app(ReelInventoryService::class)
+                    ->consumeForConsumption($record);
+            }
+
+            return $record;
         });
     }
 }
