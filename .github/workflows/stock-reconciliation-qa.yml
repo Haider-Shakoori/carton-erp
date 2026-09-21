@@ -17,6 +17,7 @@ on:
       - feat/reel-remnant-tracking
       - feat/reel-remnant-controls-reporting
       - feat/reel-production-selection
+      - feat/reel-barcode-labels
   workflow_dispatch:
 
 permissions:
@@ -118,6 +119,7 @@ jobs:
           php -l app/Services/StockControlManagementService.php
           php -l app/Services/StockControlNotificationService.php
           php -l app/Services/ReelInventoryService.php
+          php -l app/Services/ReelBarcodeService.php
           php -l app/Services/StockDeductionService.php
           php -l app/Services/ProductionQuantityService.php
           php -l app/Jobs/DeliverStockControlNotification.php
@@ -155,6 +157,7 @@ jobs:
           php artisan test tests/Feature/Inventory/StockControlManagementTest.php
           php artisan test tests/Feature/Inventory/StockControlNotificationTest.php
           php artisan test tests/Feature/Inventory/ReelRemnantTrackingTest.php
+          php artisan test tests/Feature/Inventory/ReelBarcodeLabelTest.php
           php artisan test tests/Feature/Inventory/StockReconciliationUiContractTest.php
           php artisan test tests/Feature/Production/ActualProductionQuantityUiContractTest.php
 
