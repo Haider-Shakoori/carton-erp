@@ -6,6 +6,9 @@ use App\Models\BOMItem;
 use App\Models\Currency;
 use App\Models\FinishedGoodSpecification;
 use App\Models\Product;
+use App\Models\Purchase;
+use App\Models\PurchaseItem;
+use Database\Seeders\ClientCartonOpeningStockSeeder;
 use Database\Seeders\ClientCartonRawMaterialSeeder;
 use Database\Seeders\CurrencySeeder;
 use Database\Seeders\CustomerCartonSizeSeeder;
@@ -156,7 +159,6 @@ it('creates one safe draft BOM for every imported finished good', function () {
     foreach ($seededBoms as $bom) {
         expect($bom->status)->toBe('draft')
             ->and((bool) $bom->is_active)->toBeFalse()
-            ->and((float) $bom->selling_price_afn)->toBe(0.0)
             ->and($bom->items->isNotEmpty())->toBeTrue();
 
         $materialNames = $bom->items
@@ -172,6 +174,22 @@ it('creates one safe draft BOM for every imported finished good', function () {
         ))->toBe([]);
     }
 
+    foreach ($calculated as $bom) {
+        expect((float) $bom->selling_price_afn)->toBeGreaterThan(0)
+            ->and((float) $bom->total_material_cost_usd)->toBeGreaterThan(0);
+
+        foreach ($bom->items as $item) {
+            expect((float) $item->quantity)->toBeGreaterThan(0)
+                ->and((float) $item->cost_per_unit_usd)->toBeGreaterThan(0)
+                ->and((float) $item->cost_per_unit_afn)->toBeGreaterThan(0)
+                ->and((float) $item->total_cost_usd)->toBeGreaterThan(0)
+                ->and(abs(
+                    (float) $item->quantity
+                    - (float) $item->calculateStockRequirement(1, false)
+                ))->toBeLessThan(0.000001);
+        }
+    }
+
     $approved = clientCartonApprovedRawMaterialNames();
     sort($approved);
 
@@ -182,10 +200,51 @@ it('creates one safe draft BOM for every imported finished good', function () {
             ->values()
             ->all();
 
-        expect($bom->items)->toHaveCount(10)
+        expect((float) $bom->selling_price_afn)->toBe(0.0)
+            ->and($bom->items)->toHaveCount(10)
             ->and($names)->toBe($approved)
             ->and($bom->items->filter(fn ($item) => (float) $item->quantity !== 0.0))
+            ->toHaveCount(0)
+            ->and($bom->items->filter(fn ($item) => (float) $item->cost_per_unit_usd <= 0.0))
             ->toHaveCount(0);
+    }
+});
+
+it('seeds one arrived opening-stock purchase with all ten client materials available for production', function () {
+    $this->seed(DatabaseSeeder::class);
+
+    $purchase = Purchase::query()
+        ->where('purchase_no', ClientCartonOpeningStockSeeder::PURCHASE_NO)
+        ->with(['items.product', 'currency'])
+        ->firstOrFail();
+
+    expect($purchase->status)->toBe('arrived')
+        ->and($purchase->currency->code)->toBe('USD')
+        ->and($purchase->items)->toHaveCount(10)
+        ->and((float) $purchase->usd_subtotal)->toBeGreaterThan(0);
+
+    $actualNames = $purchase->items
+        ->pluck('product.name')
+        ->sort()
+        ->values()
+        ->all();
+
+    $expectedNames = clientCartonApprovedRawMaterialNames();
+    sort($expectedNames);
+
+    expect($actualNames)->toBe($expectedNames);
+
+    foreach ($purchase->items as $item) {
+        expect($item->availableInventoryQuantity())->toBeGreaterThan(0)
+            ->and($item->landedCostPerInventoryUnitUsd())->toBeGreaterThan(0);
+
+        if ($item->product->unit === 'roll') {
+            expect($item->inventoryCostBasisUnit())->toBe('kg')
+                ->and((float) $item->kg_per_roll)->toBe(500.0)
+                ->and($item->availableKg())->toBeGreaterThan(0);
+        } else {
+            expect($item->inventoryCostBasisUnit())->toBe('kg');
+        }
     }
 });
 
@@ -292,6 +351,11 @@ it('is idempotent across the full client master and all-finished-goods BOM seedi
             'bom',
             fn ($q) => $q->where('code', 'like', 'BOM-CLIENT-%')
         )->count(),
+        'opening_purchases' => Purchase::where('purchase_no', ClientCartonOpeningStockSeeder::PURCHASE_NO)->count(),
+        'opening_purchase_items' => PurchaseItem::whereHas(
+            'purchase',
+            fn ($q) => $q->where('purchase_no', ClientCartonOpeningStockSeeder::PURCHASE_NO)
+        )->count(),
     ];
 
     $this->seed(DatabaseSeeder::class);
@@ -307,13 +371,20 @@ it('is idempotent across the full client master and all-finished-goods BOM seedi
             'bom',
             fn ($q) => $q->where('code', 'like', 'BOM-CLIENT-%')
         )->count(),
+        'opening_purchases' => Purchase::where('purchase_no', ClientCartonOpeningStockSeeder::PURCHASE_NO)->count(),
+        'opening_purchase_items' => PurchaseItem::whereHas(
+            'purchase',
+            fn ($q) => $q->where('purchase_no', ClientCartonOpeningStockSeeder::PURCHASE_NO)
+        )->count(),
     ];
 
     expect($after)->toBe($before)
         ->and($after['raw_materials'])->toBe(10)
         ->and($after['finished_goods'])->toBe(171)
         ->and($after['specifications'])->toBe(171)
-        ->and($after['boms'])->toBe(171);
+        ->and($after['boms'])->toBe(171)
+        ->and($after['opening_purchases'])->toBe(1)
+        ->and($after['opening_purchase_items'])->toBe(10);
 });
 
 it('preserves operator edits on an already imported carton source row', function () {
