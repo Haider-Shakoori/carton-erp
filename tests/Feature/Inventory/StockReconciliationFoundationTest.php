@@ -352,3 +352,69 @@ it('cancels only an in-progress count without changing inventory', function () {
     expect(fn () => $service->cancel($cancelled->fresh()))
         ->toThrow(RuntimeException::class, 'still being counted');
 });
+
+
+it('requires an independent approver when absolute variance value exceeds the configured threshold', function () {
+    $fx = stockReconciliationFixture();
+    config()->set('stock_reconciliation.independent_approval_required_above_usd', 100.00);
+
+    $service = app(StockReconciliationService::class);
+    $reconciliation = $service->createSnapshot();
+
+    $paper = $reconciliation->items->firstWhere('purchase_item_id', $fx['paperBatchId']);
+    $corn = $reconciliation->items->firstWhere('purchase_item_id', $fx['cornBatchId']);
+
+    // 200 kg shortage at USD 0.90/kg = USD 180 absolute variance.
+    $service->updateCount($reconciliation, $paper, 800, 'reel_weight_difference');
+    $service->updateCount($reconciliation, $corn, 50);
+    $service->submit($reconciliation);
+
+    expect($service->requiresIndependentApproval($reconciliation->fresh()))->toBeTrue()
+        ->and(fn () => $service->approve($reconciliation->fresh()))
+        ->toThrow(RuntimeException::class, 'requires an independent approver');
+
+    $approver = User::factory()->create();
+    Auth::login($approver);
+
+    $approved = $service->approve($reconciliation->fresh());
+
+    expect($approved->status)->toBe(StockReconciliation::STATUS_APPROVED)
+        ->and((int) $approved->approved_by)->toBe((int) $approver->id);
+});
+
+it('keeps unknown posted variances visible in the unresolved investigation report', function () {
+    $fx = stockReconciliationFixture();
+    $service = app(StockReconciliationService::class);
+
+    $reconciliation = $service->createSnapshot();
+    $paper = $reconciliation->items->firstWhere('purchase_item_id', $fx['paperBatchId']);
+    $corn = $reconciliation->items->firstWhere('purchase_item_id', $fx['cornBatchId']);
+
+    $service->updateCount(
+        $reconciliation,
+        $paper,
+        990,
+        'unknown',
+        'Physical shortage requires warehouse investigation.'
+    );
+    $service->updateCount($reconciliation, $corn, 50);
+    $service->submit($reconciliation);
+    $service->approve($reconciliation->fresh());
+    $service->post($reconciliation->fresh());
+
+    $request = \Illuminate\Http\Request::create(
+        '/admin/stock-reconciliations/report',
+        'GET',
+        ['unresolved' => 1]
+    );
+
+    $view = app(\App\Http\Controllers\Admin\StockReconciliationController::class)
+        ->report($request);
+    $data = $view->getData();
+
+    expect($data['rows']->total())->toBe(1)
+        ->and($data['summary']['lines'])->toBe(1)
+        ->and($data['summary']['unresolved_lines'])->toBe(1)
+        ->and((float) $data['summary']['unresolved_value_usd'])->toBe(9.0)
+        ->and($data['rows']->first()->reason_code)->toBe('unknown');
+});
