@@ -16,9 +16,16 @@
                 · Age {{ $summary['age_days'] !== null ? $summary['age_days'].' days' : '—' }}
             </p>
         </div>
-        <a href="{{ route('admin.stock-reconciliations.create') }}" class="btn btn-outline-primary">
-            <i class="bi bi-clipboard-plus me-1"></i> Start Physical Count
-        </a>
+        <div class="d-flex flex-wrap gap-2">
+            @if($summary['tracked'])
+                <a href="{{ route('admin.stock-reels.batch-labels', $purchaseItem) }}" class="btn btn-outline-dark" target="_blank">
+                    <i class="bi bi-printer me-1"></i> Print Reel Labels
+                </a>
+            @endif
+            <a href="{{ route('admin.stock-reconciliations.create') }}" class="btn btn-outline-primary">
+                <i class="bi bi-clipboard-plus me-1"></i> Start Physical Count
+            </a>
+        </div>
     </div>
 
     @if(session('success'))<div class="alert alert-success">{{ session('success') }}</div>@endif
@@ -146,10 +153,15 @@
                                 ? (float) $reel->measurement_variance_kg
                                 : null;
                         @endphp
-                        <tr class="{{ $reel->isBlockedFromProduction() ? 'table-warning' : '' }}">
+                        <tr id="reel-{{ $reel->id }}" class="{{ $reel->isBlockedFromProduction() ? 'table-warning' : '' }}">
                             <td>
                                 <div class="fw-semibold">{{ $reel->reel_code }}</div>
                                 <small class="text-muted">#{{ $reel->sequence_no }}</small>
+                                <div class="mt-1">
+                                    <a href="{{ route('admin.stock-reels.label', $reel) }}" target="_blank" class="small text-decoration-none">
+                                        <i class="bi bi-upc me-1"></i> Print label
+                                    </a>
+                                </div>
                             </td>
                             <td>
                                 <span class="badge bg-{{ $statusBadge }}">{{ $statusLabel }}</span>
