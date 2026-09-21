@@ -19,7 +19,7 @@ it('exposes weekly cycle count reporting, blind print, approval and audit contro
         ->toContain('Variance Report')
         ->toContain('Awaiting Approval')
         ->toContain('30-Day Negative Variance')
-        ->toContain('Unresolved Variances')
+        ->toContain('Investigations')
         ->toContain('Unresolved Investigations')
         ->toContain('ABC Planner')
         ->toContain('Variance Trends')
