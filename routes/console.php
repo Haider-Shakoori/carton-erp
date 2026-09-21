@@ -4,6 +4,7 @@ use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
 use App\Services\StockControlManagementService;
+use App\Services\ManagementNotificationOrchestrator;
 
 Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
@@ -57,4 +58,21 @@ Schedule::command('stock-control:weekly-review')
             '08:30'
         )
     )
+    ->withoutOverlapping();
+
+
+Artisan::command('management-notifications:sync', function () {
+    $result = app(ManagementNotificationOrchestrator::class)->sync();
+
+    $this->info(sprintf(
+        'Management notifications synchronized: %d logical events, %d in-app, %d external queued, %d duplicates skipped.',
+        $result['logical_events'],
+        $result['in_app'],
+        $result['queued_external'],
+        $result['skipped_duplicates']
+    ));
+})->purpose('Synchronize stock-management notifications and reminders');
+
+Schedule::command('management-notifications:sync')
+    ->everyFifteenMinutes()
     ->withoutOverlapping();
