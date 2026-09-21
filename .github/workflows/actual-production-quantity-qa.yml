@@ -9,6 +9,7 @@ on:
       - test/real-client-cnp-uat
       - feat/all-finished-goods-boms-clean-currencies
       - feat/seed-opening-stock-and-bom-usage
+      - feat/sale-order-clean-ux
   workflow_dispatch:
 
 permissions:
