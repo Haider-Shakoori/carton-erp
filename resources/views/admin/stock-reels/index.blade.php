@@ -22,6 +22,25 @@
         If physical reel totals differ from the ERP batch balance, post the normal approved stock reconciliation first, then re-baseline the reel records.
     </div>
 
+    <div class="card border-primary shadow-sm mb-4">
+        <div class="card-body">
+            <form method="GET" action="{{ route('admin.stock-reels.scan') }}" class="row g-2 align-items-end">
+                <div class="col-lg-8">
+                    <label class="form-label fw-semibold">Scan / Enter Reel Code</label>
+                    <input type="text" name="code" class="form-control" maxlength="160"
+                           placeholder="Scan barcode, enter REEL-00000001, or type the printed reel code"
+                           autocomplete="off" inputmode="text">
+                    <div class="form-text">Scanner input is identification-only. It does not change stock, status, or measured weight.</div>
+                </div>
+                <div class="col-lg-4">
+                    <button class="btn btn-primary w-100">
+                        <i class="bi bi-upc-scan me-1"></i> Find Reel
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <div class="row g-3 mb-4">
         <div class="col-xl-2 col-md-4"><div class="card border-0 shadow-sm"><div class="card-body">
             <div class="text-muted small">Roll Batches</div><div class="fs-3 fw-bold">{{ $stats['batches'] }}</div>
