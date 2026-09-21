@@ -7,6 +7,8 @@ use App\Models\StockAdjustmentItem;
 use App\Models\StockVarianceInvestigation;
 use App\Models\User;
 use App\Services\StockVarianceInvestigationService;
+use App\Services\InventoryPreventionIntelligenceService;
+use App\Models\Product;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 use RuntimeException;
@@ -110,6 +112,46 @@ class StockVarianceInvestigationController extends Controller
         return view(
             'admin.stock-reconciliations.investigations.index',
             compact('investigations', 'stats', 'users')
+        );
+    }
+
+    public function intelligence(
+        Request $request,
+        InventoryPreventionIntelligenceService $intelligence
+    ) {
+        $rootCauseCodes = config(
+            'stock_reconciliation.investigation.root_cause_codes',
+            []
+        );
+
+        $validated = $request->validate([
+            'from_date' => ['nullable', 'date'],
+            'to_date' => ['nullable', 'date'],
+            'product_id' => ['nullable', 'integer', 'exists:products,id'],
+            'root_cause_code' => [
+                'nullable',
+                Rule::in(array_keys($rootCauseCodes)),
+            ],
+        ]);
+
+        $analysis = $intelligence->analyze(
+            $validated['from_date'] ?? null,
+            $validated['to_date'] ?? null,
+            isset($validated['product_id'])
+                ? (int) $validated['product_id']
+                : null,
+            $validated['root_cause_code'] ?? null
+        );
+
+        $products = Product::query()
+            ->where('is_active', true)
+            ->where('type', Product::TYPE_RAW_MATERIAL)
+            ->orderBy('name')
+            ->get(['id', 'name']);
+
+        return view(
+            'admin.stock-reconciliations.investigations.intelligence',
+            compact('analysis', 'products', 'rootCauseCodes')
         );
     }
 

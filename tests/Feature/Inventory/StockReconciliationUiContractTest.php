@@ -13,6 +13,7 @@ it('exposes weekly cycle count reporting, blind print, approval and audit contro
     $controlAnalysis = file_get_contents(resource_path('views/admin/stock-reconciliations/control-analysis.blade.php'));
     $investigationIndex = file_get_contents(resource_path('views/admin/stock-reconciliations/investigations/index.blade.php'));
     $investigationShow = file_get_contents(resource_path('views/admin/stock-reconciliations/investigations/show.blade.php'));
+    $preventionIntelligence = file_get_contents(resource_path('views/admin/stock-reconciliations/investigations/intelligence.blade.php'));
 
     expect($index)
         ->toContain('New Cycle Count')
@@ -24,7 +25,8 @@ it('exposes weekly cycle count reporting, blind print, approval and audit contro
         ->toContain('ABC Planner')
         ->toContain('Variance Trends')
         ->toContain('Production → Physical')
-        ->toContain('Investigations');
+        ->toContain('Investigations')
+        ->toContain('Prevention');
 
     expect($show)
         ->toContain('Blind Count Sheet')
@@ -92,4 +94,12 @@ it('exposes weekly cycle count reporting, blind print, approval and audit contro
         ->toContain('Resolution Notes')
         ->toContain('Audit Timeline')
         ->toContain('Mark Resolved');
+
+    expect($preventionIntelligence)
+        ->toContain('Inventory Prevention Intelligence')
+        ->toContain('Management Flags')
+        ->toContain('Recurring Root-Cause Patterns')
+        ->toContain('Material Variance Hotspots')
+        ->toContain('Corrective-Action Follow-up')
+        ->toContain('do not prove causation');
 });
