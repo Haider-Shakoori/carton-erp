@@ -1637,6 +1637,14 @@
                         <div><div class="so2-card-title"><i class="bi bi-box"></i>Sale Items</div><div class="so2-card-sub">Carton products in this order</div></div>
                         <div class="so2-table-toolbar">
                             <div class="so2-search"><i class="bi bi-search"></i><input id="so2ItemSearch" class="form-control" placeholder="Search products, SKU, or BOM..."></div>
+                            <div class="dropdown">
+                                <button class="btn btn-outline-secondary so2-btn dropdown-toggle" data-bs-toggle="dropdown"><i class="bi bi-funnel"></i><span id="so2FilterLabel">Filter</span></button>
+                                <ul class="dropdown-menu dropdown-menu-end">
+                                    <li><button class="dropdown-item so2-filter-option" data-so2-filter="all">All Items</button></li>
+                                    <li><button class="dropdown-item so2-filter-option" data-so2-filter="manual">Manual Overrides</button></li>
+                                    <li><button class="dropdown-item so2-filter-option" data-so2-filter="bom">BOM-linked Items</button></li>
+                                </ul>
+                            </div>
                             @if($sale->status === 'draft')
                                 <button class="btn btn-primary so2-btn" data-bs-toggle="offcanvas" data-bs-target="#addCartonOffcanvas"><i class="bi bi-plus-lg"></i>Add Carton</button>
                             @endif
@@ -1659,7 +1667,7 @@
                                     $estimatedLineProfit = (($effectivePrice - $estimatedUnitCost) * (float) $item->qty);
                                     $bomCode = $item->bom?->code;
                                 @endphp
-                                <tr data-so2-item-row="{{ $item->id }}" data-search="{{ strtolower(($item->product->name ?? '').' '.$bomCode) }}">
+                                <tr data-so2-item-row="{{ $item->id }}" data-search="{{ strtolower(($item->product->name ?? '').' '.$bomCode) }}" data-manual="{{ $manualApplied ? '1' : '0' }}" data-has-bom="{{ $bomCode ? '1' : '0' }}">
                                     <td><input class="form-check-input so2-item-selector" type="checkbox" value="{{ $item->id }}" data-label="{{ $item->product->name ?? 'Item' }}" data-bom="{{ $bomCode ?? '' }}"></td>
                                     <td>
                                         <div class="so2-product">{{ $item->product->name ?? '-' }}</div>
@@ -1909,7 +1917,23 @@
             document.querySelectorAll('.so2-edit-description').forEach(function(btn){btn.addEventListener('click',function(){
                 var field=document.querySelector('.quotation-description-input[data-id="'+btn.dataset.id+'"]'); if(field){field.style.display=field.style.display==='block'?'none':'block';if(field.style.display==='block')field.focus()}
             })});
-            var search=document.getElementById('so2ItemSearch'); if(search)search.addEventListener('input',function(){var q=search.value.toLowerCase();document.querySelectorAll('[data-so2-item-row]').forEach(function(r){r.style.display=(r.dataset.search||'').includes(q)?'':'none'})});
+            var search=document.getElementById('so2ItemSearch');
+            var itemFilter='all';
+            var applyItemFilters=function(){
+                var q=search?search.value.toLowerCase():'';
+                document.querySelectorAll('[data-so2-item-row]').forEach(function(r){
+                    var textMatch=(r.dataset.search||'').includes(q);
+                    var filterMatch=itemFilter==='all'||(itemFilter==='manual'&&r.dataset.manual==='1')||(itemFilter==='bom'&&r.dataset.hasBom==='1');
+                    r.style.display=textMatch&&filterMatch?'':'none';
+                });
+            };
+            if(search)search.addEventListener('input',applyItemFilters);
+            document.querySelectorAll('.so2-filter-option').forEach(function(btn){btn.addEventListener('click',function(){
+                itemFilter=btn.dataset.so2Filter||'all';
+                var label=document.getElementById('so2FilterLabel');
+                if(label)label.textContent=itemFilter==='all'?'Filter':btn.textContent.trim();
+                applyItemFilters();
+            })});
         });
     </script>
 
