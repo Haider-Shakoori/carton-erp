@@ -1019,6 +1019,22 @@ it('accepts a manual selling price and quotation description without changing ph
         ->and((float) $item->total)->toBe(13075.0)
         ->and((float) $item->total_cost_usd)->toBe($physicalCostBefore)
         ->and((float) $sale->grand_total)->toBe(13075.0);
+
+    $clearOverride = $controller->updateManualPrice(
+        rwRequest('/admin/sales/item/'.$item->id.'/manual-price', 'PATCH', []),
+        $item->fresh()
+    );
+
+    expect($clearOverride->getData(true)['success'])->toBeTrue();
+
+    $item->refresh();
+    $sale->refresh();
+    $systemPrice = (float) $bomSummary['selling_price_afn'];
+
+    expect(abs((float) $item->unit_price - $systemPrice))->toBeLessThan(0.0001)
+        ->and($item->price_adjustment_type)->toBe('none')
+        ->and((float) $item->total_cost_usd)->toBe($physicalCostBefore)
+        ->and(abs((float) $sale->grand_total - ($systemPrice * 100)))->toBeLessThan(0.01);
 });
 
 it('creates a gate pass from the final produced invoice quantity and customer-facing line description on delivery', function () {
