@@ -57,7 +57,10 @@ class StockControlNotificationService
                 $skipped += $result['skipped'];
             }
 
-            if ((int) $escalation->level === 3) {
+            if (
+                (int) $escalation->level === 3
+                && $escalation->last_detected_at?->lt(today())
+            ) {
                 $result = $this->dispatchEvent(
                     eventKey: 'stock-control:escalation:'.$escalation->id
                         .':level3-reminder:'.today()->toDateString(),
@@ -134,8 +137,7 @@ class StockControlNotificationService
             }
 
             $result = $this->dispatchEvent(
-                eventKey: 'stock-control:escalation:'.$event->stock_control_escalation_id
-                    .':assignment-event:'.$event->id,
+                eventKey: 'stock-control:escalation:'.$event->stock_control_escalation_id.':opened',
                 eventType: 'escalation_assignment',
                 title: 'Stock Control Escalation Assigned to You',
                 message: $event->escalation->title
