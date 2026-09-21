@@ -160,6 +160,12 @@
                 </div>
 
                 <div class="d-flex flex-column flex-lg-row gap-2 align-items-lg-center">
+                    @can('view stock')
+                        <a href="{{ route('admin.stock-reels.index') }}" class="btn btn-outline-dark">
+                            <i class="bi bi-minecart-loaded me-1"></i> Physical Reels
+                        </a>
+                    @endcan
+
                     @can('view stock reconciliations')
                         <a href="{{ route('admin.stock-reconciliations.index') }}" class="btn btn-outline-primary">
                             <i class="bi bi-clipboard-check me-1"></i> Reconciliation
