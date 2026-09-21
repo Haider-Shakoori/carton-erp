@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\StockReconciliation;
 use App\Models\StockReconciliationItem;
 use App\Models\StockAdjustmentItem;
+use App\Models\StockVarianceInvestigation;
 use App\Models\Product;
 use App\Services\StockReconciliationService;
 use App\Services\StockCycleCountPlanningService;
@@ -42,13 +43,23 @@ class StockReconciliationController extends Controller
                 ->where('adjustment_value_usd', '<', 0)
                 ->whereHas('adjustment', fn ($q) => $q->where('posted_at', '>=', now()->subDays(30)))
                 ->sum('adjustment_value_usd')),
-            'unresolved_count' => StockAdjustmentItem::query()
-                ->whereIn('reason_code', config('stock_reconciliation.unresolved_reason_codes', ['unknown']))
+            'unresolved_count' => StockVarianceInvestigation::query()
+                ->where('status', '!=', StockVarianceInvestigation::STATUS_RESOLVED)
                 ->count(),
-            'unresolved_value_usd' => (float) StockAdjustmentItem::query()
-                ->whereIn('reason_code', config('stock_reconciliation.unresolved_reason_codes', ['unknown']))
-                ->get()
-                ->sum(fn ($row) => abs((float) $row->adjustment_value_usd)),
+            'unresolved_value_usd' => (float) StockVarianceInvestigation::query()
+                ->join(
+                    'stock_adjustment_items',
+                    'stock_adjustment_items.id',
+                    '=',
+                    'stock_variance_investigations.stock_adjustment_item_id'
+                )
+                ->where(
+                    'stock_variance_investigations.status',
+                    '!=',
+                    StockVarianceInvestigation::STATUS_RESOLVED
+                )
+                ->selectRaw('COALESCE(SUM(ABS(stock_adjustment_items.adjustment_value_usd)), 0) AS value')
+                ->value('value'),
         ];
 
         return view('admin.stock-reconciliations.index', compact('reconciliations', 'stats'));
@@ -147,14 +158,21 @@ class StockReconciliationController extends Controller
             ['unknown']
         );
 
+        $unresolvedRows = $allRows->filter(function ($row) use ($unresolvedReasonCodes): bool {
+            return in_array($row->reason_code, $unresolvedReasonCodes, true)
+                && (
+                    ! $row->investigation
+                    || $row->investigation->status !== StockVarianceInvestigation::STATUS_RESOLVED
+                );
+        });
+
         $summary = [
             'lines' => $allRows->count(),
             'positive_value_usd' => (float) $allRows->where('adjustment_value_usd', '>', 0)->sum('adjustment_value_usd'),
             'negative_value_usd' => (float) $allRows->where('adjustment_value_usd', '<', 0)->sum('adjustment_value_usd'),
             'net_value_usd' => (float) $allRows->sum('adjustment_value_usd'),
-            'unresolved_lines' => $allRows->whereIn('reason_code', $unresolvedReasonCodes)->count(),
-            'unresolved_value_usd' => (float) $allRows
-                ->whereIn('reason_code', $unresolvedReasonCodes)
+            'unresolved_lines' => $unresolvedRows->count(),
+            'unresolved_value_usd' => (float) $unresolvedRows
                 ->sum(fn ($row) => abs((float) $row->adjustment_value_usd)),
         ];
 
@@ -459,7 +477,7 @@ class StockReconciliationController extends Controller
     private function reportQuery(Request $request)
     {
         return StockAdjustmentItem::query()
-            ->with(['product', 'adjustment.reconciliation'])
+            ->with(['product', 'adjustment.reconciliation', 'investigation.assignee'])
             ->whereHas('adjustment', function ($query) use ($request): void {
                 $query->when(
                     $request->filled('from_date'),
@@ -473,10 +491,23 @@ class StockReconciliationController extends Controller
             ->when($request->filled('reason_code'), fn ($q) => $q->where('reason_code', $request->reason_code))
             ->when(
                 $request->boolean('unresolved'),
-                fn ($q) => $q->whereIn(
-                    'reason_code',
-                    config('stock_reconciliation.unresolved_reason_codes', ['unknown'])
-                )
+                function ($q): void {
+                    $q->whereIn(
+                        'reason_code',
+                        config('stock_reconciliation.unresolved_reason_codes', ['unknown'])
+                    )->where(function ($caseQuery): void {
+                        $caseQuery
+                            ->whereDoesntHave('investigation')
+                            ->orWhereHas(
+                                'investigation',
+                                fn ($investigation) => $investigation->where(
+                                    'status',
+                                    '!=',
+                                    StockVarianceInvestigation::STATUS_RESOLVED
+                                )
+                            );
+                    });
+                }
             )
             ->when($request->get('direction') === 'shortage', fn ($q) => $q->where('adjustment_quantity', '<', 0))
             ->when($request->get('direction') === 'surplus', fn ($q) => $q->where('adjustment_quantity', '>', 0))
