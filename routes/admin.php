@@ -31,6 +31,7 @@ use App\Http\Controllers\Admin\SettingsController;
 use App\Http\Controllers\Admin\StockController;
 use App\Http\Controllers\Admin\StockReconciliationController;
 use App\Http\Controllers\Admin\StockVarianceInvestigationController;
+use App\Http\Controllers\Admin\StockControlManagementController;
 use App\Http\Controllers\Admin\SupplierController;
 use App\Http\Controllers\Admin\HR\DepartmentController;
 use App\Http\Controllers\Admin\HR\HRDashboardController;
@@ -133,6 +134,24 @@ Route::middleware(['auth'])->prefix('admin')->group(function () {
             ->name('investigations.update')->middleware('permission.feedback:investigate stock reconciliations');
         Route::post('/investigations/{investigation}/resolve', [StockVarianceInvestigationController::class, 'resolve'])
             ->name('investigations.resolve')->middleware('permission.feedback:resolve stock reconciliations');
+        Route::get('/management-control', [StockControlManagementController::class, 'index'])
+            ->name('management-control.index')->middleware('permission.feedback:view stock reconciliations');
+        Route::post('/management-control/sync', [StockControlManagementController::class, 'sync'])
+            ->name('management-control.sync')->middleware('permission.feedback:escalate stock reconciliations');
+        Route::get('/management-control/escalations/{escalation}', [StockControlManagementController::class, 'showEscalation'])
+            ->name('management-control.escalations.show')->middleware('permission.feedback:view stock reconciliations');
+        Route::patch('/management-control/escalations/{escalation}/assign', [StockControlManagementController::class, 'assign'])
+            ->name('management-control.escalations.assign')->middleware('permission.feedback:escalate stock reconciliations');
+        Route::post('/management-control/escalations/{escalation}/acknowledge', [StockControlManagementController::class, 'acknowledge'])
+            ->name('management-control.escalations.acknowledge')->middleware('permission.feedback:escalate stock reconciliations');
+        Route::post('/management-control/escalations/{escalation}/close', [StockControlManagementController::class, 'close'])
+            ->name('management-control.escalations.close')->middleware('permission.feedback:escalate stock reconciliations');
+        Route::get('/management-control/reviews/{review}', [StockControlManagementController::class, 'showReview'])
+            ->name('management-control.reviews.show')->middleware('permission.feedback:view stock reconciliations');
+        Route::patch('/management-control/reviews/{review}', [StockControlManagementController::class, 'updateReview'])
+            ->name('management-control.reviews.update')->middleware('permission.feedback:review stock reconciliations');
+        Route::post('/management-control/reviews/{review}/complete', [StockControlManagementController::class, 'completeReview'])
+            ->name('management-control.reviews.complete')->middleware('permission.feedback:review stock reconciliations');
         Route::get('/report', [StockReconciliationController::class, 'report'])
             ->name('report')->middleware('permission.feedback:view stock reconciliations');
         Route::get('/report/export-csv', [StockReconciliationController::class, 'exportCsv'])
