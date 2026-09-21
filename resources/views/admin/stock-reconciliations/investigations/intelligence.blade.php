@@ -14,9 +14,14 @@
                 Detect recurring root causes, material hotspots and observed post-corrective variance patterns without changing historical records.
             </p>
         </div>
-        <a href="{{ route('admin.stock-reconciliations.trends') }}" class="btn btn-outline-primary">
-            <i class="bi bi-graph-up-arrow me-1"></i> Variance Trends
-        </a>
+        <div class="d-flex gap-2 flex-wrap">
+            <a href="{{ route('admin.stock-reconciliations.management-control.index') }}" class="btn btn-dark">
+                <i class="bi bi-clipboard2-pulse me-1"></i> Management Control
+            </a>
+            <a href="{{ route('admin.stock-reconciliations.trends') }}" class="btn btn-outline-primary">
+                <i class="bi bi-graph-up-arrow me-1"></i> Variance Trends
+            </a>
+        </div>
     </div>
 
     <div class="alert alert-info small">
