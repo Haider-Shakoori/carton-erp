@@ -98,6 +98,14 @@ class Account extends Model
     }
 
     /**
+     * Customer-specific carton master specifications imported from client data.
+     */
+    public function cartonSpecifications()
+    {
+        return $this->hasMany(FinishedGoodSpecification::class, 'customer_id');
+    }
+
+    /**
      * Get all exchanges for this account.
      */
     public function exchanges()
