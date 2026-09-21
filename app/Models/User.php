@@ -84,6 +84,34 @@ class User extends Authenticatable
         return $this->hasOne(Account::class, 'user_id');
     }
 
+    public function employeeProfile()
+    {
+        return $this->hasOne(Employee::class, 'user_id');
+    }
+
+    public function managementNotificationPreference()
+    {
+        return $this->hasOne(ManagementNotificationPreference::class);
+    }
+
+    public function notificationPhone(): ?string
+    {
+        $phone = $this->employeeProfile()->value('phone');
+
+        if (! $phone && $this->account_id) {
+            $account = Account::query()->find($this->account_id);
+            $phone = $account?->whatsapp ?: $account?->contact;
+        }
+
+        if (! $phone) {
+            return null;
+        }
+
+        $normalized = preg_replace('/[^0-9+]/', '', trim((string) $phone));
+
+        return $normalized !== '' ? $normalized : null;
+    }
+
     public function isOnline(): bool
     {
         $lastSeen = Cache::get('user-last-seen-' . $this->id);
