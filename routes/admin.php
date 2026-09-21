@@ -32,6 +32,7 @@ use App\Http\Controllers\Admin\StockController;
 use App\Http\Controllers\Admin\StockReconciliationController;
 use App\Http\Controllers\Admin\StockVarianceInvestigationController;
 use App\Http\Controllers\Admin\StockControlManagementController;
+use App\Http\Controllers\Admin\ManagementNotificationController;
 use App\Http\Controllers\Admin\SupplierController;
 use App\Http\Controllers\Admin\HR\DepartmentController;
 use App\Http\Controllers\Admin\HR\HRDashboardController;
@@ -89,6 +90,24 @@ Route::middleware(['auth'])->prefix('admin')->group(function () {
     Route::get('/dashboard/charts', [DashboardController::class, 'getChartData'])->name('admin.dashboard.charts')->middleware('permission.feedback:view dashboard');
     Route::get('/dashboard/recent', [DashboardController::class, 'getRecentActivity'])->name('admin.dashboard.recent')->middleware('permission.feedback:view dashboard');
     Route::get('/dashboard/alerts', [DashboardController::class, 'getAlerts'])->name('admin.dashboard.alerts')->middleware('permission.feedback:view dashboard');
+    Route::get('/notifications/management', [ManagementNotificationController::class, 'index'])
+        ->name('admin.management-notifications.index');
+    Route::get('/notifications/management/settings', [ManagementNotificationController::class, 'settings'])
+        ->name('admin.management-notifications.settings');
+    Route::patch('/notifications/management/settings', [ManagementNotificationController::class, 'updateSettings'])
+        ->name('admin.management-notifications.settings.update');
+    Route::post('/notifications/management/mark-all-read', [ManagementNotificationController::class, 'markAllRead'])
+        ->name('admin.management-notifications.mark-all-read');
+    Route::post('/notifications/management/{notification}/mark-read', [ManagementNotificationController::class, 'markRead'])
+        ->name('admin.management-notifications.mark-read');
+    Route::get('/notifications/management/{notification}/open', [ManagementNotificationController::class, 'open'])
+        ->name('admin.management-notifications.open');
+    Route::post('/notifications/management/deliveries/{delivery}/retry', [ManagementNotificationController::class, 'retryDelivery'])
+        ->name('admin.management-notifications.deliveries.retry');
+    Route::post('/notifications/management/sync', [ManagementNotificationController::class, 'sync'])
+        ->name('admin.management-notifications.sync')
+        ->middleware('permission.feedback:review stock reconciliations');
+
     Route::get('/notifications/low-stock', [App\Http\Controllers\Admin\NotificationController::class, 'lowStock'])
         ->name('admin.notifications.low-stock')->middleware('permission.feedback:view stock');
     Route::get('/notifications/low-stock-data', [App\Http\Controllers\Admin\NotificationController::class, 'getLowStockData'])
