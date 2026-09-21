@@ -51,7 +51,7 @@ function criticalManagementFlag(
         'message' => 'Kraft Paper repeated a confirmed production recording gap.',
         'product_id' => null,
         'root_cause_code' => 'production_recording_gap',
-        'investigation_id' => 101,
+        'investigation_id' => null,
         'occurrences' => $occurrences,
         'absolute_value_usd' => $value,
     ];
@@ -231,7 +231,7 @@ it('generates one weekly review and freezes the completed review snapshot', func
         'message' => 'A Borax investigation is overdue.',
         'product_id' => null,
         'root_cause_code' => 'counting_error',
-        'investigation_id' => 999,
+        'investigation_id' => null,
         'occurrences' => 1,
         'absolute_value_usd' => 10,
     ];
