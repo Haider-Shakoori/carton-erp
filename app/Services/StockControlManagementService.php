@@ -125,7 +125,11 @@ class StockControlManagementService
                     $fields['review_due_date'] = $newDue->toDateString();
                 }
 
-                if ($wasClosed) {
+                $signalAdvanced = (int) ($flag['occurrences'] ?? 1) > $oldOccurrences
+                    || (float) ($flag['absolute_value_usd'] ?? 0) > ($oldValue + 0.0001)
+                    || $level > $oldLevel;
+
+                if ($wasClosed && $signalAdvanced) {
                     $fields += [
                         'status' => StockControlEscalation::STATUS_OPEN,
                         'acknowledged_by' => null,
@@ -139,17 +143,21 @@ class StockControlManagementService
                 $escalation->fill($fields);
                 $escalation->save();
 
-                if ($wasClosed) {
+                if ($wasClosed && $signalAdvanced) {
                     $this->event(
                         $escalation,
                         'reopened',
                         StockControlEscalation::STATUS_CLOSED,
                         StockControlEscalation::STATUS_OPEN,
-                        'The management signal recurred after the escalation had been closed.',
+                        'The management signal advanced after the escalation had been closed.',
                         ['flag' => $flag]
                     );
 
                     return 'reopened';
+                }
+
+                if ($wasClosed) {
+                    return 'unchanged';
                 }
 
                 $materiallyChanged = $oldLevel !== (int) $escalation->level
@@ -458,6 +466,17 @@ class StockControlManagementService
             $activeEscalations = StockControlEscalation::query()
                 ->where('status', '!=', StockControlEscalation::STATUS_CLOSED)
                 ->get();
+
+            foreach ($activeEscalations as $escalation) {
+                $locked->items()->updateOrCreate(
+                    ['stock_control_escalation_id' => $escalation->id],
+                    [
+                        'severity_snapshot' => $escalation->severity,
+                        'level_snapshot' => $escalation->level,
+                        'status_snapshot' => $escalation->status,
+                    ]
+                );
+            }
 
             $locked->update([
                 'status' => StockControlReview::STATUS_COMPLETED,
