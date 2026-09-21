@@ -2,9 +2,26 @@
 
 use App\Http\Controllers\Admin\ProductionGovernanceController;
 use App\Http\Controllers\Admin\PurchaseControlController;
+use App\Http\Controllers\Admin\WarehouseController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware(['auth'])->prefix('admin/enterprise')->name('admin.enterprise.')->group(function () {
+    Route::get('/warehouses', [WarehouseController::class, 'index'])
+        ->name('warehouses.index')
+        ->middleware('permission.feedback:view warehouses');
+
+    Route::post('/warehouses', [WarehouseController::class, 'store'])
+        ->name('warehouses.store')
+        ->middleware('permission.feedback:manage warehouses');
+
+    Route::post('/warehouses/{warehouse}/locations', [WarehouseController::class, 'storeLocation'])
+        ->name('warehouses.locations.store')
+        ->middleware('permission.feedback:manage warehouses');
+
+    Route::post('/stock-transfers', [WarehouseController::class, 'transfer'])
+        ->name('stock-transfers.store')
+        ->middleware('permission.feedback:transfer stock');
+
     Route::post('/purchases/{purchase}/approve', [PurchaseControlController::class, 'approve'])
         ->name('purchases.approve')
         ->middleware('permission.feedback:approve purchase orders');
