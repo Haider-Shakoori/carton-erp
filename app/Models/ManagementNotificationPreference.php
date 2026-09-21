@@ -7,6 +7,18 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class ManagementNotificationPreference extends Model
 {
+    protected $attributes = [
+        'in_app_enabled' => true,
+        'email_enabled' => false,
+        'whatsapp_enabled' => false,
+        'level_2_enabled' => true,
+        'level_3_enabled' => true,
+        'assignment_enabled' => true,
+        'overdue_enabled' => true,
+        'recurrence_enabled' => true,
+        'weekly_review_enabled' => true,
+    ];
+
     protected $fillable = [
         'user_id',
         'in_app_enabled',
