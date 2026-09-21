@@ -180,6 +180,31 @@ class StockReconciliationService
                 throw new RuntimeException('Only a submitted stock reconciliation can be approved.');
             }
 
+            $locked->load('items');
+
+            $thresholdUsd = (float) config(
+                'stock_reconciliation.independent_approval_required_above_usd',
+                100.00
+            );
+            $absoluteVarianceValueUsd = $this->absoluteVarianceValueUsd($locked);
+            $approverId = Auth::id();
+
+            if (
+                $thresholdUsd >= 0
+                && $absoluteVarianceValueUsd > $thresholdUsd
+                && $approverId !== null
+                && (
+                    (int) $locked->created_by === (int) $approverId
+                    || (int) $locked->submitted_by === (int) $approverId
+                )
+            ) {
+                throw new RuntimeException(sprintf(
+                    'This reconciliation has %.2f USD of absolute variance and requires an independent approver because it exceeds the %.2f USD control threshold.',
+                    $absoluteVarianceValueUsd,
+                    $thresholdUsd
+                ));
+            }
+
             $locked->update([
                 'status' => StockReconciliation::STATUS_APPROVED,
                 'approved_by' => Auth::id(),
@@ -326,6 +351,26 @@ class StockReconciliationService
 
             return $adjustment->fresh(['items.product', 'items.purchaseItem', 'reconciliation']);
         });
+    }
+
+    public function absoluteVarianceValueUsd(StockReconciliation $reconciliation): float
+    {
+        $reconciliation->loadMissing('items');
+
+        return (float) $reconciliation->items->sum(
+            fn (StockReconciliationItem $item) => abs((float) ($item->variance_value_usd ?? 0))
+        );
+    }
+
+    public function requiresIndependentApproval(StockReconciliation $reconciliation): bool
+    {
+        $thresholdUsd = (float) config(
+            'stock_reconciliation.independent_approval_required_above_usd',
+            100.00
+        );
+
+        return $thresholdUsd >= 0
+            && $this->absoluteVarianceValueUsd($reconciliation) > $thresholdUsd;
     }
 
     public function reasonIsRequired(StockReconciliationItem $item): bool
