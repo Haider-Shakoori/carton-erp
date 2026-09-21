@@ -7,6 +7,7 @@ it('exposes weekly cycle count reporting, blind print, approval and audit contro
     $print = file_get_contents(resource_path('views/admin/stock-reconciliations/print.blade.php'));
     $stockIndex = file_get_contents(resource_path('views/admin/stock/index.blade.php'));
     $productHistory = file_get_contents(resource_path('views/admin/products/show.blade.php'));
+    $menu = file_get_contents(resource_path('views/layouts/admin/menu.blade.php'));
 
     expect($index)
         ->toContain('New Cycle Count')
@@ -47,4 +48,9 @@ it('exposes weekly cycle count reporting, blind print, approval and audit contro
         ->toContain('Reconciliation Adjustment History')
         ->toContain('Full Variance Report')
         ->toContain('$reconciliationAdjustments');
+
+    expect($menu)
+        ->toContain("admin.stock-reconciliations.*")
+        ->toContain("route('admin.stock-reconciliations.index')")
+        ->toContain('Stock Reconciliation');
 });
