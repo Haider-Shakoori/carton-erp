@@ -118,6 +118,12 @@ Route::middleware(['auth'])->prefix('admin')->group(function () {
     Route::prefix('stock-reels')->name('admin.stock-reels.')->group(function () {
         Route::get('/', [ReelInventoryController::class, 'index'])
             ->name('index')->middleware('permission.feedback:view stock');
+        Route::get('/scan', [ReelInventoryController::class, 'scan'])
+            ->name('scan')->middleware('permission.feedback:view stock');
+        Route::get('/batches/{purchaseItem}/labels', [ReelInventoryController::class, 'batchLabels'])
+            ->name('batch-labels')->middleware('permission.feedback:view stock');
+        Route::get('/reels/{reel}/label', [ReelInventoryController::class, 'label'])
+            ->name('label')->middleware('permission.feedback:view stock');
         Route::get('/batches/{purchaseItem}', [ReelInventoryController::class, 'show'])
             ->name('show')->middleware('permission.feedback:view stock');
         Route::post('/batches/{purchaseItem}/initialize', [ReelInventoryController::class, 'initialize'])
