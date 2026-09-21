@@ -376,7 +376,6 @@ $('#jDownload').on('click', function () {
     // Define gradient palette per currency (stable colors)
     const palette = {
       USD: 'linear-gradient(135deg, #0e7afe, #00c6ff)',
-      CNY: 'linear-gradient(135deg, #0fbf61, #a8eb12)',
       AFN: 'linear-gradient(135deg, #f59e0b, #fcd34d)',
       EUR: 'linear-gradient(135deg, #9333ea, #c084fc)',
       PKR: 'linear-gradient(135deg, #06b6d4, #3b82f6)',
@@ -467,7 +466,6 @@ $('#jDownload').on('click', function () {
 
     const palette = {
       USD: 'linear-gradient(135deg, #0e7afe, #3b82f6)',
-      CNY: 'linear-gradient(135deg, #0fbf61, #16a34a)',
       AFN: 'linear-gradient(135deg, #f59e0b, #fbbf24)',
       EUR: 'linear-gradient(135deg, #9333ea, #a855f7)',
       PKR: 'linear-gradient(135deg, #06b6d4, #0891b2)',
