@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\View;
 use Illuminate\Support\Facades\Gate;
 use App\Models\Setting;
 use App\Models\Attendance;
+use App\Support\Business\BusinessUnitContext;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -26,6 +27,8 @@ class AppServiceProvider extends ServiceProvider
                 'currency' => 'USD',
             ]);
         });
+
+        $this->app->scoped(BusinessUnitContext::class, fn () => new BusinessUnitContext());
     }
 
     /**
@@ -47,6 +50,27 @@ class AppServiceProvider extends ServiceProvider
             $locale = app()->getLocale();
             $view->with('isRtl', in_array($locale, $rtlLanguages));
             $view->with('setting', app('view.setting'));
+
+            try {
+                $businessContext = app(BusinessUnitContext::class);
+                $businessUnitModeEnabled = $businessContext->enabled();
+                $businessUnits = $businessUnitModeEnabled
+                    ? $businessContext->available()
+                    : collect();
+                $activeBusinessUnit = $businessUnitModeEnabled
+                    ? $businessContext->current()
+                    : null;
+            } catch (\Throwable $e) {
+                $businessUnitModeEnabled = false;
+                $businessUnits = collect();
+                $activeBusinessUnit = null;
+            }
+
+            $view->with(compact(
+                'businessUnitModeEnabled',
+                'businessUnits',
+                'activeBusinessUnit'
+            ));
         });
 
         View::composer('admin.hr.attendance.show', function ($view) {
