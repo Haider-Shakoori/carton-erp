@@ -3,10 +3,11 @@
 use App\Models\Account;
 use App\Models\BOM;
 use App\Models\BOMItem;
+use App\Models\Currency;
 use App\Models\FinishedGoodSpecification;
 use App\Models\Product;
 use Database\Seeders\ClientCartonRawMaterialSeeder;
-use Database\Seeders\CustomerCartonBomSeeder;
+use Database\Seeders\CurrencySeeder;
 use Database\Seeders\CustomerCartonSizeSeeder;
 use Database\Seeders\DatabaseSeeder;
 use Database\Seeders\ProductSeeder;
@@ -38,8 +39,6 @@ it('keeps the raw-material master limited to the exact ten materials supplied by
 
     expect(clientCartonApprovedRawMaterialNames())->toBe($expected);
 
-    // The old broad ProductSeeder is a compatibility wrapper only and must
-    // never reintroduce demo paper, ink, adhesive, packaging or machine items.
     $this->seed(ProductSeeder::class);
 
     $actual = Product::query()
@@ -59,16 +58,22 @@ it('keeps the raw-material master limited to the exact ten materials supplied by
         ->not->toContain('Machine Oil');
 });
 
-it('imports the client customer carton master without promoting historical workbook rates into live prices', function () {
+it('imports 171 distinct finished goods with customer-free display names and reference-only historical prices', function () {
     $this->seed(CustomerCartonSizeSeeder::class);
+
+    $specifications = FinishedGoodSpecification::query()
+        ->importedClientCartons()
+        ->with(['product', 'customer'])
+        ->get();
 
     expect(
         Account::query()
             ->where('account_type', Account::TYPE_CUSTOMER)
             ->count()
     )->toBe(37)
-        ->and(FinishedGoodSpecification::importedClientCartons()->count())
-        ->toBe(171)
+        ->and($specifications)->toHaveCount(171)
+        ->and($specifications->pluck('product_id')->unique())->toHaveCount(171)
+        ->and($specifications->pluck('product.name')->unique())->toHaveCount(171)
         ->and(
             FinishedGoodSpecification::importedClientCartons()
                 ->where('unit_price', '!=', 0)
@@ -79,9 +84,15 @@ it('imports the client customer carton master without promoting historical workb
                 ->whereNotNull('historical_rate_note')
                 ->count()
         )->toBeGreaterThan(0);
+
+    foreach ($specifications as $specification) {
+        expect($specification->product->name)->toStartWith('Carton')
+            ->and($specification->product->name)
+            ->not->toStartWith($specification->customer->name.' -');
+    }
 });
 
-it('keeps duplicate customer carton names as distinct source variants', function () {
+it('keeps duplicate customer carton sizes as distinct neutral variants', function () {
     $this->seed(CustomerCartonSizeSeeder::class);
 
     $cnp = FinishedGoodSpecification::query()
@@ -100,13 +111,18 @@ it('keeps duplicate customer carton names as distinct source variants', function
     expect($duplicateSizedVariants)->toHaveCount(3)
         ->and($duplicateSizedVariants->pluck('product_id')->unique())->toHaveCount(3)
         ->and($duplicateSizedVariants->pluck('product.name')->unique())->toHaveCount(3);
+
+    foreach ($duplicateSizedVariants as $variant) {
+        expect($variant->product->name)->toStartWith('Carton');
+    }
 });
 
-it('creates draft technical BOMs only for customer cartons with complete dimensions and supported ply', function () {
+it('creates one safe draft BOM for every imported finished good', function () {
     $this->seed(DatabaseSeeder::class);
 
     $specifications = FinishedGoodSpecification::query()
         ->importedClientCartons()
+        ->with('product.boms')
         ->get();
 
     $eligible = $specifications->filter(
@@ -118,14 +134,24 @@ it('creates draft technical BOMs only for customer cartons with complete dimensi
     );
 
     expect($specifications)->toHaveCount(171)
-        ->and($eligible)->toHaveCount(130);
+        ->and($eligible)->toHaveCount(130)
+        ->and($specifications->filter(fn ($spec) => $spec->product->boms->isEmpty()))
+        ->toHaveCount(0);
 
     $seededBoms = BOM::query()
         ->where('code', 'like', 'BOM-CLIENT-%')
         ->with('items.material')
         ->get();
 
-    expect($seededBoms)->toHaveCount(130);
+    $reviewRequired = $seededBoms
+        ->filter(fn ($bom) => str_starts_with((string) $bom->description, '[REVIEW REQUIRED]'));
+
+    $calculated = $seededBoms
+        ->reject(fn ($bom) => str_starts_with((string) $bom->description, '[REVIEW REQUIRED]'));
+
+    expect($seededBoms)->toHaveCount(171)
+        ->and($calculated)->toHaveCount(130)
+        ->and($reviewRequired)->toHaveCount(41);
 
     foreach ($seededBoms as $bom) {
         expect($bom->status)->toBe('draft')
@@ -145,9 +171,25 @@ it('creates draft technical BOMs only for customer cartons with complete dimensi
             clientCartonApprovedRawMaterialNames()
         ))->toBe([]);
     }
+
+    $approved = clientCartonApprovedRawMaterialNames();
+    sort($approved);
+
+    foreach ($reviewRequired as $bom) {
+        $names = $bom->items
+            ->pluck('material.name')
+            ->sort()
+            ->values()
+            ->all();
+
+        expect($bom->items)->toHaveCount(10)
+            ->and($names)->toBe($approved)
+            ->and($bom->items->filter(fn ($item) => (float) $item->quantity !== 0.0))
+            ->toHaveCount(0);
+    }
 });
 
-it('uses the verified client 125x5 plus 145x1 paper formula for seeded five-ply carton BOMs', function () {
+it('uses the verified client 125x5 plus 145x1 paper formula for calculated five-ply carton BOMs', function () {
     $this->seed(DatabaseSeeder::class);
 
     $fivePlySpec = FinishedGoodSpecification::query()
@@ -163,6 +205,8 @@ it('uses the verified client 125x5 plus 145x1 paper formula for seeded five-ply 
         ->where('code', 'like', 'BOM-CLIENT-%')
         ->with('items.material')
         ->firstOrFail();
+
+    expect((string) $bom->description)->not->toStartWith('[REVIEW REQUIRED]');
 
     $paperRows = $bom->items
         ->where('component_type', 'paper')
@@ -181,20 +225,16 @@ it('uses the verified client 125x5 plus 145x1 paper formula for seeded five-ply 
         ->and($row145->material->name)->toBe('Kraft Liner');
 });
 
-it('adds the four client mixing materials to every automatically generated carton BOM', function () {
+it('adds the four client mixing materials to every calculated carton BOM', function () {
     $this->seed(DatabaseSeeder::class);
 
-    $bom = BOM::query()
+    $calculatedBoms = BOM::query()
         ->where('code', 'like', 'BOM-CLIENT-%')
+        ->where('description', 'not like', '[REVIEW REQUIRED]%')
         ->with('items.material')
-        ->firstOrFail();
+        ->get();
 
-    $adhesiveNames = $bom->items
-        ->where('component_type', 'adhesive')
-        ->pluck('material.name')
-        ->sort()
-        ->values()
-        ->all();
+    expect($calculatedBoms)->toHaveCount(130);
 
     $expected = [
         'Borax',
@@ -204,10 +244,41 @@ it('adds the four client mixing materials to every automatically generated carto
     ];
     sort($expected);
 
-    expect($adhesiveNames)->toBe($expected);
+    foreach ($calculatedBoms as $bom) {
+        $adhesiveNames = $bom->items
+            ->where('component_type', 'adhesive')
+            ->pluck('material.name')
+            ->sort()
+            ->values()
+            ->all();
+
+        expect($adhesiveNames)->toBe($expected);
+    }
 });
 
-it('is idempotent across the full client master and BOM seeding flow', function () {
+it('seeds only USD and AFN as default system currencies', function () {
+    $this->seed(CurrencySeeder::class);
+
+    $codes = Currency::query()
+        ->orderBy('id')
+        ->pluck('code')
+        ->values()
+        ->all();
+
+    expect($codes)->toBe(['USD', 'AFN'])
+        ->not->toContain('CNY');
+});
+
+it('keeps USD and AFN only after the full database seed', function () {
+    $this->seed(DatabaseSeeder::class);
+
+    expect(
+        Currency::query()->orderBy('id')->pluck('code')->values()->all()
+    )->toBe(['USD', 'AFN'])
+        ->not->toContain('CNY');
+});
+
+it('is idempotent across the full client master and all-finished-goods BOM seeding flow', function () {
     $this->seed(DatabaseSeeder::class);
 
     $before = [
@@ -215,6 +286,7 @@ it('is idempotent across the full client master and BOM seeding flow', function 
         'specifications' => FinishedGoodSpecification::importedClientCartons()->count(),
         'products' => Product::count(),
         'raw_materials' => Product::where('type', Product::TYPE_RAW_MATERIAL)->count(),
+        'finished_goods' => Product::where('type', Product::TYPE_FINISHED_GOOD)->count(),
         'boms' => BOM::where('code', 'like', 'BOM-CLIENT-%')->count(),
         'bom_items' => BOMItem::whereHas(
             'bom',
@@ -229,6 +301,7 @@ it('is idempotent across the full client master and BOM seeding flow', function 
         'specifications' => FinishedGoodSpecification::importedClientCartons()->count(),
         'products' => Product::count(),
         'raw_materials' => Product::where('type', Product::TYPE_RAW_MATERIAL)->count(),
+        'finished_goods' => Product::where('type', Product::TYPE_FINISHED_GOOD)->count(),
         'boms' => BOM::where('code', 'like', 'BOM-CLIENT-%')->count(),
         'bom_items' => BOMItem::whereHas(
             'bom',
@@ -238,8 +311,9 @@ it('is idempotent across the full client master and BOM seeding flow', function 
 
     expect($after)->toBe($before)
         ->and($after['raw_materials'])->toBe(10)
+        ->and($after['finished_goods'])->toBe(171)
         ->and($after['specifications'])->toBe(171)
-        ->and($after['boms'])->toBe(130);
+        ->and($after['boms'])->toBe(171);
 });
 
 it('preserves operator edits on an already imported carton source row', function () {
@@ -261,4 +335,31 @@ it('preserves operator edits on an already imported carton source row', function
     expect(Product::findOrFail($productId)->name)->toBe('Operator Renamed Carton')
         ->and(FinishedGoodSpecification::count())->toBe($specificationCount)
         ->and(Product::count())->toBe($productCount);
+});
+
+it('migrates the old generated customer-prefixed name without touching source identity', function () {
+    $this->seed(CustomerCartonSizeSeeder::class);
+
+    $spec = FinishedGoodSpecification::query()
+        ->importedClientCartons()
+        ->with('product')
+        ->orderBy('id')
+        ->firstOrFail();
+
+    $productId = $spec->product_id;
+    $sourceKey = $spec->source_key;
+
+    // First source row is unique in the old naming scheme.
+    $spec->product->update([
+        'name' => 'Bless Bee - (44*40*31)cm - 200ml,70pcs',
+    ]);
+
+    $this->seed(CustomerCartonSizeSeeder::class);
+
+    $spec->refresh()->load('product');
+
+    expect($spec->source_key)->toBe($sourceKey)
+        ->and($spec->product_id)->toBe($productId)
+        ->and($spec->product->name)->toStartWith('Carton')
+        ->and($spec->product->name)->not->toContain('Bless Bee');
 });

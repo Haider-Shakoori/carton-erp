@@ -7,7 +7,6 @@ if (!function_exists('getFlagByCurrencyCode')) {
             'USD' => 'us',
             'AFN' => 'af',
             'RMB' => 'cn',
-            'CNY' => 'cn',
             'IRR' => 'ir',
             'PKR' => 'pk',
             'EUR' => 'eu',

@@ -69,7 +69,7 @@
                     <select name="base_currency_id" id="base_currency" class="select2 form-select" required>
                         <option value="">{{ __('ui.please_select') }}</option>
                         @foreach ($currencies as $currency)
-                            <option value="{{ $currency->id }}" data-code="{{ $currency->code }}" @if($currency->code == 'CNY') selected @endif>{{ $currency->code }}</option>
+                            <option value="{{ $currency->id }}" data-code="{{ $currency->code }}" @if($currency->code == 'USD') selected @endif>{{ $currency->code }}</option>
                         @endforeach
                     </select>
                 </div>

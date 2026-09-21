@@ -7,6 +7,7 @@ on:
       - feat/production-completion-actuals-v2
       - feat/production-completion-consumption-ux
       - test/real-client-cnp-uat
+      - feat/all-finished-goods-boms-clean-currencies
   workflow_dispatch:
 
 permissions:
@@ -89,6 +90,11 @@ jobs:
           php -l app/Services/ProductionService.php
           php -l app/Http/Controllers/Admin/ProductionOrderController.php
           php -l app/Http/Controllers/Admin/SaleController.php
+          php -l app/Http/Controllers/Admin/RemittanceController.php
+          php -l database/seeders/CustomerCartonSizeSeeder.php
+          php -l database/seeders/CustomerCartonBomSeeder.php
+          php -l database/seeders/DatabaseSeeder.php
+          php -l database/seeders/CurrencySeeder.php
           php -l app/Models/ProductionOrder.php
           php -l app/Models/Sale.php
           php -l app/Models/SaleItem.php
@@ -107,6 +113,7 @@ jobs:
           php artisan test tests/Feature/Production/ProductionOrderStartProductionFkCostRegressionTest.php
           php artisan test tests/Feature/GoldenPath/RealWorldCartonWorkflowRemediationTest.php
           php artisan test tests/Feature/Uat/RealClientCnpWorkflowTest.php
+          php artisan test tests/Feature/ClientMaster/CustomerCartonMasterSeederTest.php
 
       - name: Complete PHP test suite
         run: php artisan test

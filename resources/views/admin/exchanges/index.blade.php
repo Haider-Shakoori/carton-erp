@@ -149,11 +149,9 @@
             //         let html = '';
             //         const flagMap = {
             //             'USD': '/assets/flags/us.svg',
-            //             'CNY': '/assets/flags/cn.svg'
             //         };
             //         const currencySymbol = {
             //             'USD': '$',
-            //             'CNY': '¥'
             //         };
 
             //         let totalExchanges = 0;
@@ -261,11 +259,11 @@
                 $.get("{{ route('admin.exchange.totals') }}", function(res) {
                     const flagMap = {
                         'USD': '/assets/flags/us.svg',
-                        'CNY': '/assets/flags/cn.svg'
+                        'AFN': '/assets/flags/af.svg'
                     };
                     const symbolMap = {
                         'USD': '$',
-                        'CNY': '¥'
+                        'AFN': '؋'
                     };
 
                     let html = `<div class="row g-3">`;

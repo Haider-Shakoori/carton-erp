@@ -18,14 +18,10 @@ class CustomerCartonSizeSeeder extends Seeder
     public function run(): void
     {
         $rows = $this->rows();
-
-        $productNameCounts = collect($rows)
-            ->countBy(
-                fn (array $row) => mb_strtolower(
-                    trim((string) ($row['product_name'] ?? ''))
-                )
-            )
+        $legacyNameCounts = collect($rows)
+            ->countBy(fn (array $row) => mb_strtolower(trim((string) ($row['product_name'] ?? ''))))
             ->all();
+        $resolvedNames = $this->resolvedNeutralProductNames($rows);
 
         $category = Category::firstOrCreate(
             ['name' => 'Custom Cartons'],
@@ -34,6 +30,11 @@ class CustomerCartonSizeSeeder extends Seeder
                 'is_active' => true,
             ]
         );
+
+        // Existing imports from the first client-master release carried the
+        // customer/company name in Product::name. Rename only those exact
+        // generated names. If an operator already renamed a product, preserve it.
+        $this->syncLegacyImportedProductNames($rows, $legacyNameCounts, $resolvedNames);
 
         $createdCustomers = 0;
         $createdProducts = 0;
@@ -47,7 +48,7 @@ class CustomerCartonSizeSeeder extends Seeder
             &$createdProducts,
             &$createdSpecifications,
             &$customerCache,
-            $productNameCounts
+            $resolvedNames
         ): void {
             foreach ($rows as $row) {
                 $customerName = trim((string) ($row['customer'] ?? ''));
@@ -60,23 +61,15 @@ class CustomerCartonSizeSeeder extends Seeder
 
                 $sourceKey = $this->sourceKey($row, $customerName);
 
-                // Source identity wins over mutable display names. Once a row
-                // has been imported, rerunning the seeder must not recreate or
-                // overwrite an operator-renamed customer/product/specification.
-                if (
-                    FinishedGoodSpecification::query()
-                        ->where('source_key', $sourceKey)
-                        ->exists()
-                ) {
+                // Source identity wins over mutable display names.
+                if (FinishedGoodSpecification::query()->where('source_key', $sourceKey)->exists()) {
                     continue;
                 }
 
                 $customerCacheKey = mb_strtolower($customerName);
 
                 if (! isset($customerCache[$customerCacheKey])) {
-                    [$customer, $customerWasCreated] = $this->findOrCreateCustomer(
-                        $customerName
-                    );
+                    [$customer, $customerWasCreated] = $this->findOrCreateCustomer($customerName);
                     $customerCache[$customerCacheKey] = $customer;
 
                     if ($customerWasCreated) {
@@ -85,25 +78,20 @@ class CustomerCartonSizeSeeder extends Seeder
                 }
 
                 $customer = $customerCache[$customerCacheKey];
+                $productName = $resolvedNames[$sourceKey] ?? null;
 
-                [$product, $productWasCreated] = $this->findOrCreateProduct(
-                    $row,
-                    $customerName,
-                    $category,
-                    $productNameCounts
-                );
-
-                if ($productWasCreated) {
-                    $createdProducts++;
+                if (! $productName) {
+                    throw new RuntimeException(
+                        'Unable to resolve a customer-free finished-good name for source '.$sourceKey.'.'
+                    );
                 }
+
+                $product = $this->createProduct($productName, $customerName, $category);
+                $createdProducts++;
 
                 $specification = FinishedGoodSpecification::firstOrCreate(
                     ['source_key' => $sourceKey],
-                    $this->specificationAttributes(
-                        $row,
-                        $customer->id,
-                        $product->id
-                    )
+                    $this->specificationAttributes($row, $customer->id, $product->id)
                 );
 
                 if ($specification->wasRecentlyCreated) {
@@ -168,38 +156,18 @@ class CustomerCartonSizeSeeder extends Seeder
             'notes' => 'Imported from '.self::SOURCE_FILE.'.',
         ]);
 
-        // account_sub_category_id is a legacy classification column that is
-        // intentionally not mass-assignable on Account.
         $customer->account_sub_category_id = 1;
         $customer->save();
 
         return [$customer, true];
     }
 
-    private function findOrCreateProduct(
-        array $row,
+    private function createProduct(
+        string $name,
         string $customerName,
-        Category $category,
-        array $productNameCounts
-    ): array {
-        $name = $this->resolvedProductName($row, $productNameCounts);
-
-        if ($name === '') {
-            throw new RuntimeException(
-                'Customer carton source contains a row without a product name.'
-            );
-        }
-
-        $existing = Product::query()
-            ->where('type', Product::TYPE_FINISHED_GOOD)
-            ->whereRaw('LOWER(TRIM(name)) = ?', [mb_strtolower($name)])
-            ->first();
-
-        if ($existing) {
-            return [$existing, false];
-        }
-
-        $product = Product::create([
+        Category $category
+    ): Product {
+        return Product::create([
             'name' => $name,
             'unit' => 'pcs',
             'category_id' => $category->id,
@@ -211,11 +179,108 @@ class CustomerCartonSizeSeeder extends Seeder
             ),
             'is_active' => true,
         ]);
-
-        return [$product, true];
     }
 
-    private function resolvedProductName(
+    /**
+     * Finished-good display names intentionally contain no customer/company or
+     * print-brand names. Size + pack information identifies the carton; neutral
+     * Variant N suffixes keep otherwise identical rows distinct.
+     *
+     * @return array<string,string> keyed by immutable source_key
+     */
+    private function resolvedNeutralProductNames(array $rows): array
+    {
+        $grouped = [];
+
+        foreach ($rows as $row) {
+            $customerName = trim((string) ($row['customer'] ?? ''));
+            $sourceKey = $this->sourceKey($row, $customerName);
+            $baseName = $this->neutralBaseProductName($row);
+            $groupKey = mb_strtolower($baseName);
+
+            $grouped[$groupKey][] = [
+                'source_key' => $sourceKey,
+                'base_name' => $baseName,
+            ];
+        }
+
+        $resolved = [];
+
+        foreach ($grouped as $group) {
+            $count = count($group);
+
+            foreach ($group as $index => $entry) {
+                $name = $entry['base_name'];
+
+                if ($count > 1) {
+                    $name .= ' - Variant '.($index + 1);
+                }
+
+                $resolved[$entry['source_key']] = Str::limit($name, 250, '');
+            }
+        }
+
+        return $resolved;
+    }
+
+    private function neutralBaseProductName(array $row): string
+    {
+        $size = $this->nullableText($row['size_raw'] ?? null);
+        $pack = $this->nullableText($row['pcs_ml'] ?? null);
+
+        $parts = [
+            $size ? 'Carton '.$size : 'Carton - Size pending',
+        ];
+
+        if ($pack) {
+            $parts[] = $pack;
+        }
+
+        return implode(' - ', $parts);
+    }
+
+    private function syncLegacyImportedProductNames(
+        array $rows,
+        array $legacyNameCounts,
+        array $resolvedNames
+    ): void {
+        foreach ($rows as $row) {
+            $customerName = trim((string) ($row['customer'] ?? ''));
+
+            if ($customerName === '') {
+                continue;
+            }
+
+            $sourceKey = $this->sourceKey($row, $customerName);
+            $specification = FinishedGoodSpecification::query()
+                ->where('source_key', $sourceKey)
+                ->with('product')
+                ->first();
+
+            if (! $specification?->product) {
+                continue;
+            }
+
+            $legacyName = $this->legacyResolvedProductName($row, $legacyNameCounts);
+            $desiredName = $resolvedNames[$sourceKey] ?? null;
+            $currentName = trim((string) $specification->product->name);
+
+            if (
+                $desiredName
+                && $legacyName
+                && mb_strtolower($currentName) === mb_strtolower($legacyName)
+                && mb_strtolower($currentName) !== mb_strtolower($desiredName)
+            ) {
+                $specification->product->update(['name' => $desiredName]);
+            }
+        }
+    }
+
+    /**
+     * Exact name logic used by the first client-master release. This allows a
+     * safe one-time rename without overwriting operator-customized product names.
+     */
+    private function legacyResolvedProductName(
         array $row,
         array $productNameCounts
     ): string {
@@ -225,10 +290,7 @@ class CustomerCartonSizeSeeder extends Seeder
             return '';
         }
 
-        $count = (int) (
-            $productNameCounts[mb_strtolower($baseName)]
-            ?? 0
-        );
+        $count = (int) ($productNameCounts[mb_strtolower($baseName)] ?? 0);
 
         if ($count <= 1) {
             return $baseName;
@@ -257,9 +319,7 @@ class CustomerCartonSizeSeeder extends Seeder
             'product_id' => $productId,
             'customer_id' => $customerId,
             'source_row' => $this->nullableInteger($row['source_row'] ?? null),
-            'source_customer_label' => $this->nullableText(
-                $row['source_customer_label'] ?? null
-            ),
+            'source_customer_label' => $this->nullableText($row['source_customer_label'] ?? null),
             'source_size_raw' => $this->nullableText($row['size_raw'] ?? null),
             'source_unit' => $this->nullableText($row['source_unit'] ?? null),
             'source_layer_raw' => $layerRaw,
@@ -287,13 +347,8 @@ class CustomerCartonSizeSeeder extends Seeder
                 $this->nullableInteger($row['pieces_per_carton'] ?? null) ?? 1
             ),
             'carton_size' => null,
-
-            // Never promote historical workbook prices into current selling
-            // prices. They are kept below as reference text only.
             'unit_price' => 0,
-            'historical_rate_note' => $this->nullableText(
-                $row['rate_raw'] ?? null
-            ),
+            'historical_rate_note' => $this->nullableText($row['rate_raw'] ?? null),
             'source_remark' => $this->nullableText($row['remark'] ?? null),
             'source_extra' => $this->nullableText($row['extra'] ?? null),
             'minimum_order_quantity' => 1,

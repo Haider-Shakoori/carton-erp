@@ -3,15 +3,18 @@
 namespace Database\Seeders;
 
 use Illuminate\Database\Seeder;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 
 class CurrencySeeder extends Seeder
 {
     public function run(): void
     {
-        DB::table('currencies')->insert([
+        $now = Carbon::now();
+
+        DB::table('currencies')->upsert([
             [
+                'id' => 1,
                 'name' => 'US Dollar',
                 'code' => 'USD',
                 'symbol' => '$',
@@ -20,21 +23,22 @@ class CurrencySeeder extends Seeder
                 'exchange_rate' => 1,
                 'is_default' => true,
                 'is_active' => true,
-                'created_at' => Carbon::now(),
-                'updated_at' => Carbon::now(),
+                'created_at' => $now,
+                'updated_at' => $now,
             ],
             [
-                'name' => 'Chinese Yuan',
-                'code' => 'CNY',
-                'symbol' => '¥',
-                'country' => 'China',
-                'flag' => 'assets/flags/cn.svg',
-                'exchange_rate' => 7.3,
+                'id' => 3,
+                'name' => 'Afghan Afghani',
+                'code' => 'AFN',
+                'symbol' => '؋',
+                'country' => 'Afghanistan',
+                'flag' => 'assets/flags/af.svg',
+                'exchange_rate' => 70,
                 'is_default' => false,
                 'is_active' => true,
-                'created_at' => Carbon::now(),
-                'updated_at' => Carbon::now(),
-            ]
-        ]);
+                'created_at' => $now,
+                'updated_at' => $now,
+            ],
+        ], ['id']);
     }
 }
