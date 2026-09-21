@@ -34,6 +34,29 @@ class PurchaseControlController extends Controller
         }
     }
 
+    public function invoice(Request $request, Purchase $purchase, PurchaseControlService $service)
+    {
+        $data = $request->validate([
+            'invoice_no' => 'required|string|max:120',
+            'invoice_date' => 'required|date',
+            'currency_id' => 'required|integer|exists:currencies,id',
+            'exchange_rate' => 'required|numeric|min:0.000001',
+            'expense_total' => 'nullable|numeric|min:0',
+            'notes' => 'nullable|string|max:2000',
+            'items' => 'required|array|min:1',
+            'items.*.purchase_item_id' => 'required|integer|distinct|exists:purchase_items,id',
+            'items.*.quantity' => 'required|numeric|min:0.000001',
+            'items.*.unit_price' => 'required|numeric|min:0',
+        ]);
+
+        try {
+            $invoice = $service->recordSupplierInvoice($purchase, $data, $request->user());
+            return back()->with('success', 'Supplier invoice '.$invoice->invoice_no.' recorded.');
+        } catch (\Throwable $e) {
+            return back()->withInput()->with('error', $e->getMessage());
+        }
+    }
+
     public function match(
         Request $request,
         Purchase $purchase,
