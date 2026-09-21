@@ -166,3 +166,16 @@ it('resolves scanner input to the physical reel workspace without mutating stock
         ->and((float) $reel->fresh()->system_remaining_weight_kg)
         ->toBe(500.0);
 });
+
+
+it('keeps the production completion scanner compatible with printed scanner keys', function () {
+    $source = file_get_contents(
+        resource_path('views/admin/production-orders/show.blade.php')
+    );
+
+    expect($source)
+        ->toContain('data-reel-code')
+        ->toContain('data-scan-key')
+        ->toContain('row.dataset.reelCode === code')
+        ->toContain('row.dataset.scanKey === code');
+});
