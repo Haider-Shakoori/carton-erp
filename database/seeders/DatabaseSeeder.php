@@ -126,6 +126,7 @@ class DatabaseSeeder extends Seeder
         $this->call(PermissionsSeeder::class);
         $this->call(HRPermissionSeeder::class);
         $this->call(ShareholderPermissionSeeder::class);
+        $this->call(WarehouseSeeder::class);
         $this->call(CategorySeeder::class);
         $this->call(ClientCartonRawMaterialSeeder::class);
         $this->call(BoardProfileSeeder::class);
