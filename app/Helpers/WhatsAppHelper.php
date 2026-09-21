@@ -10,9 +10,9 @@ class WhatsAppHelper
     public static function sendMessage($to, $message): bool
     {
         if (empty($to) || empty($message)) {
-            Log::warning('❌ WhatsApp message not sent: missing to/text', [
-                'to' => $to,
-                'message' => $message,
+            Log::warning('WhatsApp message not sent: missing recipient or text.', [
+                'recipient' => self::maskRecipient($to),
+                'message_length' => is_string($message) ? strlen($message) : 0,
             ]);
             return false;
         }
@@ -29,19 +29,33 @@ class WhatsAppHelper
 
 
         if (!$response->successful()) {
-            Log::error('❌ Failed to send WhatsApp message', [
-                'to'     => $to,
+            Log::error('WhatsApp provider rejected a message.', [
+                'recipient' => self::maskRecipient($to),
                 'status' => $response->status(),
-                'body'   => $response->body(),
+                'message_length' => strlen($message),
             ]);
         } else {
-            Log::info('✅ WhatsApp message sent', [
-                'to' => $to,
-                'length' => strlen($message),
+            Log::info('WhatsApp message sent.', [
+                'recipient' => self::maskRecipient($to),
+                'message_length' => strlen($message),
             ]);
         }
 
         return $response->successful();
+    }
+
+    private static function maskRecipient(mixed $recipient): ?string
+    {
+        $value = preg_replace('/\s+/', '', (string) $recipient);
+
+        if ($value === '') {
+            return null;
+        }
+
+        $visible = min(strlen($value), 4);
+
+        return str_repeat('*', max(strlen($value) - $visible, 0))
+            .substr($value, -$visible);
     }
 }
 

@@ -43,6 +43,22 @@ class StockControlNotificationService
         $queued = 0;
         $skipped = 0;
 
+        $todayLifecycleAlertEscalationIds = StockControlEscalationEvent::query()
+            ->whereIn('event_type', ['reopened', 'signal_updated'])
+            ->whereDate('created_at', today())
+            ->get()
+            ->filter(function (StockControlEscalationEvent $event): bool {
+                if ($event->event_type === 'reopened') {
+                    return true;
+                }
+
+                return (int) data_get($event->metadata, 'new_level', 0)
+                    > (int) data_get($event->metadata, 'old_level', 0);
+            })
+            ->pluck('stock_control_escalation_id')
+            ->map(fn ($id) => (int) $id)
+            ->all();
+
         $activeEscalations = StockControlEscalation::query()
             ->with(['manager.account', 'product'])
             ->where('status', '!=', StockControlEscalation::STATUS_CLOSED)
@@ -80,7 +96,12 @@ class StockControlNotificationService
 
             if (
                 (int) $escalation->level === 3
-                && $escalation->last_detected_at?->lt(today())
+                && $escalation->opened_at?->lt(today())
+                && ! in_array(
+                    (int) $escalation->id,
+                    $todayLifecycleAlertEscalationIds,
+                    true
+                )
             ) {
                 $result = $this->dispatchEvent(
                     eventKey: 'stock-control:escalation:'.$escalation->id
@@ -132,6 +153,55 @@ class StockControlNotificationService
                 $queued += $result['queued'];
                 $skipped += $result['skipped'];
             }
+        }
+
+        $lifecycleEvents = StockControlEscalationEvent::query()
+            ->with(['escalation.product'])
+            ->whereIn('event_type', ['reopened', 'signal_updated'])
+            ->where('created_at', '>=', now()->subDays(14))
+            ->get();
+
+        foreach ($lifecycleEvents as $event) {
+            if (! $event->escalation) {
+                continue;
+            }
+
+            $escalation = $event->escalation;
+
+            $isLevelUpgrade = $event->event_type === 'signal_updated'
+                && (int) data_get($event->metadata, 'new_level', $escalation->level)
+                    > (int) data_get($event->metadata, 'old_level', $escalation->level);
+
+            if ($event->event_type === 'signal_updated' && ! $isLevelUpgrade) {
+                continue;
+            }
+
+            $result = $this->dispatchEvent(
+                eventKey: 'stock-control:escalation-event:'.$event->id,
+                eventType: $event->event_type === 'reopened'
+                    ? 'management_escalation_reopened'
+                    : 'management_escalation_upgraded',
+                title: $event->event_type === 'reopened'
+                    ? 'Stock Control Escalation Reopened'
+                    : 'Stock Control Escalation Severity Increased',
+                message: $event->event_type === 'reopened'
+                    ? $escalation->title.' has reopened because the management signal advanced.'
+                    : $escalation->title.' has increased to Level '.$escalation->level.'.',
+                url: route(
+                    'admin.stock-reconciliations.management-control.escalations.show',
+                    $escalation
+                ),
+                severity: $escalation->severity,
+                recipients: $this->escalationRecipients($escalation),
+                minimumLevel: (int) $escalation->level,
+                category: 'escalation',
+                entityType: StockControlEscalation::class,
+                entityId: $escalation->id
+            );
+
+            $created += $result['created'];
+            $queued += $result['queued'];
+            $skipped += $result['skipped'];
         }
 
         $assignmentEvents = StockControlEscalationEvent::query()

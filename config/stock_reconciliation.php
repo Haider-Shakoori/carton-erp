@@ -82,4 +82,13 @@ return [
         'weekly_review_schedule_time' => '08:30',
         'daily_sync_time' => '08:15',
     ],
+
+    'notifications' => [
+        'sync_every_minutes' => 15,
+        'shared_host_queue_drain_enabled' => env(
+            'STOCK_NOTIFICATION_QUEUE_DRAIN_ENABLED',
+            true
+        ),
+        'shared_host_queue_drain_every_minutes' => 1,
+    ],
 ];
