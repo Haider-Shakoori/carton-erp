@@ -12,10 +12,31 @@ use App\Models\StockVarianceInvestigation;
 use App\Models\User;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use Throwable;
 
 class StockControlNotificationService
 {
+    public function syncSafely(): array
+    {
+        try {
+            return $this->sync();
+        } catch (Throwable $e) {
+            Log::error('Stock-control notification synchronization failed.', [
+                'exception' => $e::class,
+                'error' => mb_substr($e->getMessage(), 0, 1000),
+            ]);
+
+            return [
+                'created' => 0,
+                'queued' => 0,
+                'skipped' => 0,
+                'failed' => true,
+            ];
+        }
+    }
+
     public function sync(): array
     {
         $created = 0;
