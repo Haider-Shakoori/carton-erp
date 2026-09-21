@@ -91,9 +91,17 @@ class User extends Authenticatable
 
     public function notificationEmail(): ?string
     {
+        $accountEmail = $this->account()->value('email');
+
+        if (! $accountEmail && $this->account_id) {
+            $accountEmail = Account::query()
+                ->whereKey($this->account_id)
+                ->value('email');
+        }
+
         $email = trim((string) (
             $this->email
-            ?: $this->account()->value('email')
+            ?: $accountEmail
         ));
 
         return filter_var($email, FILTER_VALIDATE_EMAIL) ? $email : null;
@@ -105,6 +113,11 @@ class User extends Authenticatable
 
         if (! $phone) {
             $account = $this->account()->first();
+
+            if (! $account && $this->account_id) {
+                $account = Account::query()->find($this->account_id);
+            }
+
             $phone = $account?->whatsapp ?: $account?->contact;
         }
 
