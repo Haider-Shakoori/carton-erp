@@ -7,6 +7,7 @@ on:
       - feat/stock-reconciliation-posting
       - feat/stock-reconciliation-reporting
       - feat/stock-reconciliation-inventory-history
+      - feat/stock-reconciliation-controls
   workflow_dispatch:
 
 permissions:
