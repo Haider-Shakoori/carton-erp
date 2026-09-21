@@ -125,6 +125,11 @@ class ReelInventoryController extends Controller
         ]);
 
         $summary = $this->service->summary($purchaseItem);
+        $summary['reels']->load([
+            'measurements.measurer',
+            'statusEvents.changedBy',
+            'statusChangedBy',
+        ]);
 
         $recentConsumptions = ProductionReelConsumption::query()
             ->with([
