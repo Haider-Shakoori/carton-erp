@@ -1059,7 +1059,7 @@
                                             <span class="completion-step">2</span>
                                             <span>Actual Raw Material Consumption</span>
                                         </div>
-                                        <span class="badge bg-light text-dark border">BOM stays as the planned baseline</span>
+                                        <span class="badge bg-light text-dark border">BOM remains the planned baseline</span>
                                     </div>
                                     <div class="text-muted small mb-2">Enter the quantity that physically left inventory for every material allocated to this work order.</div>
                                 <div class="alert alert-info py-2 px-3 mb-3 small">
