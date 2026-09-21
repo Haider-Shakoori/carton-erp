@@ -68,6 +68,16 @@ class InventoryPreventionIntelligenceService
                 $productId,
                 fn ($q) => $q->where('product_id', $productId)
             )
+            ->when(
+                $rootCauseCode,
+                fn ($q) => $q->whereHas(
+                    'investigation',
+                    fn ($case) => $case->where(
+                        'root_cause_code',
+                        $rootCauseCode
+                    )
+                )
+            )
             ->get();
 
         $investigations = StockVarianceInvestigation::query()
@@ -304,9 +314,11 @@ class InventoryPreventionIntelligenceService
                 $resolvedAt = CarbonImmutable::parse($case->resolved_at);
                 $preStart = $resolvedAt->subDays($preWindowDays);
                 $postEnd = $resolvedAt->addDays($postWindowDays);
-                $observedPostEnd = min($postEnd, CarbonImmutable::now());
-                $postWindowComplete = CarbonImmutable::now()
-                    ->greaterThanOrEqualTo($postEnd);
+                $now = CarbonImmutable::now();
+                $observedPostEnd = $postEnd->lessThan($now)
+                    ? $postEnd
+                    : $now;
+                $postWindowComplete = $now->greaterThanOrEqualTo($postEnd);
 
                 $productId = (int) $case->adjustmentItem->product_id;
                 $lines = $effectivenessLines->get($productId, collect());
