@@ -199,19 +199,26 @@ class ReelInventoryService
                 );
             }
 
-            $unmeasured = $reels->filter(
+            $reelsToMeasure = $reels->filter(
+                fn (PurchaseItemReel $reel) =>
+                    $reel->status !== PurchaseItemReel::STATUS_CONSUMED
+                    || (float) ($reel->last_measured_weight_kg ?? 0)
+                        > self::EPSILON
+            );
+
+            $unmeasured = $reelsToMeasure->filter(
                 fn (PurchaseItemReel $reel) =>
                     $reel->last_measured_weight_kg === null
             );
 
             if ($unmeasured->isNotEmpty()) {
                 throw new RuntimeException(
-                    'Every registered reel must have a current measured weight before re-baselining.'
+                    'Every active physical reel must have a current measured weight before re-baselining.'
                 );
             }
 
             $batchChangedAt = $locked->updated_at;
-            $staleMeasurements = $reels->filter(
+            $staleMeasurements = $reelsToMeasure->filter(
                 fn (PurchaseItemReel $reel) =>
                     ! $reel->last_measured_at
                     || (
@@ -227,7 +234,7 @@ class ReelInventoryService
                 );
             }
 
-            $measuredTotal = (float) $reels->sum(
+            $measuredTotal = (float) $reelsToMeasure->sum(
                 fn (PurchaseItemReel $reel) =>
                     (float) $reel->last_measured_weight_kg
             );
