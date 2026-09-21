@@ -1863,7 +1863,7 @@
                 <div class="so2-drawer-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="offcanvas">Cancel</button><button type="button" class="btn btn-primary" id="addItemBtn" disabled><i class="bi bi-plus-lg me-1"></i>Add to Sale</button></div>
             </div>
 
-            <div class="so2-add-pane" data-so2-add-pane="quick">
+            <div class="so2-add-pane" data-so2-add-pane="quick" id="cartonSpecSection">
                 <div class="so2-form-grid">
                     <div class="full"><label>Finished Carton Product *</label><select id="csProduct" class="form-select"><option value="">Select product...</option>@foreach($products as $product)<option value="{{ $product->id }}">{{ $product->name }}</option>@endforeach</select></div>
                     <div><label>Box Style</label><select id="csBoxStyle" class="form-select"></select></div><div><label>Unit</label><select id="csUnit" class="form-select"></select></div>
