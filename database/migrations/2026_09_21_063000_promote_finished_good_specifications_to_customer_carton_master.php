@@ -43,6 +43,10 @@ return new class extends Migration
                 ->nullable()
                 ->after('source_size_raw');
 
+            $table->string('source_layer_raw', 100)
+                ->nullable()
+                ->after('source_unit');
+
             $table->unsignedTinyInteger('ply')
                 ->nullable()
                 ->after('flute_type');
@@ -88,6 +92,7 @@ return new class extends Migration
                 'source_customer_label',
                 'source_size_raw',
                 'source_unit',
+                'source_layer_raw',
                 'ply',
                 'print_spec',
                 'reel_cut',
