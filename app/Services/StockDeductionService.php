@@ -509,6 +509,8 @@ class StockDeductionService
                 $reel = $selection['reel'];
                 $quantityKg = (float) $selection['quantity_kg'];
 
+                app(WarehouseInventoryService::class)->ensureBatchBalance($batch);
+
                 if ($batch->availableKg() + self::EPSILON < $quantityKg) {
                     throw new RuntimeException(sprintf(
                         'Batch %s contains only %.4f kg but reel %s declares %.4f kg consumed.',
@@ -571,6 +573,9 @@ class StockDeductionService
                     'consumed_at' => now(),
                     'created_by' => Auth::id(),
                 ]);
+
+                app(WarehouseInventoryService::class)
+                    ->consumeForProduction($record, $batch);
 
                 app(ReelInventoryService::class)
                     ->consumeSelectedReelForConsumption(
@@ -686,6 +691,8 @@ class StockDeductionService
 
             $isRoll = $batch->isRollBatch();
 
+            app(WarehouseInventoryService::class)->ensureBatchBalance($batch);
+
             // For roll-based paper batches inventory is tracked and consumed in kg.
             // The incoming $remaining/$actualQuantity is the physical weight (kg)
             // required by the BOM. For every other unit we keep the legacy native
@@ -781,6 +788,9 @@ class StockDeductionService
                 'consumed_at' => now(),
                 'created_by' => Auth::id(),
             ]);
+
+            app(WarehouseInventoryService::class)
+                ->consumeForProduction($record, $batch);
 
             if ($isRoll) {
                 app(ReelInventoryService::class)
@@ -1003,6 +1013,9 @@ class StockDeductionService
                     continue;
                 }
 
+                app(WarehouseInventoryService::class)
+                    ->restoreForProduction($consumption, $batch);
+
                 // ✅ Restore qty_available
                 $batch->qty_available = (float) $batch->qty_available + (float) $consumption->actual_quantity;
 
@@ -1148,6 +1161,9 @@ class StockDeductionService
                 $batch = PurchaseItem::query()
                     ->lockForUpdate()
                     ->findOrFail($consumption->purchase_item_id);
+
+                app(WarehouseInventoryService::class)
+                    ->restoreForProductionQuantity($consumption, $batch, $toRestore);
 
                 if ($batch->isRollBatch()) {
                     $kgPerRoll = max((float) $batch->kg_per_roll, self::EPSILON);
