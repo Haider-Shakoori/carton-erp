@@ -68,6 +68,15 @@ class ReelInventoryController extends Controller
             ->with('reels')
             ->get();
 
+        $measurementStates = $allRollBatches
+            ->filter(fn ($batch) => $batch->reels->isNotEmpty())
+            ->mapWithKeys(fn ($batch) => [
+                $batch->id => $this->service->measurementReadiness(
+                    $batch,
+                    $batch->reels
+                ),
+            ]);
+
         $stats = [
             'batches' => $allRollBatches->count(),
             'tracked' => $allRollBatches
@@ -99,6 +108,18 @@ class ReelInventoryController extends Controller
                     PurchaseItemReel::STATUS_DAMAGED,
                     PurchaseItemReel::STATUS_QUARANTINED,
                 ])
+                ->count(),
+            'weighing_incomplete' => $measurementStates
+                ->where('state', 'incomplete')
+                ->count(),
+            'measurements_stale' => $measurementStates
+                ->where('state', 'stale')
+                ->count(),
+            'ready_to_reconcile' => $measurementStates
+                ->where('state', 'reconcile')
+                ->count(),
+            'measurements_aligned' => $measurementStates
+                ->where('state', 'aligned')
                 ->count(),
             'inventory_value_usd' => (float) $allRollBatches->sum(
                 fn ($batch) => $batch->availableKg()
