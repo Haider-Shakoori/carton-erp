@@ -8,6 +8,8 @@ use App\Models\StockReconciliationItem;
 use App\Models\StockAdjustmentItem;
 use App\Models\Product;
 use App\Services\StockReconciliationService;
+use App\Services\StockCycleCountPlanningService;
+use App\Services\InventoryControlAnalysisService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
@@ -50,6 +52,87 @@ class StockReconciliationController extends Controller
         ];
 
         return view('admin.stock-reconciliations.index', compact('reconciliations', 'stats'));
+    }
+
+    public function planning(Request $request, StockCycleCountPlanningService $planning)
+    {
+        $validated = $request->validate([
+            'as_of' => ['nullable', 'date'],
+        ]);
+
+        $plan = $planning->plan($validated['as_of'] ?? null);
+
+        return view('admin.stock-reconciliations.planning', compact('plan'));
+    }
+
+    public function startPlannedCount(Request $request)
+    {
+        $validated = $request->validate([
+            'product_ids' => ['required', 'array', 'min:1'],
+            'product_ids.*' => ['required', 'integer', 'distinct', 'exists:products,id'],
+            'count_date' => ['required', 'date'],
+            'notes' => ['nullable', 'string', 'max:2000'],
+        ]);
+
+        try {
+            $reconciliation = $this->service->createSnapshot(
+                $validated['count_date'],
+                $validated['notes'] ?? 'ABC / targeted cycle count',
+                $validated['product_ids']
+            );
+
+            return redirect()
+                ->route('admin.stock-reconciliations.show', $reconciliation)
+                ->with(
+                    'success',
+                    'Targeted cycle count created for the selected materials. Inventory has not been changed.'
+                );
+        } catch (RuntimeException $e) {
+            return back()->withInput()->with('error', $e->getMessage());
+        }
+    }
+
+    public function trends(Request $request, InventoryControlAnalysisService $analysis)
+    {
+        $validated = $request->validate([
+            'from_date' => ['nullable', 'date'],
+            'to_date' => ['nullable', 'date'],
+            'interval' => ['nullable', Rule::in(['week', 'month'])],
+        ]);
+
+        $trend = $analysis->varianceTrend(
+            $validated['from_date'] ?? null,
+            $validated['to_date'] ?? null,
+            $validated['interval'] ?? 'week'
+        );
+
+        return view('admin.stock-reconciliations.trends', compact('trend'));
+    }
+
+    public function controlAnalysis(Request $request, InventoryControlAnalysisService $analysis)
+    {
+        $validated = $request->validate([
+            'from_date' => ['nullable', 'date'],
+            'to_date' => ['nullable', 'date'],
+            'product_id' => ['nullable', 'integer', 'exists:products,id'],
+        ]);
+
+        $control = $analysis->controlAnalysis(
+            $validated['from_date'] ?? null,
+            $validated['to_date'] ?? null,
+            isset($validated['product_id']) ? (int) $validated['product_id'] : null
+        );
+
+        $products = Product::query()
+            ->where('is_active', true)
+            ->where('type', Product::TYPE_RAW_MATERIAL)
+            ->orderBy('name')
+            ->get(['id', 'name']);
+
+        return view(
+            'admin.stock-reconciliations.control-analysis',
+            compact('control', 'products')
+        );
     }
 
     public function report(Request $request)
