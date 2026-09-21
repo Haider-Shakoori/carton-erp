@@ -26,6 +26,14 @@ class Purchase extends Model
         'usd_subtotal',
         'usd_expense_total',
         'usd_grand_total',
+        'approved_by',
+        'approved_at',
+        'approval_notes',
+        'received_by',
+        'received_at',
+        'invoice_match_status',
+        'matched_by',
+        'matched_at',
     ];
 
     protected $casts = [
@@ -38,6 +46,9 @@ class Purchase extends Model
         'usd_grand_total' => 'decimal:2',
         'purchase_date' => 'date',
         'arrival_date' => 'date',
+        'approved_at' => 'datetime',
+        'received_at' => 'datetime',
+        'matched_at' => 'datetime',
     ];
 
     // ============================================================
@@ -74,6 +85,31 @@ class Purchase extends Model
     public function expenses()
     {
         return $this->hasMany(PurchaseExpense::class, 'purchase_id');
+    }
+
+    public function goodsReceipts()
+    {
+        return $this->hasMany(PurchaseGoodsReceipt::class);
+    }
+
+    public function supplierInvoices()
+    {
+        return $this->hasMany(PurchaseSupplierInvoice::class);
+    }
+
+    public function approvedBy()
+    {
+        return $this->belongsTo(User::class, 'approved_by');
+    }
+
+    public function receivedBy()
+    {
+        return $this->belongsTo(User::class, 'received_by');
+    }
+
+    public function matchedBy()
+    {
+        return $this->belongsTo(User::class, 'matched_by');
     }
 
     // ============================================================
