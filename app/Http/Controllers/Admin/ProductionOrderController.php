@@ -535,6 +535,7 @@ class ProductionOrderController extends Controller
                             'id' => (int) $reel->id,
                             'material_id' => (int) $reel->purchaseItem->product_id,
                             'reel_code' => $reel->reel_code,
+                            'scan_key' => $reel->scannerKey(),
                             'status' => $reel->status,
                             'selectable' => $selectable,
                             'batch_no' => $reel->purchaseItem->batch_no,
