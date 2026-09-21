@@ -21,6 +21,15 @@ it('locks the client-required production, quotation and invoice UI contracts', f
         ->toContain('.val($input.val())')
         ->toContain('PO Rate (AFN/kg)')
         ->toContain('Auto-populated from latest arrived purchase order.')
+        ->toContain('data-so2-tab="bom"')
+        ->toContain('so2-item-selector')
+        ->toContain('BOM Material Breakdown')
+        ->toContain('Print Quotation')
+        ->toContain('Print Invoice')
+        ->toContain('id="addCartonOffcanvas"')
+        ->toContain('Manual Override Applied')
+        ->toContain("/reset-price")
+        ->toContain('calculateStockRequirement(1, true)')
         ->not->toContain('<span class="badge bg-primary">{{ $item->bom->code');
 
     expect($invoiceSource)
