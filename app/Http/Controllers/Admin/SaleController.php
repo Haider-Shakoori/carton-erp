@@ -231,7 +231,7 @@ class SaleController extends Controller
             'customer',
             'currency',
             'items.product',
-            'items.bom',
+            'items.bom.items.material',
             'items.purchaseItem.purchase',
             'items.purchaseItem.purchase.currency',
             'productionOrder',
