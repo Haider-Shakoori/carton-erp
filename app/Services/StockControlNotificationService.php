@@ -9,6 +9,7 @@ use App\Models\StockControlReview;
 use App\Models\StockNotificationDelivery;
 use App\Models\StockNotificationPreference;
 use App\Models\StockVarianceInvestigation;
+use App\Models\StockVarianceInvestigationEvent;
 use App\Models\User;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -134,6 +135,48 @@ class StockControlNotificationService
             }
         }
 
+        $reopenedEvents = StockControlEscalationEvent::query()
+            ->with(['escalation.manager', 'escalation.product'])
+            ->where('event_type', 'reopened')
+            ->where('created_at', '>=', now()->subDays(14))
+            ->get();
+
+        foreach ($reopenedEvents as $event) {
+            $escalation = $event->escalation;
+
+            if (! $escalation) {
+                continue;
+            }
+
+            $isRecurrence = $escalation->source_type === 'post_corrective_recurrence';
+
+            $result = $this->dispatchEvent(
+                eventKey: 'stock-control:escalation:'.$escalation->id
+                    .':reopened:'.$event->id,
+                eventType: $isRecurrence
+                    ? 'recurrence_after_corrective_action'
+                    : 'management_escalation_reopened',
+                title: $isRecurrence
+                    ? 'Recurrence After Corrective Action'
+                    : 'Stock Control Escalation Reopened',
+                message: $escalation->message,
+                url: route(
+                    'admin.stock-reconciliations.management-control.escalations.show',
+                    $escalation
+                ),
+                severity: $escalation->severity,
+                recipients: $this->escalationRecipients($escalation),
+                minimumLevel: (int) $escalation->level,
+                category: $isRecurrence ? 'recurrence' : 'escalation',
+                entityType: StockControlEscalation::class,
+                entityId: $escalation->id
+            );
+
+            $created += $result['created'];
+            $queued += $result['queued'];
+            $skipped += $result['skipped'];
+        }
+
         $assignmentEvents = StockControlEscalationEvent::query()
             ->with(['escalation', 'user'])
             ->where('event_type', 'assignment_updated')
@@ -158,7 +201,8 @@ class StockControlNotificationService
             }
 
             $result = $this->dispatchEvent(
-                eventKey: 'stock-control:escalation:'.$event->stock_control_escalation_id.':opened',
+                eventKey: 'stock-control:escalation:'.$event->stock_control_escalation_id
+                    .':assignment:'.$event->id,
                 eventType: 'escalation_assignment',
                 title: 'Stock Control Escalation Assigned to You',
                 message: $event->escalation->title
@@ -173,6 +217,63 @@ class StockControlNotificationService
                 category: 'assignment',
                 entityType: StockControlEscalation::class,
                 entityId: $event->stock_control_escalation_id
+            );
+
+            $created += $result['created'];
+            $queued += $result['queued'];
+            $skipped += $result['skipped'];
+        }
+
+        $investigationAssignmentEvents = StockVarianceInvestigationEvent::query()
+            ->with(['investigation.assignee'])
+            ->whereIn('event_type', ['opened', 'updated'])
+            ->where('created_at', '>=', now()->subDays(14))
+            ->get();
+
+        foreach ($investigationAssignmentEvents as $event) {
+            $case = $event->investigation;
+
+            if (! $case?->assignee) {
+                continue;
+            }
+
+            $assignedTo = data_get($event->metadata, 'after.assigned_to')
+                ?? data_get($event->metadata, 'assigned_to');
+            $beforeAssignedTo = data_get($event->metadata, 'before.assigned_to');
+
+            if (
+                $event->event_type === 'updated'
+                && (string) $assignedTo === (string) $beforeAssignedTo
+            ) {
+                continue;
+            }
+
+            if (
+                $assignedTo !== null
+                && (int) $assignedTo !== (int) $case->assigned_to
+            ) {
+                continue;
+            }
+
+            $result = $this->dispatchEvent(
+                eventKey: 'stock-control:investigation:'.$case->id
+                    .':assignment:'.$event->id,
+                eventType: 'investigation_assignment',
+                title: 'Stock Variance Investigation Assigned to You',
+                message: sprintf(
+                    'INV-%06d has been assigned to you for investigation.',
+                    $case->id
+                ),
+                url: route(
+                    'admin.stock-reconciliations.investigations.show',
+                    $case
+                ),
+                severity: 'high',
+                recipients: collect([$case->assignee]),
+                minimumLevel: 2,
+                category: 'assignment',
+                entityType: StockVarianceInvestigation::class,
+                entityId: $case->id
             );
 
             $created += $result['created'];
@@ -334,8 +435,12 @@ class StockControlNotificationService
 
             if (
                 $minimumLevel < $preference->minimum_escalation_level
-                && in_array($category, ['escalation', 'recurrence', 'assignment'], true)
+                && in_array($category, ['escalation', 'recurrence'], true)
             ) {
+                continue;
+            }
+
+            if ($category === 'assignment' && ! $preference->assignment_alerts_enabled) {
                 continue;
             }
 
@@ -491,7 +596,10 @@ class StockControlNotificationService
             [
                 'event_type' => $eventType,
                 'status' => StockNotificationDelivery::STATUS_QUEUED,
-                'recipient' => $recipient,
+                'recipient' => StockNotificationDelivery::maskRecipient(
+                    $recipient,
+                    $channel
+                ),
                 'queued_at' => now(),
                 'metadata' => $data,
             ]
@@ -554,24 +662,28 @@ class StockControlNotificationService
         return User::query()
             ->with('account')
             ->where('is_active', true)
-            ->where('account_type', 'admin')
-            ->get();
+            ->get()
+            ->filter(function (User $user): bool {
+                if ($user->account_type === 'admin') {
+                    return true;
+                }
+
+                try {
+                    return $user->can('review stock reconciliations');
+                } catch (Throwable) {
+                    return false;
+                }
+            })
+            ->values();
     }
 
     private function emailFor(User $user): ?string
     {
-        $email = trim((string) ($user->email ?: $user->account?->email));
-
-        return filter_var($email, FILTER_VALIDATE_EMAIL) ? $email : null;
+        return $user->notificationEmail();
     }
 
     private function whatsAppFor(User $user): ?string
     {
-        $phone = trim((string) (
-            $user->account?->whatsapp
-            ?: $user->account?->contact
-        ));
-
-        return $phone !== '' ? $phone : null;
+        return $user->notificationPhone();
     }
 }
