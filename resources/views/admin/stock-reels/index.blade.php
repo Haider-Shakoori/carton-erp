@@ -23,17 +23,23 @@
     </div>
 
     <div class="row g-3 mb-4">
-        <div class="col-lg-3 col-md-6"><div class="card border-0 shadow-sm"><div class="card-body">
+        <div class="col-xl-2 col-md-4"><div class="card border-0 shadow-sm"><div class="card-body">
             <div class="text-muted small">Roll Batches</div><div class="fs-3 fw-bold">{{ $stats['batches'] }}</div>
         </div></div></div>
-        <div class="col-lg-3 col-md-6"><div class="card border-success shadow-sm"><div class="card-body">
+        <div class="col-xl-2 col-md-4"><div class="card border-success shadow-sm"><div class="card-body">
             <div class="text-muted small">Tracked</div><div class="fs-3 fw-bold text-success">{{ $stats['tracked'] }}</div>
         </div></div></div>
-        <div class="col-lg-3 col-md-6"><div class="card border-danger shadow-sm"><div class="card-body">
+        <div class="col-xl-2 col-md-4"><div class="card border-danger shadow-sm"><div class="card-body">
             <div class="text-muted small">Out of Sync</div><div class="fs-3 fw-bold text-danger">{{ $stats['out_of_sync'] }}</div>
         </div></div></div>
-        <div class="col-lg-3 col-md-6"><div class="card border-warning shadow-sm"><div class="card-body">
-            <div class="text-muted small">Open Remnant Reels</div><div class="fs-3 fw-bold text-warning">{{ $stats['open_reels'] }}</div>
+        <div class="col-xl-2 col-md-4"><div class="card border-warning shadow-sm"><div class="card-body">
+            <div class="text-muted small">Partial Reels</div><div class="fs-3 fw-bold text-warning">{{ $stats['open_reels'] }}</div>
+        </div></div></div>
+        <div class="col-xl-2 col-md-4"><div class="card border-danger shadow-sm"><div class="card-body">
+            <div class="text-muted small">Blocked Reels</div><div class="fs-3 fw-bold text-danger">{{ $stats['blocked_reels'] }}</div>
+        </div></div></div>
+        <div class="col-xl-2 col-md-4"><div class="card border-0 shadow-sm"><div class="card-body">
+            <div class="text-muted small">Roll Inventory Value</div><div class="fs-5 fw-bold">&#36;{{ number_format($stats['inventory_value_usd'], 2) }}</div>
         </div></div></div>
     </div>
 
@@ -81,15 +87,20 @@
                         <td>
                             {{ $batch->purchase?->purchase_no ?? '—' }}
                             <br><small class="text-muted">{{ $batch->purchase?->purchase_date ?? $batch->created_at?->toDateString() }}</small>
+                            <br><small class="text-muted">Age: {{ $s['age_days'] !== null ? $s['age_days'].' days' : '—' }}</small>
                         </td>
                         <td class="text-end">
                             <div class="fw-semibold">{{ number_format($s['batch_available_kg'], 4) }} kg</div>
                             <small class="text-muted">{{ number_format((float) $batch->qty_available, 4) }} roll-equiv.</small>
+                            <br><small class="text-muted">Value: &#36;{{ number_format($s['inventory_value_usd'], 2) }}</small>
                         </td>
                         <td class="text-end">
                             @if($s['tracked'])
                                 {{ $s['reel_count'] }}
-                                <br><small class="text-muted">{{ $s['open_count'] }} open / {{ $s['sealed_count'] }} sealed</small>
+                                <br><small class="text-muted">{{ $s['open_count'] }} partial / {{ $s['sealed_count'] }} full</small>
+                                @if($s['blocked_count'] > 0)
+                                    <br><small class="text-danger">{{ $s['blocked_count'] }} blocked · {{ number_format($s['blocked_kg'], 4) }} kg</small>
+                                @endif
                             @else
                                 <span class="text-muted">Not initialized</span>
                             @endif
