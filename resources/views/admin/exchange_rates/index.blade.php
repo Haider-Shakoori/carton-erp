@@ -58,7 +58,7 @@
           <label class="form-label fw-semibold text-muted">💱 Base Currency</label>
           <select name="base_currency_id" class="form-select" required>
             @foreach($currencies as $currency)
-              <option value="{{ $currency->id }}" @if($currency->code == 'CNY') selected @endif>{{ $currency->code }}</option>
+              <option value="{{ $currency->id }}" @if($currency->code == 'USD') selected @endif>{{ $currency->code }}</option>
             @endforeach
           </select>
         </div>
