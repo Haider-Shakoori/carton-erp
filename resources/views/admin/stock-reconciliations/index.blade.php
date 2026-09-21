@@ -10,6 +10,9 @@
             <p class="text-muted mb-0">Cycle counts compare ERP batch balances with physical warehouse stock.</p>
         </div>
         <div class="d-flex gap-2 flex-wrap">
+            <a href="{{ route('admin.stock-reconciliations.report', ['unresolved' => 1]) }}" class="btn btn-outline-warning">
+                <i class="bi bi-exclamation-diamond me-1"></i> Unresolved Variances
+            </a>
             <a href="{{ route('admin.stock-reconciliations.report') }}" class="btn btn-outline-primary">
                 <i class="bi bi-bar-chart me-1"></i> Variance Report
             </a>
@@ -41,6 +44,11 @@
             <div class="text-muted small">30-Day Negative Variance</div>
             <div class="fs-3 fw-bold text-danger">${{ number_format($stats['negative_variance_30d_usd'], 2) }}</div>
             <div class="small text-muted">Last posted: {{ $stats['last_posted_at'] ? \Carbon\Carbon::parse($stats['last_posted_at'])->format('d M Y H:i') : 'Never' }}</div>
+        </div></div></div>
+        <div class="col-lg-3 col-md-6"><div class="card border-warning shadow-sm"><div class="card-body">
+            <div class="text-muted small">Unresolved Investigations</div>
+            <div class="fs-3 fw-bold text-warning">{{ $stats['unresolved_count'] }}</div>
+            <div class="small text-muted">${{ number_format($stats['unresolved_value_usd'], 2) }} absolute variance value</div>
         </div></div></div>
     </div>
 
