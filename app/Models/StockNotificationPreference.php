@@ -7,6 +7,16 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class StockNotificationPreference extends Model
 {
+    protected $attributes = [
+        'in_app_enabled' => true,
+        'email_enabled' => false,
+        'whatsapp_enabled' => false,
+        'minimum_escalation_level' => 2,
+        'overdue_reminders_enabled' => true,
+        'recurrence_alerts_enabled' => true,
+        'weekly_review_alerts_enabled' => true,
+    ];
+
     protected $fillable = [
         'user_id',
         'in_app_enabled',
