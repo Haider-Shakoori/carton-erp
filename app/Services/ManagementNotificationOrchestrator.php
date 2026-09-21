@@ -430,29 +430,36 @@ class ManagementNotificationOrchestrator
             'in_app'
         );
 
-        if (ManagementNotificationDelivery::where('event_key', $eventKey)->exists()) {
-            return false;
-        }
-
         try {
+            $created = false;
+
             DB::transaction(function () use (
                 $eventKey,
                 $recipient,
                 $eventType,
                 $relatedType,
                 $relatedId,
-                $payload
+                $payload,
+                &$created
             ): void {
-                $delivery = ManagementNotificationDelivery::create([
-                    'event_key' => $eventKey,
-                    'event_type' => $eventType,
-                    'recipient_user_id' => $recipient->id,
-                    'channel' => 'in_app',
-                    'related_type' => $relatedType,
-                    'related_id' => $relatedId,
-                    'status' => ManagementNotificationDelivery::STATUS_PENDING,
-                    'payload' => $payload,
-                ]);
+                $delivery = ManagementNotificationDelivery::firstOrCreate(
+                    ['event_key' => $eventKey],
+                    [
+                        'event_type' => $eventType,
+                        'recipient_user_id' => $recipient->id,
+                        'channel' => 'in_app',
+                        'related_type' => $relatedType,
+                        'related_id' => $relatedId,
+                        'status' => ManagementNotificationDelivery::STATUS_PENDING,
+                        'payload' => $payload,
+                    ]
+                );
+
+                if (! $delivery->wasRecentlyCreated) {
+                    return;
+                }
+
+                $created = true;
 
                 $recipient->notifyNow(
                     new ManagementAlertNotification($payload)
@@ -466,7 +473,7 @@ class ManagementNotificationOrchestrator
                 ]);
             });
 
-            return true;
+            return $created;
         } catch (Throwable $e) {
             ManagementNotificationDelivery::query()
                 ->where('event_key', $eventKey)
@@ -497,21 +504,23 @@ class ManagementNotificationOrchestrator
             $channel
         );
 
-        if (ManagementNotificationDelivery::where('event_key', $eventKey)->exists()) {
-            return false;
-        }
-
         try {
-            $delivery = ManagementNotificationDelivery::create([
-                'event_key' => $eventKey,
-                'event_type' => $eventType,
-                'recipient_user_id' => $recipient->id,
-                'channel' => $channel,
-                'related_type' => $relatedType,
-                'related_id' => $relatedId,
-                'status' => ManagementNotificationDelivery::STATUS_PENDING,
-                'payload' => $payload,
-            ]);
+            $delivery = ManagementNotificationDelivery::firstOrCreate(
+                ['event_key' => $eventKey],
+                [
+                    'event_type' => $eventType,
+                    'recipient_user_id' => $recipient->id,
+                    'channel' => $channel,
+                    'related_type' => $relatedType,
+                    'related_id' => $relatedId,
+                    'status' => ManagementNotificationDelivery::STATUS_PENDING,
+                    'payload' => $payload,
+                ]
+            );
+
+            if (! $delivery->wasRecentlyCreated) {
+                return false;
+            }
 
             DeliverManagementNotificationChannel::dispatch($delivery->id);
 
