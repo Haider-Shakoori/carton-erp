@@ -1525,1029 +1525,393 @@
 @endsection
 
 @section('content')
+    @php
+        $ps = $profitSummary ?? [];
+        $actualAvailable = (bool) ($ps['actual_available'] ?? false);
+        $saleCurrencySymbol = $currencyCode === 'USD' ? '$' : '؋';
+        $grossSales = $currencyCode === 'USD'
+            ? (float) ($ps['gross_sales_usd'] ?? $sale->usd_grand_total ?? 0)
+            : (float) ($ps['gross_sales_afn'] ?? $sale->grand_total ?? 0);
+        $estimatedCost = $currencyCode === 'USD'
+            ? (float) ($ps['estimated_cost_usd'] ?? 0)
+            : (float) ($ps['estimated_cost_afn'] ?? 0);
+        $estimatedProfit = $currencyCode === 'USD'
+            ? (float) ($ps['estimated_profit_usd'] ?? 0)
+            : (float) ($ps['estimated_profit_afn'] ?? 0);
+        $estimatedMargin = $grossSales > 0 ? ($estimatedProfit / $grossSales) * 100 : 0;
+        $actualCost = $currencyCode === 'USD'
+            ? (float) ($ps['actual_production_cost_usd'] ?? 0)
+            : (float) ($ps['actual_production_cost_afn'] ?? 0);
+        $actualProfit = $currencyCode === 'USD'
+            ? (float) ($ps['actual_profit_usd'] ?? 0)
+            : (float) ($ps['actual_profit_afn'] ?? 0);
+        $statusLabels = [
+            'draft' => ['label' => __('ui.draft'), 'class' => 'draft'],
+            'confirmed' => ['label' => __('ui.confirmed'), 'class' => 'confirmed'],
+            'shipped' => ['label' => __('ui.shipped'), 'class' => 'confirmed'],
+            'delivered' => ['label' => __('ui.delivered'), 'class' => 'delivered'],
+        ];
+        $statusUi = $statusLabels[$sale->status] ?? $statusLabels['draft'];
+        $productionUi = $sale->is_produced
+            ? ['label' => __('ui.completed'), 'class' => 'done']
+            : (($sale->productionOrder && $sale->productionOrder->status === 'in_progress')
+                ? ['label' => __('ui.in_progress'), 'class' => 'progress']
+                : ['label' => __('ui.not_started'), 'class' => 'pending']);
+    @endphp
+
+    <style>
+        .so2-shell{max-width:1600px;margin:0 auto}.so2-header{display:flex;justify-content:space-between;align-items:flex-start;gap:1rem;margin-bottom:1rem}.so2-title{margin:0;font-size:1.85rem;font-weight:850;color:#0f172a;letter-spacing:-.035em}.so2-title .accent{color:#4f46e5}.so2-subtitle{margin-top:.28rem;color:#64748b;font-size:.78rem}.so2-header-actions{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;justify-content:flex-end}.so2-btn{border-radius:10px;font-size:.76rem;font-weight:700;padding:.56rem .9rem;display:inline-flex;align-items:center;gap:.42rem}.so2-status{display:inline-flex;align-items:center;gap:.35rem;border-radius:999px;padding:.36rem .72rem;font-size:.7rem;font-weight:800}.so2-status.draft{background:#eef2f7;color:#475569}.so2-status.confirmed{background:#dcfce7;color:#166534}.so2-status.delivered,.so2-status.done{background:#d1fae5;color:#065f46}.so2-status.pending{background:#fff3d6;color:#a85700;border:1px solid #fed991}.so2-status.progress{background:#e0f2fe;color:#0369a1}.so2-top-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:.8rem;margin-bottom:1rem}.so2-stat{background:#fff;border:1px solid #e2e8f0;border-radius:13px;padding:.95rem 1rem;display:flex;align-items:center;gap:.75rem;min-height:86px;box-shadow:0 2px 9px rgba(15,23,42,.03)}.so2-stat-icon{width:40px;height:40px;border-radius:10px;background:#eef2ff;color:#4f46e5;display:flex;align-items:center;justify-content:center;font-size:1.05rem;flex:0 0 auto}.so2-stat-icon.green{background:#ecfdf5;color:#059669}.so2-stat-icon.blue{background:#eff6ff;color:#2563eb}.so2-stat-label{font-size:.66rem;color:#64748b;margin-bottom:.15rem}.so2-stat-value{font-size:.9rem;font-weight:800;color:#172033;line-height:1.25}.so2-stat-help{font-size:.64rem;color:#64748b;margin-top:.15rem}.so2-main-grid{display:grid;grid-template-columns:minmax(0,1fr) 285px;gap:.9rem;margin-bottom:.9rem}.so2-card{background:#fff;border:1px solid #e2e8f0;border-radius:14px;box-shadow:0 2px 10px rgba(15,23,42,.035);overflow:hidden}.so2-card-head{padding:.9rem 1rem;border-bottom:1px solid #e7edf5;display:flex;align-items:center;justify-content:space-between;gap:.7rem}.so2-card-title{display:flex;align-items:center;gap:.55rem;font-size:.94rem;font-weight:850;color:#172033}.so2-card-title i{color:#4f46e5;font-size:1rem}.so2-card-sub{font-size:.66rem;color:#64748b;margin-top:.1rem}.so2-table-toolbar{display:flex;gap:.45rem;align-items:center}.so2-search{width:270px;position:relative}.so2-search input{height:35px;border:1px solid #dbe3ef;border-radius:9px;padding:.4rem .7rem .4rem 2rem;font-size:.72rem}.so2-search i{position:absolute;left:.65rem;top:.58rem;color:#64748b;font-size:.8rem}.so2-items{width:100%;border-collapse:collapse;font-size:.72rem}.so2-items th{padding:.63rem .62rem;background:#f8fafc;border-bottom:1px solid #e5ebf3;color:#64748b;font-size:.6rem;font-weight:800;white-space:nowrap;text-align:left}.so2-items td{padding:.7rem .62rem;border-bottom:1px solid #eef2f7;vertical-align:middle}.so2-items tbody tr:last-child td{border-bottom:0}.so2-items tbody tr.selected{background:#f5f3ff}.so2-product{font-weight:800;color:#172033;line-height:1.25}.so2-product-meta{font-size:.61rem;color:#64748b;margin-top:.16rem}.so2-price-input{width:108px;height:34px;border:1px solid #dbe3ef;border-radius:8px;padding:.35rem .55rem;font-size:.72rem;font-weight:700}.so2-price-input:focus{outline:0;border-color:#6366f1;box-shadow:0 0 0 3px rgba(99,102,241,.1)}.so2-manual-tag{display:inline-flex;align-items:center;gap:.25rem;margin-top:.2rem;color:#4f46e5;background:#eef2ff;padding:.12rem .4rem;border-radius:5px;font-size:.55rem;font-weight:800}.so2-money-good{color:#059669;font-weight:850}.so2-info-strip{margin:.15rem .75rem .75rem;padding:.55rem .7rem;border-radius:8px;background:#f3f2ff;color:#4f46e5;font-size:.65rem}.so2-summary{padding:.9rem 1rem}.so2-summary-row{display:flex;justify-content:space-between;gap:1rem;padding:.46rem 0;color:#526079;font-size:.72rem}.so2-summary-row strong{color:#172033}.so2-summary-row.profit strong,.so2-summary-row.margin strong{color:#059669}.so2-summary-note{margin-top:.7rem;padding:.75rem;border-radius:9px;background:#f3f2ff;color:#55627a;font-size:.64rem;line-height:1.45}.so2-tabs-card{background:#fff;border:1px solid #e2e8f0;border-radius:14px;box-shadow:0 2px 10px rgba(15,23,42,.035)}.so2-tabs{display:flex;gap:1.6rem;border-bottom:1px solid #e5ebf3;padding:0 1rem}.so2-tab{border:0;background:none;padding:.8rem .15rem .7rem;color:#526079;font-size:.72rem;font-weight:750;border-bottom:2px solid transparent}.so2-tab.active{color:#4f46e5;border-bottom-color:#4f46e5}.so2-tab i{margin-right:.38rem}.so2-panel{display:none;padding:.8rem}.so2-panel.active{display:block}.so2-overview-grid{display:grid;grid-template-columns:1fr 1fr 1.05fr;gap:.7rem}.so2-mini-card{border:1px solid #e2e8f0;border-radius:10px;padding:.85rem}.so2-mini-head{font-size:.74rem;font-weight:850;color:#172033;margin-bottom:.6rem;display:flex;align-items:center;gap:.45rem}.so2-mini-head i{color:#4f46e5}.so2-kv{display:grid;grid-template-columns:130px 1fr;gap:.38rem;font-size:.67rem;margin-bottom:.32rem}.so2-kv span:first-child{color:#64748b}.so2-kv span:last-child{color:#172033;font-weight:650}.so2-pricing-note{background:#f4f3ff;border-radius:8px;padding:.62rem .7rem;font-size:.65rem;color:#4b556b;line-height:1.45}.so2-breakdown-head{display:flex;justify-content:space-between;align-items:center;gap:.7rem;margin-bottom:.6rem}.so2-breakdown-title{font-size:.83rem;font-weight:850;color:#172033}.so2-selected-chip{background:#dcfce7;color:#047857;border-radius:999px;padding:.25rem .55rem;font-size:.59rem;font-weight:800}.so2-breakdown-table{width:100%;border-collapse:collapse;font-size:.68rem}.so2-breakdown-table th{background:#f8fafc;color:#64748b;font-size:.58rem;padding:.48rem .55rem;text-align:left}.so2-breakdown-table td{padding:.45rem .55rem;border-bottom:1px solid #edf1f6}.so2-breakdown-total{display:flex;justify-content:flex-end;align-items:center;gap:.75rem;padding:.65rem;background:#fafbff;font-size:.67rem}.so2-breakdown-total strong{font-size:.8rem;color:#059669}.so2-empty{padding:2.2rem;text-align:center;color:#64748b;font-size:.72rem}.so2-empty i{display:block;font-size:1.65rem;color:#cbd5e1;margin-bottom:.5rem}.so2-cost-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:.65rem}.so2-cost-box{border:1px solid #e2e8f0;border-radius:10px;padding:.8rem}.so2-cost-box .label{font-size:.61rem;color:#64748b}.so2-cost-box .value{font-size:1rem;font-weight:850;margin-top:.2rem}.so2-drawer.offcanvas{width:min(660px,96vw)}.so2-drawer .offcanvas-header{border-bottom:1px solid #e5ebf3}.so2-mode-tabs{display:grid;grid-template-columns:1fr 1fr;gap:.5rem;margin-bottom:.8rem}.so2-mode-btn{border:1px solid #dbe3ef;border-radius:9px;background:#f8fafc;padding:.62rem;font-size:.72rem;font-weight:800;color:#526079}.so2-mode-btn.active{border-color:#6366f1;background:#eef2ff;color:#4f46e5}.so2-add-pane{display:none}.so2-add-pane.active{display:block}.so2-form-grid{display:grid;grid-template-columns:1fr 1fr;gap:.7rem}.so2-form-grid .full{grid-column:1/-1}.so2-drawer label{font-size:.68rem;font-weight:750;color:#334155;margin-bottom:.25rem}.so2-drawer .form-control,.so2-drawer .form-select{font-size:.74rem;border-radius:8px;border-color:#dbe3ef}.so2-drawer-footer{position:sticky;bottom:0;background:#fff;border-top:1px solid #e5ebf3;padding:.8rem;margin:1rem -.9rem -.9rem;display:flex;justify-content:flex-end;gap:.5rem}.so2-hidden-desc{display:none;margin-top:.35rem;min-width:240px;font-size:.68rem}.so2-advanced{margin-top:.75rem}.so2-quick-summary{display:grid;grid-template-columns:repeat(3,1fr);gap:.45rem;margin-top:.7rem}.so2-quick-box{background:#f8fafc;border:1px solid #e5ebf3;border-radius:8px;padding:.55rem}.so2-quick-box small{display:block;color:#64748b;font-size:.56rem}.so2-quick-box strong{font-size:.72rem}.so2-production-actions{display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.7rem}
+        @media(max-width:1200px){.so2-top-grid{grid-template-columns:repeat(3,1fr)}.so2-main-grid{grid-template-columns:1fr}.so2-overview-grid{grid-template-columns:1fr 1fr}.so2-items{min-width:980px}.so2-card .table-responsive{overflow-x:auto}}
+        @media(max-width:768px){.so2-header{flex-direction:column}.so2-header-actions{justify-content:flex-start}.so2-top-grid{grid-template-columns:1fr 1fr}.so2-overview-grid,.so2-cost-grid{grid-template-columns:1fr}.so2-tabs{overflow-x:auto;gap:1rem}.so2-tab{white-space:nowrap}.so2-search{display:none}.so2-form-grid{grid-template-columns:1fr}.so2-form-grid .full{grid-column:auto}}
+        @media(max-width:480px){.so2-top-grid{grid-template-columns:1fr}.so2-title{font-size:1.45rem}}
+    </style>
+
     <div class="container-fluid px-3 px-md-4">
-
-        {{-- ─── PAGE HEADER ─── --}}
-        <div class="sale-header">
-            <div>
-                <h1>
-                    <i class="bi bi-cart-plus" style="color: var(--sale-primary);"></i>
-                    {{ __('ui.sale_order') }} <span class="accent">#{{ $sale->sale_no }}</span>
-                </h1>
-                <p class="subtitle">
-                    <i class="bi bi-person"></i>
-                    {{ $sale->customer->name ?? 'No Customer' }}
-                    <span class="mx-1">·</span>
-                    <i class="bi bi-calendar3"></i>
-                    {{ $sale->sale_date ? date('M d, Y', strtotime($sale->sale_date)) : '-' }}
-                </p>
-            </div>
-            <div class="header-actions">
-                @php
-                    $statusConfig = [
-                        'draft' => ['class' => 'draft', 'icon' => 'bi-pencil-square', 'label' => __('ui.draft')],
-                        'confirmed' => ['class' => 'confirmed', 'icon' => 'bi-check2-circle', 'label' => __('ui.confirmed')],
-                        'shipped' => ['class' => 'shipped', 'icon' => 'bi-truck', 'label' => __('ui.shipped')],
-                        'delivered' => ['class' => 'delivered', 'icon' => 'bi-check2-all', 'label' => __('ui.delivered')],
-                    ];
-                    $config = $statusConfig[$sale->status] ?? $statusConfig['draft'];
-                @endphp
-
-                <span class="sale-status-badge {{ $config['class'] }}">
-                    <i class="bi {{ $config['icon'] }}"></i>
-                    {{ $config['label'] }}
-                </span>
-
-                @if($sale->is_produced)
-                    <span class="production-badge produced">
-                        <i class="bi bi-check-circle-fill"></i> {{ __('ui.produced') }}
-                    </span>
-                @elseif($sale->productionOrder && $sale->productionOrder->status === 'in_progress')
-                    <span class="production-badge in-progress">
-                        <i class="bi bi-hourglass-split"></i> {{ __('ui.in_progress') }}
-                    </span>
-                @elseif($sale->productionOrder && $sale->productionOrder->status === 'pending')
-                    <span class="production-badge pending">
-                        <i class="bi bi-clock"></i> {{ __('ui.pending') }}
-                    </span>
-                @else
-                    <span class="production-badge not-started">
-                        <i class="bi bi-dash-circle"></i> {{ __('ui.not_started') }}
-                    </span>
-                @endif
-
-                <div class="action-divider"></div>
-
-                <a href="{{ route('admin.sales.index') }}" class="btn btn-outline-secondary btn-action">
-                    <i class="bi bi-arrow-left"></i> {{ __('ui.back') }}
-                </a>
-
-                @can('update sales')
-                @if ($sale->status === 'draft')
-                    <button class="btn btn-primary btn-action" onclick="updateStatus('confirmed')">
-                        <i class="bi bi-check2-circle"></i> Confirm
-                    </button>
-                @endif
-
-                @if($sale->status === 'confirmed' && !$sale->is_produced)
-                    @if($sale->productionOrder && $sale->productionOrder->status === 'pending')
-                        <a href="{{ route('production-orders.show', $sale->productionOrder) }}"
-                           class="btn btn-warning btn-action">
-                            <i class="bi bi-calculator me-1"></i> Set Production Qty
-                        </a>
+        <div class="so2-shell">
+            <div class="so2-header">
+                <div>
+                    <div class="d-flex align-items-center gap-2 flex-wrap">
+                        <h1 class="so2-title">{{ __('ui.sale_order') }} <span class="accent">#{{ $sale->sale_no }}</span></h1>
+                        <span class="so2-status {{ $statusUi['class'] }}">{{ $statusUi['label'] }}</span>
+                        <span class="so2-status {{ $productionUi['class'] }}"><i class="bi bi-gear"></i>{{ __('ui.production') }}: {{ $productionUi['label'] }}</span>
+                    </div>
+                    <div class="so2-subtitle">
+                        {{ __('ui.created_at') ?? 'Created' }} {{ optional($sale->created_at)->format('M d, Y') }}
+                        <span class="mx-2">·</span>
+                        {{ __('ui.last_updated') ?? 'Last updated' }} {{ optional($sale->updated_at)->diffForHumans() }}
+                    </div>
+                </div>
+                <div class="so2-header-actions">
+                    <a href="{{ route('admin.sales.index') }}" class="btn btn-outline-secondary so2-btn"><i class="bi bi-arrow-left"></i>{{ __('ui.back') }}</a>
+                    @if($sale->items->isNotEmpty())
+                        <div class="dropdown">
+                            <button class="btn btn-outline-primary so2-btn dropdown-toggle" data-bs-toggle="dropdown"><i class="bi bi-printer"></i> Print</button>
+                            <ul class="dropdown-menu dropdown-menu-end">
+                                <li><a class="dropdown-item" target="_blank" href="{{ route('admin.sales.quotation', $sale->id) }}"><i class="bi bi-file-earmark-text me-2"></i>Print Quotation</a></li>
+                                <li><a class="dropdown-item" target="_blank" href="{{ route('admin.sales.print', $sale->id) }}"><i class="bi bi-receipt me-2"></i>Print Invoice</a></li>
+                            </ul>
+                        </div>
                     @endif
-                @endif
-
-                @if($sale->is_produced && $sale->status !== 'delivered')
-                    <form action="{{ route('admin.sales.deliver', $sale->id) }}" method="POST" class="d-inline">
-                        @csrf
-                        <button type="submit" class="btn btn-success btn-action" onclick='return confirm(@json(__('ui.deliver_order_confirm')))'>
-                            <i class="bi bi-truck me-1"></i> Deliver
-                        </button>
-                    </form>
-                @endif
-
-                @if($sale->is_produced && $sale->status === 'delivered')
-                    <span class="badge bg-success" style="font-size: 0.875rem; padding: 0.5rem 1rem; display: inline-flex; align-items: center; gap: 0.5rem;">
-                        <i class="bi bi-check-circle-fill me-1"></i> {{ __('ui.produced_delivered') }}
-                    </span>
-                @endif
-                @endcan
-
-                <div class="action-divider"></div>
-
-                @if($sale->items->isNotEmpty())
-                    <a href="{{ route('admin.sales.quotation', $sale->id) }}" target="_blank" class="btn btn-outline-primary btn-action">
-                        <i class="bi bi-file-earmark-text"></i> Quotation
-                    </a>
-                @endif
-
-                <a href="{{ route('admin.sales.print', $sale->id) }}" target="_blank" class="btn btn-print btn-action">
-                    <i class="bi bi-printer"></i> {{ __('ui.print_invoice') }}
-                </a>
-
-                @if($sale->status === 'delivered' && $sale->gatePass)
-                    <a href="{{ route('admin.sales.gate-pass', $sale->id) }}" target="_blank" class="btn btn-outline-success btn-action">
-                        <i class="bi bi-door-open"></i> Gate Pass
-                    </a>
-                @endif
-
-                @if($sale->is_produced && $sale->productionOrder)
-                    <a href="{{ route('production-orders.show', $sale->productionOrder) }}" class="btn btn-outline-info btn-action">
-                        <i class="bi bi-eye me-1"></i> {{ __('ui.view_production') }}
-                    </a>
-                @endif
-
-                @can('delete sales')
-                @if($sale->status !== 'delivered')
-                    <button class="btn btn-outline-danger btn-action" data-bs-toggle="modal" data-bs-target="#deleteModal">
-                        <i class="bi bi-trash3"></i> {{ __('ui.delete') }}
-                    </button>
-                @endif
-                @endcan
-            </div>
-        </div>
-
-        @php
-            // ─── AUTHORITATIVE SALE FINANCIALS ───
-            // SaleItem::total_cost_usd is the commercial quotation/BOM basis.
-            // Production COGS must come from SaleProfitService instead.
-            $ps = $profitSummary ?? [];
-            $currencySymbol = $sale->currency->symbol ?? '$';
-            $currencyCode = $sale->currency->code ?? 'USD';
-            $isUSD = $currencyCode === 'USD';
-            $exchangeRate = max((float) ($sale->exchange_rate ?? 1), 0.000001);
-            $actualAvailable = (bool) ($ps['actual_available'] ?? false);
-
-            $totalRevenueUsd = (float) ($ps['gross_sales_usd'] ?? ($sale->usd_grand_total ?? 0));
-            $totalRevenueAfn = (float) ($ps['gross_sales_afn'] ?? ($sale->grand_total ?? 0));
-
-            // Completed/consumed production uses actual FIFO production cost.
-            // Before actual consumption exists, use estimated physical production cost.
-            $authoritativeCostUsd = (float) ($actualAvailable
-                ? ($ps['actual_production_cost_usd'] ?? 0)
-                : ($ps['estimated_cost_usd'] ?? 0));
-            $authoritativeCostAfn = (float) ($actualAvailable
-                ? ($ps['actual_production_cost_afn'] ?? 0)
-                : ($ps['estimated_cost_afn'] ?? 0));
-
-            $totalProfitUsd = $totalRevenueUsd - $authoritativeCostUsd;
-            $totalProfitAfn = $totalRevenueAfn - $authoritativeCostAfn;
-            $profitMargin = $totalRevenueAfn > 0 ? ($totalProfitAfn / $totalRevenueAfn) * 100 : 0;
-
-            $profitInSaleCurrency = $isUSD ? $totalProfitUsd : $totalProfitAfn;
-            $profitSymbol = $isUSD ? '$' : '؋';
-            $cogsInSaleCurrency = $isUSD ? $authoritativeCostUsd : $authoritativeCostAfn;
-            $cogsSymbol = $isUSD ? '$' : '؋';
-            $cogsBasisLabel = $actualAvailable ? __('ui.actual_fifo_production_cost') : __('ui.estimated_production_cost');
-        @endphp
-
-        {{-- ─── ESTIMATED VS ACTUAL PROFIT ─── --}}
-        @php
-            $saleProfitSymbol = $currencyCode === 'USD' ? '$' : '؋';
-            $estimatedProfitDisplay = $currencyCode === 'USD'
-                ? ($ps['estimated_profit_usd'] ?? 0)
-                : ($ps['estimated_profit_afn'] ?? 0);
-            $actualProfitDisplay = $currencyCode === 'USD'
-                ? ($ps['actual_profit_usd'] ?? 0)
-                : ($ps['actual_profit_afn'] ?? 0);
-            $quotationBomDisplay = $currencyCode === 'USD'
-                ? ($ps['quotation_bom_cost_usd'] ?? 0)
-                : ($ps['quotation_bom_cost_afn'] ?? 0);
-            $estimatedMaterialDisplay = $currencyCode === 'USD'
-                ? ($ps['estimated_material_cost_usd'] ?? 0)
-                : ($ps['estimated_material_cost_afn'] ?? 0);
-            $estimatedWorkDisplay = $currencyCode === 'USD'
-                ? ($ps['estimated_work_cost_usd'] ?? 0)
-                : ($ps['estimated_work_cost_afn'] ?? 0);
-            $estimatedCostDisplay = $currencyCode === 'USD'
-                ? ($ps['estimated_cost_usd'] ?? 0)
-                : ($ps['estimated_cost_afn'] ?? 0);
-            $actualCostDisplay = $currencyCode === 'USD'
-                ? ($ps['actual_production_cost_usd'] ?? 0)
-                : ($ps['actual_production_cost_afn'] ?? 0);
-            $varianceDisplay = $currencyCode === 'USD'
-                ? ($ps['cost_variance_usd'] ?? 0)
-                : ($ps['cost_variance_afn'] ?? 0);
-            $wastageCostDisplay = $currencyCode === 'USD'
-                ? ($ps['planned_wastage_cost_usd'] ?? 0)
-                : ($ps['planned_wastage_cost_afn'] ?? 0);
-            $workPercentageDisplay = $ps['work_percentage'] ?? 40;
-            $usesStandardActualWork = (bool) ($ps['uses_standard_actual_work'] ?? false);
-        @endphp
-
-        <div class="sale-info-card mb-3" style="border: 1px solid {{ $actualAvailable ? 'rgba(16,185,129,.25)' : 'rgba(245,158,11,.28)' }};">
-            <div class="card-header">
-                <div class="title">
-                    <i class="bi bi-graph-up-arrow"></i> {{ __('ui.profit_accuracy') }}
-                </div>
-                <span class="badge {{ $actualAvailable ? 'bg-success' : 'bg-warning text-dark' }}">
-                    {{ $actualAvailable ? __('ui.actual_fifo_cost_available') : __('ui.estimated_only') }}
-                </span>
-            </div>
-            <div class="sale-info-grid">
-                {{-- ─── COMMERCIAL / QUOTATION ─── --}}
-                <div class="sale-info-item" style="grid-column: 1 / -1; border-bottom: 1px solid var(--sale-gray-100); padding-bottom: .25rem;">
-                    <div class="label" style="color: var(--sale-primary); font-size: .68rem;">{{ __('ui.commercial_quotation') }}</div>
-                </div>
-                <div class="sale-info-item">
-                    <div class="label">{{ __('ui.quotation_bom_total') }}</div>
-                    <div class="value">
-                        {{ $saleProfitSymbol }} {{ number_format($quotationBomDisplay, 2) }}
-                        <small class="d-block text-muted">{{ __('ui.client_excel_basis') }}</small>
-                    </div>
-                </div>
-                @if((float) ($ps['standard_work_profit_afn'] ?? 0) != 0)
-                <div class="sale-info-item">
-                    <div class="label">{{ __('ui.standard_work_profit') }} ({{ number_format($workPercentageDisplay, 0) }}%)</div>
-                    <div class="value">
-                        <span class="text-primary">؋ {{ number_format((float) ($ps['standard_work_profit_afn'] ?? 0), 2) }}</span>
-                        <small class="d-block text-muted">{{ __('ui.included_in_quotation') }}</small>
-                    </div>
-                </div>
-                @endif
-
-                {{-- ─── PRODUCTION ─── --}}
-                <div class="sale-info-item" style="grid-column: 1 / -1; border-bottom: 1px solid var(--sale-gray-100); padding-bottom: .25rem; margin-top: .25rem;">
-                    <div class="label" style="color: var(--sale-primary); font-size: .68rem;">{{ __('ui.production_section') }}</div>
-                </div>
-                <div class="sale-info-item">
-                    <div class="label">{{ __('ui.estimated_production_cost') }}</div>
-                    <div class="value">
-                        @if(!empty($ps['estimated_cost_unavailable']))
-                            <span class="text-warning">
-                                <i class="bi bi-exclamation-triangle me-1"></i>
-                                {{ __('ui.est_cost_unavailable_no_weight') }}
-                            </span>
-                            <small class="d-block text-muted">
-                                {{ $saleProfitSymbol }}{{ number_format($estimatedMaterialDisplay, 2) }}
-                                ({{ __('ui.roll_weight_missing') }})
-                            </small>
-                        @else
-                            {{ $saleProfitSymbol }} {{ number_format($estimatedCostDisplay, 2) }}
-                            <small class="d-block text-muted">
-                                {{ __('ui.material') }} {{ $saleProfitSymbol }}{{ number_format($estimatedMaterialDisplay, 2) }}
-                                ({{ __('ui.including_wastage') }} {{ $saleProfitSymbol }}{{ number_format($wastageCostDisplay, 2) }})
-                            </small>
+                    @can('update sales')
+                        @if($sale->status === 'draft')
+                            <button class="btn btn-primary so2-btn" onclick="updateStatus('confirmed')"><i class="bi bi-check2"></i>Confirm Order</button>
+                        @elseif($sale->status === 'confirmed' && !$sale->is_produced && $sale->productionOrder && $sale->productionOrder->status === 'pending')
+                            <a href="{{ route('production-orders.show', $sale->productionOrder) }}" class="btn btn-warning so2-btn"><i class="bi bi-calculator"></i>Set Production Qty</a>
+                        @elseif($sale->is_produced && $sale->status !== 'delivered')
+                            <form action="{{ route('admin.sales.deliver', $sale->id) }}" method="POST" class="d-inline">@csrf
+                                <button type="submit" class="btn btn-success so2-btn" onclick='return confirm(@json(__('ui.deliver_order_confirm')))'><i class="bi bi-truck"></i>Deliver</button>
+                            </form>
                         @endif
-                    </div>
-                </div>
-                <div class="sale-info-item">
-                    <div class="label">{{ __('ui.actual_production_cost') }}</div>
-                    <div class="value">
-                        @if($actualAvailable)
-                            {{ $saleProfitSymbol }} {{ number_format($actualCostDisplay, 2) }}
-                            @if(!$usesStandardActualWork)
-                                <small class="d-block text-muted">FIFO material + recorded labour/overhead</small>
+                    @endcan
+                    <div class="dropdown">
+                        <button class="btn btn-outline-secondary so2-btn dropdown-toggle" data-bs-toggle="dropdown"><i class="bi bi-grid-3x3-gap"></i>More</button>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            @if($sale->productionOrder)
+                                <li><a class="dropdown-item" href="{{ route('production-orders.show', $sale->productionOrder) }}"><i class="bi bi-gear me-2"></i>{{ __('ui.view_production') }}</a></li>
                             @endif
-                        @else
-                            <span class="text-warning">{{ __('ui.pending_production_consumption') }}</span>
-                        @endif
-                    </div>
-                </div>
-
-                {{-- ─── PROFIT ─── --}}
-                <div class="sale-info-item" style="grid-column: 1 / -1; border-bottom: 1px solid var(--sale-gray-100); padding-bottom: .25rem; margin-top: .25rem;">
-                    <div class="label" style="color: var(--sale-primary); font-size: .68rem;">{{ __('ui.profit_section') }}</div>
-                </div>
-                <div class="sale-info-item">
-                    <div class="label">{{ $estimatedProfitDisplay >= 0 ? __('ui.estimated_realized_profit') : __('ui.realized_loss') }}</div>
-                    <div class="value" style="color: {{ $estimatedProfitDisplay >= 0 ? 'var(--sale-success)' : 'var(--sale-danger)' }};">
-                        @if(!empty($ps['estimated_cost_unavailable']))
-                            <span class="text-muted">{{ __('ui.est_cost_unavailable_no_weight') }}</span>
-                            <small class="d-block text-muted">{{ __('ui.revenue_estimated_cost') }}</small>
-                        @else
-                            {{ $estimatedProfitDisplay < 0 ? '-' : '' }}{{ $saleProfitSymbol }} {{ number_format(abs($estimatedProfitDisplay), 2) }}
-                            <small class="d-block text-muted">{{ __('ui.revenue_estimated_cost') }}</small>
-                        @endif
-                    </div>
-                </div>
-                <div class="sale-info-item">
-                    <div class="label">{{ $actualProfitDisplay >= 0 ? __('ui.actual_realized_profit') : __('ui.realized_loss') }}</div>
-                    <div class="value" style="color: {{ $actualProfitDisplay >= 0 ? 'var(--sale-success)' : 'var(--sale-danger)' }};">
-                        @if($actualAvailable)
-                            {{ $actualProfitDisplay < 0 ? '-' : '' }}{{ $saleProfitSymbol }} {{ number_format(abs($actualProfitDisplay), 2) }}
-                            <small class="d-block text-muted">{{ number_format($ps['actual_margin_percentage'] ?? 0, 2) }}% {{ __('ui.net_margin') }}</small>
-                        @else
-                            <span class="text-muted">{{ __('ui.not_finalised') }}</span>
-                        @endif
-                    </div>
-                </div>
-
-                <div class="sale-info-item" style="grid-column: 1 / -1;">
-                    <div class="label">{{ __('ui.production_cost_variance') }}</div>
-                    <div class="value" style="color: {{ $varianceDisplay <= 0 ? 'var(--sale-success)' : 'var(--sale-danger)' }};">
-                        @if($actualAvailable)
-                            {{ $saleProfitSymbol }} {{ number_format(abs($varianceDisplay), 2) }}
-                            <small class="d-block text-muted">{{ $varianceDisplay > 0 ? __('ui.unfavourable') : ($varianceDisplay < 0 ? __('ui.favourable') : __('ui.no_variance')) }}</small>
-                        @else
-                            <span class="text-muted">{{ __('ui.waiting_actual_costs') }}</span>
-                        @endif
-                    </div>
-                </div>
-            </div>
-            @if(!$actualAvailable)
-                <div class="px-3 pb-3" style="font-size:.78rem;color:var(--sale-gray-500);">
-                    Exact profit becomes available after actual inventory batches and quantities are recorded in
-                    <code>production_material_consumptions</code>.
-                </div>
-            @endif
-        </div>
-
-        {{-- ─── STATS CARDS ─── --}}
-        <div class="sale-stats-grid">
-            {{-- Order Details Card --}}
-            <div class="sale-info-card">
-                <div class="card-header">
-                    <div class="title">
-                        <i class="bi bi-receipt"></i> {{ __('ui.order_details') }}
-                    </div>
-                    <span style="font-size: 0.6875rem; color: var(--sale-gray-400);">
-                        <i class="bi bi-clock"></i> {{ $sale->created_at->format('H:i') }}
-                    </span>
-                </div>
-                <div class="sale-info-grid">
-                    <div class="sale-info-item">
-                        <div class="label"><i class="bi bi-gear"></i> {{ __('ui.production') }}</div>
-                        <div class="value">
-                            @if($sale->is_produced)
-                                <span class="badge bg-success">
-                                    <i class="bi bi-check-circle-fill me-1"></i> {{ __('ui.completed') }}
-                                </span>
-                                @if($sale->productionOrder)
-                                    <a href="{{ route('production-orders.show', $sale->productionOrder) }}" class="btn btn-sm btn-outline-info ms-1">
-                                        <i class="bi bi-eye"></i>
-                                    </a>
+                            @if($sale->status === 'delivered' && $sale->gatePass)
+                                <li><a class="dropdown-item" target="_blank" href="{{ route('admin.sales.gate-pass', $sale->id) }}"><i class="bi bi-door-open me-2"></i>Gate Pass</a></li>
+                            @endif
+                            @can('delete sales')
+                                @if($sale->status !== 'delivered')
+                                    <li><hr class="dropdown-divider"></li>
+                                    <li><button class="dropdown-item text-danger" data-bs-toggle="modal" data-bs-target="#deleteModal"><i class="bi bi-trash3 me-2"></i>{{ __('ui.delete') }}</button></li>
                                 @endif
-                            @elseif($sale->productionOrder && $sale->productionOrder->status === 'in_progress')
-                                <span class="badge bg-info">
-                                    <i class="bi bi-hourglass-split me-1"></i> {{ __('ui.in_progress') }}
-                                </span>
-                                <a href="{{ route('production-orders.show', $sale->productionOrder) }}" class="btn btn-sm btn-outline-info ms-1">
-                                    <i class="bi bi-eye"></i>
-                                </a>
-                            @elseif($sale->productionOrder && $sale->productionOrder->status === 'pending')
-                                <span class="badge bg-warning">
-                                    <i class="bi bi-clock me-1"></i> {{ __('ui.pending') }}
-                                </span>
-                                <a href="{{ route('production-orders.show', $sale->productionOrder) }}" class="btn btn-sm btn-outline-info ms-1">
-                                    <i class="bi bi-eye"></i>
-                                </a>
-                            @else
-                                <span class="badge bg-secondary">
-                                    <i class="bi bi-dash-circle me-1"></i> Not Started
-                                </span>
-                            @endif
-                        </div>
+                            @endcan
+                        </ul>
                     </div>
-                    <div class="sale-info-item">
-                        <div class="label"><i class="bi bi-currency-exchange"></i> {{ __('ui.currency') }}</div>
-                        <div class="value">{{ $currencyCode }} ({{ $currencySymbol }})</div>
-                    </div>
-                    <div class="sale-info-item">
-                        <div class="label"><i class="bi bi-arrow-left-right"></i> {{ __('ui.exchange_rate') }}</div>
-                        <div class="value">1 USD = {{ number_format($exchangeRate, 4) }} AFN</div>
-                    </div>
-                    <div class="sale-info-item">
-                        <div class="label"><i class="bi bi-box"></i> {{ __('ui.total_items') }}</div>
-                        <div class="value">{{ $sale->items->count() }} {{ __('ui.products') }}</div>
-                    </div>
-                    @if ($sale->shipping_address)
-                        <div class="sale-info-item" style="grid-column: 1 / -1;">
-                            <div class="label"><i class="bi bi-geo-alt"></i> {{ __('ui.shipping_address') }}</div>
-                            <div class="value" style="font-weight: 400; font-size: 0.8125rem;">
-                                {{ $sale->shipping_address }}
-                            </div>
-                        </div>
-                    @endif
-                    @if ($sale->notes)
-                        <div class="sale-info-item" style="grid-column: 1 / -1;">
-                            <div class="label"><i class="bi bi-file-text"></i> {{ __('ui.notes') }}</div>
-                            <div class="value" style="font-weight: 400; font-size: 0.8125rem;">{{ $sale->notes }}</div>
-                        </div>
-                    @endif
                 </div>
             </div>
 
-            {{-- ─── USD & PROFIT CARD ─── --}}
-            <div class="sale-summary-card" style="height: 100%;">
-                <div class="summary-header">
-                    <div class="icon {{ $isUSD ? 'icon-usd' : 'icon-afn' }}">
-                        <i class="bi {{ $isUSD ? 'bi-currency-dollar' : 'bi-currency-exchange' }}"></i>
-                    </div>
-                    <h6>{{ $isUSD ? __('ui.usd_profit') : __('ui.afn_profit') }}</h6>
-                    <span style="font-size: 0.65rem; color: var(--sale-gray-400); font-weight: 600; text-transform: uppercase;">
-                        {{ __('ui.sale_currency') }}
-                    </span>
-                </div>
-                <table class="sale-summary-table" style="height: calc(100% - 60px);">
-                    <tbody>
-                    <tr>
-                        <td class="label">
-                            <i class="bi bi-cart-check"></i>
-                            {{ $isUSD ? 'USD' : 'AFN' }} {{ __('ui.total') }}
-                        </td>
-                        <td class="value">
-                            {{ $isUSD ? '$' : '؋' }} {{ number_format($isUSD ? ($sale->usd_grand_total ?? 0) : ($sale->grand_total ?? 0), 2) }}
-                        </td>
-                    </tr>
-
-                    <tr>
-                        <td class="label">
-                            <i class="bi bi-box"></i>
-                            {{ __('ui.production_cogs') }}
-                            <span style="font-size: 0.6rem; color: var(--sale-gray-400); font-weight: 400; display: block;">
-                                    {{ $cogsBasisLabel }}
-                                </span>
-                        </td>
-                        <td class="value" style="font-weight: 700;">
-                            @if(!empty($ps['estimated_cost_unavailable']) && !$actualAvailable)
-                                <span class="text-warning" style="font-size: 0.8rem;">
-                                    <i class="bi bi-exclamation-triangle"></i> {{ __('ui.roll_weight_missing') }}
-                                </span>
-                            @else
-                                {{ $cogsSymbol }} {{ number_format($cogsInSaleCurrency ?? 0, 2) }}
-                                @if(!$isUSD && $authoritativeCostUsd > 0)
-                                    <span style="font-size: 0.55rem; font-weight: 400; color: var(--sale-gray-400); display: block;">
-                                        (${{ number_format($authoritativeCostUsd, 2) }} USD)
-                                    </span>
-                                @endif
-                            @endif
-                        </td>
-                    </tr>
-
-                    {{-- ─── PROFIT IN SALE CURRENCY ─── --}}
-                    <tr class="grand-total" style="border-top: 2px solid {{ ($profitInSaleCurrency ?? 0) >= 0 ? 'var(--sale-success)' : 'var(--sale-danger)' }};">
-                        <td class="label">
-                            <i class="bi bi-graph-up-arrow"></i>
-                            {{ ($profitInSaleCurrency ?? 0) >= 0 ? __('ui.profit') : __('ui.loss') }}
-                            <span style="font-size: 0.6rem; color: var(--sale-gray-400); font-weight: 400; display: block;">
-                                    {{ __('ui.in_currency', ['currency' => $isUSD ? 'USD' : 'AFN']) }}
-                                </span>
-                        </td>
-                        <td class="value" style="color: {{ ($profitInSaleCurrency ?? 0) >= 0 ? 'var(--sale-success)' : 'var(--sale-danger)' }};">
-                            @if(!empty($ps['estimated_cost_unavailable']) && !$actualAvailable)
-                                <span class="text-muted" style="font-size: 0.8rem;">{{ __('ui.roll_weight_missing') }}</span>
-                            @else
-                                {{ $profitSymbol }} {{ number_format(abs($profitInSaleCurrency ?? 0), 2) }}
-                                <span style="font-size: 0.75rem; font-weight: 400; color: var(--sale-gray-400); display: block;">
-                                    {{ number_format($profitMargin ?? 0, 1) }}% {{ __('ui.margin') }}
-                                </span>
-                            @endif
-                        </td>
-                    </tr>
-
-                    {{-- ─── USD REFERENCE (only show if in AFN) ─── --}}
-                    @if(!$isUSD)
-                        <tr style="border-top: 1px solid var(--sale-gray-200);">
-                            <td class="label" style="font-size: 0.7rem; color: var(--sale-gray-400);">
-                                <i class="bi bi-currency-dollar me-1"></i> {{ __('ui.usd_reference') }}
-                            </td>
-                            <td class="value" style="font-size: 0.85rem; color: var(--sale-gray-500);">
-                                <div>{{ __('ui.total') }}: ${{ number_format($sale->usd_grand_total ?? 0, 2) }}</div>
-                                <div>{{ __('ui.production_cogs') }}: ${{ number_format($authoritativeCostUsd, 2) }}</div>
-                                <div>{{ __('ui.profit') }}: ${{ number_format(abs($totalProfitUsd ?? 0), 2) }}
-                                    <span style="color: {{ ($totalProfitUsd ?? 0) >= 0 ? 'var(--sale-success)' : 'var(--sale-danger)' }};">
-                                            ({{ ($totalProfitUsd ?? 0) >= 0 ? __('ui.profit') : __('ui.loss') }})
-                                        </span>
-                                </div>
-                            </td>
-                        </tr>
-
-                        {{-- ─── EXCHANGE RATE ─── --}}
-                        <tr style="border-top: 1px solid var(--sale-gray-200);">
-                            <td class="label" style="font-size: 0.7rem; color: var(--sale-gray-400);">
-                                <i class="bi bi-arrow-left-right me-1"></i> {{ __('ui.exchange_rate') }}
-                            </td>
-                            <td class="value" style="font-size: 0.85rem; color: var(--sale-gray-500);">
-                                1 USD = {{ number_format($exchangeRate, 2) }} AFN
-                            </td>
-                        </tr>
-                    @endif
-                    </tbody>
-                </table>
+            <div class="so2-top-grid">
+                <div class="so2-stat"><div class="so2-stat-icon"><i class="bi bi-person"></i></div><div><div class="so2-stat-label">{{ __('ui.customer') }}</div><div class="so2-stat-value">{{ $sale->customer->name ?? 'No Customer' }}</div><div class="so2-stat-help">{{ $sale->customer->account_no ?? '' }}</div></div></div>
+                <div class="so2-stat"><div class="so2-stat-icon blue"><i class="bi bi-calendar3"></i></div><div><div class="so2-stat-label">{{ __('ui.order_date') ?? 'Order Date' }}</div><div class="so2-stat-value">{{ $sale->sale_date ? date('M d, Y', strtotime($sale->sale_date)) : '-' }}</div></div></div>
+                <div class="so2-stat"><div class="so2-stat-icon"><i class="bi bi-currency-exchange"></i></div><div><div class="so2-stat-label">{{ __('ui.currency') }} / {{ __('ui.exchange_rate') }}</div><div class="so2-stat-value">{{ $currencyCode }}</div><div class="so2-stat-help">1 USD = {{ number_format($exchangeRate, 4) }} AFN</div></div></div>
+                <div class="so2-stat"><div class="so2-stat-icon green"><i class="bi bi-box-seam"></i></div><div><div class="so2-stat-label">{{ __('ui.total_items') }}</div><div class="so2-stat-value">{{ $sale->items->count() }} {{ __('ui.products') }}</div></div></div>
+                <div class="so2-stat"><div class="so2-stat-icon green"><i class="bi bi-coin"></i></div><div><div class="so2-stat-label">{{ __('ui.grand_total') }}</div><div class="so2-stat-value text-success">{{ $saleCurrencySymbol }} {{ number_format($grossSales, 2) }}</div></div></div>
             </div>
-        </div>
 
-        {{-- ─── ADD ITEMS SECTION ─── --}}
-        @if ($sale->status === 'draft')
-            <div class="sale-section">
-                <div class="section-header">
-                    <h5>
-                        <i class="bi bi-plus-circle" style="color: var(--sale-primary);"></i> Add Items to Sale
-                    </h5>
-                    <span style="font-size: 0.75rem; color: var(--sale-gray-400);">
-                        <i class="bi bi-info-circle"></i> Select product → Select BOM → Enter quantity
-                    </span>
-                </div>
-
-                <div class="section-body">
-                    {{-- ─── Product & BOM Selection ─── --}}
-                    <div class="row g-3">
-                        <div class="col-md-4">
-                            <label class="form-label">{{ __('ui.product') }} <span class="text-danger">*</span></label>
-                            <select id="productSelect" class="form-select" style="width: 100%;">
-                                <option value="">{{ __('ui.choose_product') }}</option>
-                                @foreach ($products as $product)
-                                    <option value="{{ $product->id }}"
-                                            data-category="{{ $product->category->name ?? 'Finished Goods' }}"
-                                            data-unit="{{ $product->unit ?? '' }}">
-                                        {{ $product->name }}
-                                        @if($product->category)
-                                            ({{ $product->category->name }})
+            <div class="so2-main-grid">
+                <div class="so2-card">
+                    <div class="so2-card-head">
+                        <div><div class="so2-card-title"><i class="bi bi-box"></i>Sale Items</div><div class="so2-card-sub">Carton products in this order</div></div>
+                        <div class="so2-table-toolbar">
+                            <div class="so2-search"><i class="bi bi-search"></i><input id="so2ItemSearch" class="form-control" placeholder="Search products, SKU, or BOM..."></div>
+                            @if($sale->status === 'draft')
+                                <button class="btn btn-primary so2-btn" data-bs-toggle="offcanvas" data-bs-target="#addCartonOffcanvas"><i class="bi bi-plus-lg"></i>Add Carton</button>
+                            @endif
+                        </div>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="so2-items">
+                            <thead><tr>
+                                <th style="width:34px"></th><th>{{ __('ui.product') }}</th><th>{{ __('ui.quantity') }}</th><th>Standard Price<br>({{ $currencyCode }})</th><th>Manual Override Price<br>({{ $currencyCode }})</th><th>Effective Selling Price<br>({{ $currencyCode }})</th><th>Estimated Cost<br>({{ $currencyCode }})</th><th>Estimated Profit<br>({{ $currencyCode }})</th><th>{{ __('ui.status') }}</th><th>{{ __('ui.action') }}</th>
+                            </tr></thead>
+                            <tbody id="saleItemsTableBody">
+                            @forelse($sale->items as $item)
+                                @php
+                                    $standardPrice = (float) ($item->base_price ?: $item->original_unit_price ?: $item->unit_price);
+                                    $effectivePrice = (float) $item->unit_price;
+                                    $manualApplied = $item->price_adjustment_type === 'manual';
+                                    $estimatedUnitCost = $currencyCode === 'USD'
+                                        ? (float) ($item->cost_per_unit_usd ?? 0)
+                                        : (float) ($item->cost_per_unit_usd ?? 0) * $exchangeRate;
+                                    $estimatedLineProfit = (($effectivePrice - $estimatedUnitCost) * (float) $item->qty);
+                                    $bomCode = $item->bom?->code;
+                                @endphp
+                                <tr data-so2-item-row="{{ $item->id }}" data-search="{{ strtolower(($item->product->name ?? '').' '.$bomCode) }}">
+                                    <td><input class="form-check-input so2-item-selector" type="checkbox" value="{{ $item->id }}" data-label="{{ $item->product->name ?? 'Item' }}" data-bom="{{ $bomCode ?? '' }}"></td>
+                                    <td>
+                                        <div class="so2-product">{{ $item->product->name ?? '-' }}</div>
+                                        <div class="so2-product-meta">{{ $bomCode ?: 'No linked BOM' }}</div>
+                                        @if($item->quotation_description)<div class="so2-product-meta"><i class="bi bi-card-text me-1"></i>{{ $item->quotation_description }}</div>@endif
+                                        @if($sale->status === 'draft')
+                                            <textarea class="form-control quotation-description-input so2-hidden-desc" data-id="{{ $item->id }}" rows="2" maxlength="2000" placeholder="Quotation description">{{ $item->quotation_description }}</textarea>
                                         @endif
-                                        - {{ $product->unit ?? 'unit' }}
-                                    </option>
-                                @endforeach
-                            </select>
-                        </div>
-
-                        <div class="col-md-3">
-                            <label class="form-label">{{ __('ui.pricing_method') }} <span class="text-danger">*</span></label>
-                            <select id="bomSelect" class="form-select" style="width: 100%;" disabled>
-                                <option value="">{{ __('ui.select_product_first') }}</option>
-                            </select>
-                            <small class="text-muted" id="pricingModeHelp">{{ __('ui.choose_pricing_help') }}</small>
-                        </div>
-
-                        <div class="col-md-2">
-                            <label class="form-label">{{ __('ui.quantity') }} <span class="text-danger">*</span></label>
-                            <input type="number" id="itemQty" class="form-control" value="1" min="1" step="1" oninput="recalculateLiveEstimate(); updateAddTotals();">
-                        </div>
-
-                        <div class="col-md-2">
-                            <label class="form-label">{{ __('ui.unit_price') }} <span class="currency-badge">{{ $currencyCode }}</span></label>
-                            <input type="number" id="unitPrice" class="form-control" value="0" step="0.0001" min="0" readonly>
-                            <small class="text-muted" id="priceSource">{{ __('ui.select_bom_auto') }}</small>
-                        </div>
-
-                        <div class="col-md-1">
-                            <label class="form-label">&nbsp;</label>
-                            <div class="d-flex flex-column gap-1">
-                                <button class="btn btn-outline-primary w-100" onclick="openBomCalculator()"
-                                        style="font-size: 0.7rem; padding: 0.3rem 0.5rem;"
-                                        title="{{ __('ui.create_bom_calculator') }}">
-                                    <i class="bi bi-calculator"></i> New BOM
-                                </button>
-                                <button class="btn btn-success w-100" id="addItemBtn" disabled>
-                                    <i class="bi bi-cart-plus"></i> Add
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-
-                    {{-- ─── Pricing Overrides & Quotation Description ─── --}}
-                    <div class="row g-3 mt-2">
-                        <div class="col-md-3">
-                            <label class="form-label">{{ __('ui.exchange_rate') }}</label>
-                            <input type="number" id="exchangeRate" class="form-control" value="{{ $exchangeRate ?? 1 }}" step="0.000001" min="0.000001" oninput="recalculateLiveEstimate();">
-                            <small class="text-muted">1 {{ $currencyCode }} = ? USD</small>
-                        </div>
-                        <div class="col-md-3">
-                            <label class="form-label">Manual Unit Price <span class="currency-badge">{{ $currencyCode }}</span></label>
-                            <input type="number" id="manualUnitPrice" class="form-control" min="0" step="0.0001" placeholder="Optional override">
-                            <small class="text-muted">Leave blank to use the calculated/BOM price.</small>
-                        </div>
-                        <div class="col-md-6">
-                            <label class="form-label">Quotation Description</label>
-                            <input type="text" id="quotationDescription" class="form-control" maxlength="2000"
-                                   placeholder="Description to print on the quotation for this line item">
-                            <small class="text-muted">This is customer-facing; BOM/internal details are never printed.</small>
-                        </div>
-                    </div>
-
-                    <div id="pricingModeNotice" class="pricing-mode-notice" style="display:none;">
-                        <div class="mode-icon"><i class="bi bi-check2-circle"></i></div>
-                        <div class="flex-grow-1">
-                            <div class="mode-title" id="pricingModeTitle">{{ __('ui.saved_bom_price') }}</div>
-                            <div class="mode-copy" id="pricingModeCopy">{{ __('ui.stored_bom_price_help') }}</div>
-                        </div>
-                        <div class="mode-price" id="pricingModePrice">{{ $currencySymbol }}0.00</div>
-                    </div>
-
-                    {{-- ─── LIVE EXCEL COST ESTIMATOR: MANUAL BOM ONLY ─── --}}
-                    <div id="bomDetailsPreview" class="quote-estimator" style="display:none;">
-                        <div class="quote-estimator-header">
-                            <div>
-                                <div class="eyebrow">{{ __('ui.manual_bom_pricing') }}</div>
-                                <h6><i class="bi bi-calculator-fill me-2"></i>{{ __('ui.excel_material_estimator') }}</h6>
-                            </div>
-                            <div class="d-flex align-items-center gap-2 flex-wrap">
-                                <span class="badge bg-light text-dark" id="bomCodeDisplay">-</span>
-                                <span class="badge bg-warning text-dark" id="bomVersionDisplay">v1.0</span>
-                                <span class="badge bg-success" id="costCurrencyLabel">{{ $currencyCode }}</span>
-                            </div>
-                        </div>
-
-                        <div class="formula-strip">
-                            <div class="formula-step"><small>{{ __('ui.step1_plain') }}</small><strong>Paper Rate = Roll W × Roll H × GSM × Latest Material Cost ÷ Constant</strong></div>
-                            <div class="formula-step"><small>{{ __('ui.step2_plain') }}</small><strong>Layer Cost = Paper Rate × Multiplication Layer</strong></div>
-                            <div class="formula-step"><small>{{ __('ui.step3_plain') }}</small><strong>{{ __('ui.material_wastage_print') }}</strong></div>
-                            <div class="formula-step"><small>{{ __('ui.step4_plain') }}</small><strong>Final Rate = Base + Combined Work %</strong></div>
-                        </div>
-
-                        <div class="p-3 p-lg-4">
-                            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
-                                <div>
-                                    <div class="fw-bold text-dark">{{ __('ui.adjust_production_values') }}</div>
-                                    <small class="text-muted">{{ __('ui.manual_bom_inventory_help') }}</small>
-                                </div>
-                                <div class="d-flex align-items-end gap-2 flex-wrap">
-                                    <div style="min-width:220px;">
-                                        <label class="form-label mb-1">{{ __('ui.formula_template') }}</label>
-                                        <select id="manualBomTemplate" class="form-select form-select-sm"></select>
-                                    </div>
-                                    <div class="small text-muted pb-2"><i class="bi bi-arrow-left-right me-1"></i><span id="bomExchangeRateDisplay">1 USD = 85 AFN</span></div>
-                                </div>
-                            </div>
-
-                            <div id="bomMaterialsTableBody" class="manual-materials-list">
-                                <div class="manual-empty-state">
-                                    <i class="bi bi-calculator fs-3 d-block mb-2"></i>
-                                    Select a BOM template to calculate the quotation.
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="quote-summary-grid">
-                            <div class="quote-summary-card"><div class="label">{{ __('ui.raw_paper_unit') }}</div><div class="value" id="materialCostDisplay">؋0.0000</div></div>
-                            <div class="quote-summary-card"><div class="label">{{ __('ui.combined_work_unit') }}</div><div class="value" id="laborCostDisplay">؋0.0000</div></div>
-                            <div class="quote-summary-card"><div class="label">{{ __('ui.print_unit') }}</div><div class="value" id="printCostDisplay">؋0.0000</div></div>
-                            <div class="quote-summary-card"><div class="label">{{ __('ui.final_cost_unit') }}</div><div class="value" id="totalCostDisplay">؋0.0000</div></div>
-                            <div class="quote-summary-card"><div class="label">{{ __('ui.order_quantity') }}</div><div class="value" id="estimateQtyDisplay">1</div></div>
-                            <div class="quote-summary-card highlight"><div class="label">{{ __('ui.quotation_total') }}</div><div class="value" id="sellingPriceUsdDisplay">؋0.00</div></div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            {{-- ─── QUICK CARTON SPECIFICATION QUOTATION ─── --}}
-            <div class="sale-section" id="cartonSpecSection">
-                <div class="section-header">
-                    <h5>
-                        <i class="bi bi-box-seam" style="color: var(--sale-primary);"></i> Quick Carton Quotation
-                    </h5>
-                    <span style="font-size: 0.75rem; color: var(--sale-gray-400);">
-                        <i class="bi bi-lightning-charge"></i> Dimensions + board profile → technical BOM + price automatically
-                    </span>
-                </div>
-
-                <div class="section-body">
-                    <div class="row g-3">
-                        <div class="col-md-4">
-                            <label class="form-label">Finished Carton Product <span class="text-danger">*</span></label>
-                            <select id="csProduct" class="form-select" style="width: 100%;">
-                                <option value="">Select product...</option>
-                                @foreach ($products as $product)
-                                    <option value="{{ $product->id }}">{{ $product->name }}</option>
-                                @endforeach
-                            </select>
-                        </div>
-                        <div class="col-md-2">
-                            <label class="form-label">Box Style</label>
-                            <select id="csBoxStyle" class="form-select"></select>
-                        </div>
-                        <div class="col-md-2">
-                            <label class="form-label">Length <span class="text-danger">*</span></label>
-                            <input type="number" id="csLength" class="form-control" step="0.01" min="0.01" placeholder="0.00">
-                        </div>
-                        <div class="col-md-2">
-                            <label class="form-label">Width <span class="text-danger">*</span></label>
-                            <input type="number" id="csWidth" class="form-control" step="0.01" min="0.01" placeholder="0.00">
-                        </div>
-                        <div class="col-md-2">
-                            <label class="form-label">Height <span class="text-danger">*</span></label>
-                            <input type="number" id="csHeight" class="form-control" step="0.01" min="0.01" placeholder="0.00">
-                        </div>
-                    </div>
-
-                    <div class="row g-3 mt-2">
-                        <div class="col-md-2">
-                            <label class="form-label">Unit</label>
-                            <select id="csUnit" class="form-select"></select>
-                        </div>
-                        <div class="col-md-3">
-                            <label class="form-label">Board Profile <span class="text-danger">*</span></label>
-                            <select id="csBoardProfile" class="form-select"></select>
-                            <small class="text-muted" id="csProfileHelp"></small>
-                        </div>
-                        <div class="col-md-1">
-                            <label class="form-label">Ply</label>
-                            <input type="number" id="csPly" class="form-control" min="1" step="1" readonly>
-                        </div>
-                        <div class="col-md-2">
-                            <label class="form-label">Flute</label>
-                            <select id="csFlute" class="form-select"></select>
-                        </div>
-                        <div class="col-md-2">
-                            <label class="form-label">Printing</label>
-                            <select id="csPrinting" class="form-select"></select>
-                        </div>
-                        <div class="col-md-2">
-                            <label class="form-label">Quantity <span class="text-danger">*</span></label>
-                            <input type="number" id="csQuantity" class="form-control" min="1" step="1" value="1">
-                        </div>
-                    </div>
-
-                    <div class="row g-3 mt-2">
-                        <div class="col-md-2">
-                            <label class="form-label">Wastage %</label>
-                            <input type="number" id="csWastage" class="form-control" min="0" max="100" step="0.1" value="5">
-                        </div>
-                        <div class="col-md-3">
-                            <label class="form-label">Quoted Unit Price Override <span class="currency-badge">{{ $currencyCode }}</span></label>
-                            <input type="number" id="csQuotedPrice" class="form-control" min="0" step="0.0001" placeholder="Optional">
-                        </div>
-                        <div class="col-md-3">
-                            <label class="form-label">Quotation Description</label>
-                            <input type="text" id="csDescription" class="form-control" maxlength="2000" placeholder="Customer-facing description">
-                        </div>
-                        <div class="col-md-4 d-flex align-items-end gap-2">
-                            <button type="button" class="btn btn-outline-primary" id="csCalculateBtn">
-                                <i class="bi bi-calculator"></i> Calculate
-                            </button>
-                            <button type="button" class="btn btn-success" id="csAddBtn" disabled>
-                                <i class="bi bi-cart-plus"></i> Add to Sale
-                            </button>
-                        </div>
-                    </div>
-
-                    <div id="csError" class="alert alert-danger mt-3 mb-0 py-2 px-3" style="display:none; font-size:.8rem;"></div>
-
-                    <div id="csSummary" class="mt-3" style="display:none;">
-                        <div class="quote-summary-grid">
-                            <div class="quote-summary-card highlight"><div class="label">Unit Selling Price ({{ $currencyCode }})</div><div class="value" id="csUnitPrice">-</div></div>
-                            <div class="quote-summary-card"><div class="label">Order Value ({{ $currencyCode }})</div><div class="value" id="csOrderValue">-</div></div>
-                            <div class="quote-summary-card"><div class="label">Estimated Paper</div><div class="value" id="csPaperKg">-</div></div>
-                            <div class="quote-summary-card"><div class="label">Estimated Adhesive</div><div class="value" id="csAdhesiveKg">-</div></div>
-                            <div class="quote-summary-card"><div class="label">Estimated Material Cost (AFN)</div><div class="value" id="csMaterialCost">-</div></div>
-                            <div class="quote-summary-card"><div class="label">Work / Profit (AFN)</div><div class="value" id="csWorkProfit">-</div></div>
-                            <div class="quote-summary-card"><div class="label">Expected Profit (AFN)</div><div class="value" id="csExpectedProfit">-</div></div>
-                            <div class="quote-summary-card"><div class="label">Stock Status</div><div class="value" id="csStockStatus">-</div></div>
-                        </div>
-
-                        <div id="csShortageList" class="alert alert-warning mt-3 mb-0 py-2 px-3" style="display:none; font-size:.78rem;"></div>
-
-                        <div class="mt-3">
-                            <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#csAdvanced">
-                                <i class="bi bi-gear"></i> Advanced / Technical BOM
-                            </button>
-                            <div class="collapse mt-2" id="csAdvanced">
-                                <div class="table-responsive">
-                                    <table class="table table-sm" style="font-size:.75rem;">
-                                        <thead>
-                                        <tr>
-                                            <th>Material</th>
-                                            <th>Type</th>
-                                            <th class="text-end">GSM</th>
-                                            <th class="text-end">Layers</th>
-                                            <th class="text-end">Kg / Unit</th>
-                                            <th class="text-end">Kg incl. Wastage</th>
-                                            <th class="text-end">Landed AFN/kg</th>
-                                            <th class="text-end">Work %</th>
-                                            <th class="text-end">Row Rate (AFN)</th>
-                                        </tr>
-                                        </thead>
-                                        <tbody id="csAdvancedRows"></tbody>
-                                    </table>
-                                </div>
-                                <small class="text-muted">
-                                    Frozen technical rows generated by the carton specification engine. Adhesive rows are physical material cost only and never receive the paper work/profit.
-                                </small>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        @endif
-
-        {{-- ─── SALE ITEMS TABLE ─── --}}
-        <div class="sale-section">
-            <div class="section-header">
-                <h5>
-                    <i class="bi bi-list-ul"></i> {{ __('ui.sale_items') }}
-                    <span class="badge bg-secondary" style="font-size: 0.65rem; font-weight: 600;">
-                        {{ $sale->items->count() }} {{ __('ui.items') }}
-                    </span>
-                </h5>
-                <div style="display: flex; gap: 0.5rem; font-size: 0.75rem; color: var(--sale-gray-400);">
-                    <span><i class="bi bi-box"></i> {{ $sale->items->sum('qty') }} {{ __('ui.total_units') }}</span>
-                    <span><i class="bi bi-gear"></i> {{ __('ui.produced_after_confirmation') }}</span>
-                </div>
-            </div>
-
-            <div class="section-body">
-                <div class="alert alert-light border mb-3 py-2 px-3" style="font-size:.75rem;">
-                    <i class="bi bi-info-circle me-1"></i>
-                    @if($actualAvailable)
-                        {{ __('ui.item_cost_profit_actual_note') }}
-                    @else
-                        Actual production cost is not available yet. Quotation/BOM values are shown until production consumption is recorded.
-                    @endif
-                </div>
-                <div class="table-responsive">
-                    <table class="sale-table">
-                        <thead>
-                        <tr>
-                            <th style="min-width: 150px;">{{ __('ui.product') }}</th>
-                            <th class="text-center" style="min-width: 60px;">{{ __('ui.qty') }}</th>
-                            <th class="text-end" style="min-width: 115px;">{{ $actualAvailable ? __('ui.actual_cost_unit') : __('ui.quotation_cost_unit') }}</th>
-                            <th class="text-end" style="min-width: 115px;">{{ $actualAvailable ? __('ui.actual_cost_total') : __('ui.quotation_cost_total') }}</th>
-                            <th class="text-end" style="min-width: 110px;">{{ __('ui.unit_price') }}</th>
-                            <th class="text-end" style="min-width: 110px;">{{ __('ui.total') }}</th>
-                            <th class="text-end" style="min-width: 120px;">{{ $actualAvailable ? __('ui.actual_profit') : __('ui.quotation_profit') }} ({{ $currencySymbol }})</th>
-                            <th class="text-end" style="min-width: 100px;">{{ $actualAvailable ? __('ui.actual_margin') : __('ui.quotation_margin') }}</th>
-                            @if ($sale->status === 'draft')
-                                <th class="text-center" style="width: 1%;">{{ __('ui.action') }}</th>
-                            @endif
-                        </tr>
-                        </thead>
-                        <tbody id="saleItemsTableBody">
-                        @forelse($sale->items as $item)
-                            @php
-                                $itemFinancial = $ps['item_financials'][$item->id] ?? null;
-                                $itemHasActual = $actualAvailable && (bool) ($itemFinancial['actual_available'] ?? false);
-
-                                $itemRevenueUsd = (float) ($item->usd_total ?? 0);
-                                $itemRevenueAfn = (float) ($item->total ?? 0);
-
-                                if ($itemHasActual) {
-                                    $costPerUnitUsd = (float) ($itemFinancial['actual_cost_usd'] ?? 0) / max((float) $item->qty, 0.000001);
-                                    $costTotalUsd = (float) ($itemFinancial['actual_cost_usd'] ?? 0);
-                                    $costPerUnitAfn = (float) ($itemFinancial['actual_cost_afn'] ?? 0) / max((float) $item->qty, 0.000001);
-                                    $costTotalAfn = (float) ($itemFinancial['actual_cost_afn'] ?? 0);
-                                    $profitUsd = (float) ($itemFinancial['actual_profit_usd'] ?? 0);
-                                    $profitAfn = (float) ($itemFinancial['actual_profit_afn'] ?? 0);
-                                    $rowMargin = (float) ($itemFinancial['actual_margin_percentage'] ?? 0);
-                                } else {
-                                    $isManualSnapshot = is_array($item->manual_bom_snapshot ?? null) && count($item->manual_bom_snapshot) > 0;
-                                    if ($isManualSnapshot) {
-                                        // For manual-BOM items the commercial Net Rate is the exact Excel
-                                        // quotation, stored in AFN (unit_price / total). Reconstructing it
-                                        // from the 2dp-rounded USD total_cost_usd (9.35 × 66 = 617.10)
-                                        // inflates the total; use the canonical AFN values (616.80) so the
-                                        // Excel quotation matches the sale revenue and no phantom variance.
-                                        $costPerUnitAfn = (float) ($item->unit_price ?? 0);
-                                        $costTotalAfn = (float) ($item->total ?? 0);
-                                        $costPerUnitUsd = $costTotalAfn > 0 ? $costTotalAfn / $exchangeRate : 0;
-                                        $costTotalUsd = $costTotalAfn / $exchangeRate;
-                                    } else {
-                                        $costPerUnitUsd = (float) ($item->cost_per_unit_usd ?? 0);
-                                        $costTotalUsd = (float) ($item->total_cost_usd ?? 0);
-                                        $costPerUnitAfn = $costPerUnitUsd * $exchangeRate;
-                                        $costTotalAfn = $costTotalUsd * $exchangeRate;
-                                    }
-                                    $profitUsd = $itemRevenueUsd - $costTotalUsd;
-                                    $profitAfn = $itemRevenueAfn - $costTotalAfn;
-                                    $rowMargin = $itemRevenueAfn > 0 ? ($profitAfn / $itemRevenueAfn) * 100 : 0;
-                                }
-
-                                $costPerUnitDisplay = $isUSD ? $costPerUnitUsd : $costPerUnitAfn;
-                                $costTotalDisplay = $isUSD ? $costTotalUsd : $costTotalAfn;
-                                $profitDisplay = $isUSD ? $profitUsd : $profitAfn;
-                            @endphp
-                            <tr data-item-id="{{ $item->id }}">
-                                <td>
-                                    <div class="product-cell">
-                                        <div class="name">{{ $item->product->name ?? '-' }}</div>
-                                        @if ($sale->status === 'draft')
-                                            <textarea class="form-control form-control-sm quotation-description-input mt-1"
-                                                      data-id="{{ $item->id }}"
-                                                      maxlength="2000"
-                                                      rows="2"
-                                                      placeholder="Quotation description">{{ $item->quotation_description }}</textarea>
-                                        @elseif($item->quotation_description)
-                                            <div class="meta"><i class="bi bi-card-text"></i> {{ $item->quotation_description }}</div>
-                                        @endif
-                                    </div>
-                                </td>
-                                <td class="text-center fw-bold">{{ number_format($item->qty, 2) }}</td>
-                                <td class="text-end">
-                                    {{ $currencySymbol }}{{ number_format($costPerUnitDisplay, 4) }}
-                                    @if(!$isUSD)
-                                        <span style="font-size: 0.55rem; color: var(--sale-gray-400); display: block;">${{ number_format($costPerUnitUsd, 4) }} USD</span>
-                                    @endif
-                                </td>
-                                <td class="text-end fw-bold">
-                                    {{ $currencySymbol }}{{ number_format($costTotalDisplay, 2) }}
-                                    @if(!$isUSD)
-                                        <span style="font-size: 0.55rem; color: var(--sale-gray-400); display: block;">${{ number_format($costTotalUsd, 2) }} USD</span>
-                                    @endif
-                                </td>
-                                <td class="text-end">
-                                    @if($sale->status === 'draft')
-                                        <div class="input-group input-group-sm" style="min-width:130px;">
-                                            <span class="input-group-text">{{ $currencySymbol }}</span>
-                                            <input type="number"
-                                                   class="form-control text-end manual-line-price"
-                                                   data-id="{{ $item->id }}"
-                                                   value="{{ number_format((float) $item->unit_price, 4, '.', '') }}"
-                                                   min="0.0001"
-                                                   step="0.0001">
-                                        </div>
-                                        <small class="text-muted">Manual selling price</small>
-                                    @else
-                                        {{ $currencySymbol }}{{ number_format($item->unit_price, 2) }}
-                                    @endif
-                                </td>
-                                <td class="text-end fw-bold">{{ $currencySymbol }}{{ number_format($item->total, 2) }}</td>
-                                <td class="text-end">
-                                    <span class="{{ $profitDisplay >= 0 ? 'profit-positive' : 'profit-negative' }}">
-                                        {{ $profitDisplay < 0 ? '-' : '' }}{{ $currencySymbol }}{{ number_format(abs($profitDisplay), 2) }}
-                                    </span>
-                                    @if(!$isUSD)
-                                        <span style="font-size: 0.55rem; color: var(--sale-gray-400); display: block;">
-                                            ({{ $profitUsd < 0 ? '-' : '' }}${{ number_format(abs($profitUsd), 2) }} USD)
-                                        </span>
-                                    @endif
-                                </td>
-                                <td class="text-end">
-                                    <span class="profit-badge {{ $rowMargin >= 0 ? 'positive' : 'negative' }}">
-                                        {{ number_format($rowMargin, 1) }}%
-                                    </span>
-                                </td>
-                                @if ($sale->status === 'draft')
-                                    <td class="text-center">
-                                        <button class="action-btn danger remove-item" data-id="{{ $item->id }}" title="{{ __('ui.remove') }}">
-                                            <i class="bi bi-x-lg"></i>
-                                        </button>
                                     </td>
-                                @endif
-                            </tr>
-                        @empty
-                            <tr>
-                                <td colspan="{{ $sale->status === 'draft' ? '9' : '8' }}">
-                                    <div class="empty-state">
-                                        <i class="bi bi-box-seam icon"></i>
-                                        <div class="title">{{ __('ui.no_items_added') }}</div>
-                                        <div class="subtitle">{{ __('ui.select_product_batches') }}</div>
-                                    </div>
-                                </td>
-                            </tr>
-                        @endforelse
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
-
-        @if ($actualAvailable && !empty($productionVariance))
-            @php $pv = $productionVariance; $pvSummary = $pv['summary']; @endphp
-            <div class="sale-section" id="productionVarianceSection">
-                <div class="section-header">
-                    <h5>
-                        <i class="bi bi-graph-up-arrow"></i> Planned vs Actual Production
-                    </h5>
-                    <span style="font-size: 0.75rem; color: var(--sale-gray-400);">
-                        <i class="bi bi-info-circle"></i> Actual quantities come from real FIFO production consumption records
-                    </span>
-                </div>
-                <div class="section-body">
-                    <div class="quote-summary-grid">
-                        <div class="quote-summary-card"><div class="label">Estimated Production Cost (USD)</div><div class="value">${{ number_format((float) $pvSummary['estimated_production_cost_usd'], 4) }}</div></div>
-                        <div class="quote-summary-card"><div class="label">Actual Production Cost (USD)</div><div class="value">${{ number_format((float) $pvSummary['actual_production_cost_usd'], 4) }}</div></div>
-                        <div class="quote-summary-card"><div class="label">Material Variance (USD)</div><div class="value" style="color: {{ (float) $pvSummary['material_cost_variance_usd'] > 0 ? '#dc2626' : '#059669' }};">${{ number_format((float) $pvSummary['material_cost_variance_usd'], 4) }}</div></div>
-                        <div class="quote-summary-card"><div class="label">Estimated Profit (AFN)</div><div class="value">{{ $currencySymbol }}{{ number_format((float) $pvSummary['estimated_profit_afn'], 2) }}</div></div>
-                        <div class="quote-summary-card highlight"><div class="label">Realized Profit (AFN)</div><div class="value">{{ $pvSummary['realized_profit_afn'] !== null ? $currencySymbol . number_format((float) $pvSummary['realized_profit_afn'], 2) : 'Pending' }}</div></div>
-                        <div class="quote-summary-card"><div class="label">Margin Variance</div><div class="value">{{ $pvSummary['margin_variance_percentage'] !== null ? number_format((float) $pvSummary['margin_variance_percentage'], 2) . '%' : 'Pending' }}</div></div>
-                    </div>
-
-                    <div class="table-responsive mt-3">
-                        <table class="table table-sm" style="font-size:.75rem;">
-                            <thead>
-                            <tr>
-                                <th>Material</th>
-                                <th class="text-end">Planned Qty</th>
-                                <th class="text-end">Actual Qty</th>
-                                <th class="text-end">Variance Qty</th>
-                                <th class="text-end">Planned Wastage</th>
-                                <th class="text-end">Actual Wastage</th>
-                                <th class="text-end">Planned Cost (USD)</th>
-                                <th class="text-end">Actual Cost (USD)</th>
-                                <th class="text-end">Cost Variance (USD)</th>
-                                <th class="text-center">Status</th>
-                            </tr>
-                            </thead>
-                            <tbody>
-                            @foreach ($pv['materials'] as $pvRow)
-                                <tr>
-                                    <td>{{ $pvRow['material_name'] }} <span class="text-muted">({{ $pvRow['unit'] }})</span></td>
-                                    <td class="text-end">{{ number_format((float) $pvRow['planned_quantity'], 4) }}</td>
-                                    <td class="text-end">{{ number_format((float) $pvRow['actual_quantity'], 4) }}</td>
-                                    <td class="text-end" style="color: {{ (float) $pvRow['variance_quantity'] > 0 ? '#dc2626' : '#059669' }};">
-                                        {{ number_format((float) $pvRow['variance_quantity'], 4) }}
-                                    </td>
-                                    <td class="text-end">{{ number_format((float) $pvRow['planned_wastage_quantity'], 4) }}</td>
-                                    <td class="text-end">{{ number_format((float) $pvRow['actual_wastage_quantity'], 4) }}</td>
-                                    <td class="text-end">${{ number_format((float) $pvRow['planned_cost_usd'], 4) }}</td>
-                                    <td class="text-end">${{ number_format((float) $pvRow['actual_cost_usd'], 4) }}</td>
-                                    <td class="text-end" style="color: {{ (float) $pvRow['cost_variance_usd'] > 0 ? '#dc2626' : '#059669' }};">
-                                        ${{ number_format((float) $pvRow['cost_variance_usd'], 4) }}
-                                    </td>
-                                    <td class="text-center">
-                                        @if (!$pvRow['has_actual'])
-                                            <span class="badge bg-secondary">Pending</span>
-                                        @elseif ($pvRow['indicator'] === 'unfavorable')
-                                            <span class="badge bg-danger">Unfavorable</span>
-                                        @elseif ($pvRow['indicator'] === 'favorable')
-                                            <span class="badge bg-success">Favorable</span>
+                                    <td><strong>{{ number_format((float)$item->qty, 2) }}</strong></td>
+                                    <td>{{ number_format($standardPrice, 4) }}</td>
+                                    <td>
+                                        @if($sale->status === 'draft')
+                                            <input type="number" class="so2-price-input manual-line-price" data-id="{{ $item->id }}" value="{{ $manualApplied ? number_format($effectivePrice, 4, '.', '') : '' }}" placeholder="Use system price" min="0.0001" step="0.0001">
+                                            @if($manualApplied)<div class="so2-manual-tag"><i class="bi bi-pencil-square"></i>Manual Override Applied</div>@endif
                                         @else
-                                            <span class="badge bg-light text-dark">Neutral</span>
+                                            {{ $manualApplied ? number_format($effectivePrice, 4) : '—' }}
                                         @endif
+                                    </td>
+                                    <td class="so2-money-good">{{ number_format($effectivePrice, 4) }}</td>
+                                    <td>{{ number_format($estimatedUnitCost, 4) }}</td>
+                                    <td class="{{ $estimatedLineProfit >= 0 ? 'so2-money-good' : 'text-danger fw-bold' }}">{{ number_format($estimatedLineProfit, 2) }}</td>
+                                    <td><span class="so2-status {{ $statusUi['class'] }}">{{ $statusUi['label'] }}</span></td>
+                                    <td>
+                                        <div class="dropdown">
+                                            <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="dropdown"><i class="bi bi-three-dots-vertical"></i></button>
+                                            <ul class="dropdown-menu dropdown-menu-end">
+                                                <li><button type="button" class="dropdown-item so2-edit-description" data-id="{{ $item->id }}"><i class="bi bi-card-text me-2"></i>Edit quotation description</button></li>
+                                                @if($sale->status === 'draft')
+                                                    <li><button type="button" class="dropdown-item text-danger remove-item" data-id="{{ $item->id }}"><i class="bi bi-x-lg me-2"></i>{{ __('ui.remove') }}</button></li>
+                                                @endif
+                                            </ul>
+                                        </div>
                                     </td>
                                 </tr>
-                            @endforeach
+                            @empty
+                                <tr><td colspan="10"><div class="so2-empty"><i class="bi bi-box-seam"></i>No items added yet. Use <strong>Add Carton</strong> to add the first item.</div></td></tr>
+                            @endforelse
                             </tbody>
                         </table>
                     </div>
-                    <small class="text-muted">
-                        Planned quantities follow the frozen accepted specification. Actual wastage is shown only when real consumption records carry it; production variance may also include yield/waste differences not separately recorded.
-                    </small>
+                    <div class="so2-info-strip"><i class="bi bi-info-circle me-2"></i>Operators can manually override an item price while the order is in draft. Leave the field empty to use the latest BOM/system price.</div>
+                </div>
+
+                <aside class="so2-card">
+                    <div class="so2-card-head"><div class="so2-card-title"><i class="bi bi-receipt"></i>Order Summary</div></div>
+                    <div class="so2-summary">
+                        <div class="so2-summary-row"><span>Subtotal</span><strong>{{ $saleCurrencySymbol }} {{ number_format($grossSales, 2) }}</strong></div>
+                        <div class="so2-summary-row"><span>Estimated Production Cost</span><strong>{{ $saleCurrencySymbol }} {{ number_format($estimatedCost, 2) }}</strong></div>
+                        <hr class="my-2">
+                        <div class="so2-summary-row profit"><span>Estimated Profit</span><strong>{{ $saleCurrencySymbol }} {{ number_format($estimatedProfit, 2) }}</strong></div>
+                        <div class="so2-summary-row margin"><span>Margin</span><strong>{{ number_format($estimatedMargin, 1) }}%</strong></div>
+                        @if($actualAvailable)
+                            <hr class="my-2"><div class="so2-summary-row"><span>Actual Production Cost</span><strong>{{ $saleCurrencySymbol }} {{ number_format($actualCost, 2) }}</strong></div><div class="so2-summary-row profit"><span>Actual Profit</span><strong>{{ $saleCurrencySymbol }} {{ number_format($actualProfit, 2) }}</strong></div>
+                        @endif
+                        <div class="so2-summary-note"><i class="bi bi-info-circle me-1"></i>Totals update when a manual override is saved. Estimated profit becomes final only after actual FIFO production consumption is recorded.</div>
+                    </div>
+                </aside>
+            </div>
+
+            <div class="so2-tabs-card">
+                <div class="so2-tabs">
+                    <button class="so2-tab active" data-so2-tab="overview"><i class="bi bi-file-earmark-text"></i>Overview</button>
+                    <button class="so2-tab" data-so2-tab="bom"><i class="bi bi-box"></i>BOM Breakdown</button>
+                    <button class="so2-tab" data-so2-tab="costing"><i class="bi bi-layers"></i>Costing</button>
+                    <button class="so2-tab" data-so2-tab="production"><i class="bi bi-gear"></i>Production</button>
+                    <button class="so2-tab" data-so2-tab="pricing"><i class="bi bi-card-text"></i>Pricing Notes</button>
+                </div>
+
+                <div class="so2-panel active" data-so2-panel="overview">
+                    <div class="so2-overview-grid">
+                        <div class="so2-mini-card"><div class="so2-mini-head"><i class="bi bi-file-earmark-text"></i>Order Information</div>
+                            <div class="so2-kv"><span>Order Number</span><span>{{ $sale->sale_no }}</span></div><div class="so2-kv"><span>Customer</span><span>{{ $sale->customer->name ?? '-' }}</span></div><div class="so2-kv"><span>Order Date</span><span>{{ $sale->sale_date ? date('M d, Y', strtotime($sale->sale_date)) : '-' }}</span></div><div class="so2-kv"><span>Status</span><span>{{ ucfirst($sale->status) }}</span></div><div class="so2-kv"><span>Production Status</span><span>{{ $productionUi['label'] }}</span></div><div class="so2-kv"><span>Remarks</span><span>{{ $sale->notes ?: '—' }}</span></div>
+                        </div>
+                        <div class="so2-mini-card"><div class="so2-mini-head"><i class="bi bi-info-circle"></i>Additional Information</div>
+                            <div class="so2-kv"><span>Currency</span><span>{{ $currencyCode }}</span></div><div class="so2-kv"><span>Exchange Rate</span><span>1 USD = {{ number_format($exchangeRate,4) }} AFN</span></div><div class="so2-kv"><span>Total Items</span><span>{{ $sale->items->count() }} Products</span></div><div class="so2-kv"><span>Created</span><span>{{ optional($sale->created_at)->format('M d, Y H:i') }}</span></div><div class="so2-kv"><span>Last Updated</span><span>{{ optional($sale->updated_at)->format('M d, Y H:i') }}</span></div>
+                        </div>
+                        <div class="so2-mini-card"><div class="so2-mini-head"><i class="bi bi-file-earmark-check"></i>Pricing Notes</div>
+                            <div class="so2-pricing-note"><ul class="mb-0 ps-3"><li>Item prices can be manually overridden before order confirmation.</li><li>If no override is entered, the latest BOM/system price is used.</li><li>Manual override changes the selling price only; production cost still comes from BOM/inventory costing.</li><li>Estimated profit and margin use the effective selling price and may change after production.</li></ul></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="so2-panel" data-so2-panel="bom">
+                    <div id="so2BomEmpty" class="so2-empty"><i class="bi bi-check2-square"></i>Select an item using the checkbox above to view its BOM material breakdown.</div>
+                    <div id="so2BomBreakdownBody" style="display:none"></div>
+                </div>
+
+                <div class="so2-panel" data-so2-panel="costing">
+                    <div class="so2-cost-grid">
+                        <div class="so2-cost-box"><div class="label">Customer Quotation Total</div><div class="value">{{ $saleCurrencySymbol }} {{ number_format($grossSales,2) }}</div></div>
+                        <div class="so2-cost-box"><div class="label">Estimated Production Cost</div><div class="value">{{ $saleCurrencySymbol }} {{ number_format($estimatedCost,2) }}</div></div>
+                        <div class="so2-cost-box"><div class="label">Estimated Profit</div><div class="value text-success">{{ $saleCurrencySymbol }} {{ number_format($estimatedProfit,2) }}</div></div>
+                        <div class="so2-cost-box"><div class="label">Estimated Margin</div><div class="value text-success">{{ number_format($estimatedMargin,1) }}%</div></div>
+                    </div>
+                    @if($actualAvailable && !empty($productionVariance))
+                        <div class="alert alert-light border mt-3 mb-0 small"><i class="bi bi-check-circle text-success me-2"></i>Actual FIFO production costs are available for this order. Production variance remains authoritative in the Production Order record.</div>
+                    @else
+                        <div class="alert alert-light border mt-3 mb-0 small"><i class="bi bi-info-circle text-primary me-2"></i>These values are estimates until production records actual FIFO material consumption.</div>
+                    @endif
+                </div>
+
+                <div class="so2-panel" data-so2-panel="production">
+                    <div class="so2-mini-card">
+                        <div class="so2-mini-head"><i class="bi bi-gear"></i>Production Status</div>
+                        <div class="d-flex align-items-center gap-2"><span class="so2-status {{ $productionUi['class'] }}">{{ $productionUi['label'] }}</span>@if($sale->productionOrder)<span class="text-muted small">Production Order #{{ $sale->productionOrder->id }}</span>@endif</div>
+                        <div class="so2-production-actions">
+                            @if($sale->productionOrder)<a class="btn btn-outline-primary btn-sm" href="{{ route('production-orders.show',$sale->productionOrder) }}"><i class="bi bi-eye me-1"></i>Open Production Order</a>@endif
+                            @if($sale->status === 'confirmed' && !$sale->is_produced && $sale->productionOrder && $sale->productionOrder->status === 'pending')<a class="btn btn-warning btn-sm" href="{{ route('production-orders.show',$sale->productionOrder) }}"><i class="bi bi-calculator me-1"></i>Set Production Qty</a>@endif
+                        </div>
+                    </div>
+                </div>
+
+                <div class="so2-panel" data-so2-panel="pricing">
+                    <div class="so2-overview-grid">
+                        <div class="so2-mini-card"><div class="so2-mini-head"><i class="bi bi-pencil-square"></i>Manual Override</div><div class="so2-pricing-note">Available only while the order is Draft. Enter a price on the item row to replace the selling price. Clear it to restore the saved system/BOM price.</div></div>
+                        <div class="so2-mini-card"><div class="so2-mini-head"><i class="bi bi-box"></i>BOM Cost</div><div class="so2-pricing-note">BOM and landed inventory costs remain independent of the selling-price override, preserving production costing and profit traceability.</div></div>
+                        <div class="so2-mini-card"><div class="so2-mini-head"><i class="bi bi-printer"></i>Documents</div><div class="so2-pricing-note">Use the Print menu in the header to print either the customer quotation or the invoice after items have been added.</div></div>
+                    </div>
                 </div>
             </div>
-        @endif
 
+            @foreach($sale->items as $item)
+                <template id="so2-bom-template-{{ $item->id }}">
+                    @php
+                        $manualRows = is_array($item->manual_bom_snapshot ?? null) ? $item->manual_bom_snapshot : [];
+                        $regularRows = $item->bom?->items ?? collect();
+                        $breakdownTotal = 0;
+                    @endphp
+                    <div class="so2-breakdown-head">
+                        <div class="so2-breakdown-title"><i class="bi bi-box text-primary me-2"></i>BOM Material Breakdown — {{ $item->product->name ?? 'Item' }} @if($item->bom)({{ $item->bom->code }})@endif</div>
+                        <span class="so2-selected-chip">Showing BOM for selected item</span>
+                    </div>
+                    @if(count($manualRows) > 0)
+                        <div class="table-responsive"><table class="so2-breakdown-table"><thead><tr><th>#</th><th>Material</th><th>Usage / Carton</th><th>Usage + Waste</th><th>Unit</th><th>Rate ({{ $currencyCode }})</th><th>Total Cost ({{ $currencyCode }})</th><th>Remark</th></tr></thead><tbody>
+                        @foreach($manualRows as $idx => $row)
+                            @php
+                                $usage = (float)($row['kg_per_finished_unit'] ?? $row['quantity'] ?? 0);
+                                $usageWaste = (float)($row['kg_with_wastage'] ?? $usage);
+                                $costUsd = (float)($row['physical_cost_usd'] ?? 0);
+                                $rateUsd = $usageWaste > 0 ? $costUsd / $usageWaste : 0;
+                                $rateDisplay = $currencyCode === 'USD' ? $rateUsd : $rateUsd * $exchangeRate;
+                                $rowCost = $usageWaste * $rateDisplay;
+                                $breakdownTotal += $rowCost;
+                            @endphp
+                            <tr><td>{{ $idx+1 }}</td><td>{{ $row['material_name'] ?? 'Material' }}</td><td>{{ number_format($usage,6) }}</td><td>{{ number_format($usageWaste,6) }}</td><td>kg</td><td>{{ number_format($rateDisplay,4) }}</td><td>{{ number_format($rowCost,4) }}</td><td>{{ ($row['formula_type'] ?? '') === 'adhesive_mix' ? 'Adhesive mix' : 'Manual BOM snapshot' }}</td></tr>
+                        @endforeach
+                        </tbody></table></div>
+                        <div class="so2-breakdown-total"><span>Total Material Cost (per carton)</span><strong>{{ $saleCurrencySymbol }} {{ number_format($breakdownTotal,4) }}</strong></div>
+                    @elseif($regularRows->count())
+                        <div class="table-responsive"><table class="so2-breakdown-table"><thead><tr><th>#</th><th>Material</th><th>Usage / Carton</th><th>Usage + Waste</th><th>Unit</th><th>Rate ({{ $currencyCode }})</th><th>Total Cost ({{ $currencyCode }})</th><th>Remark</th></tr></thead><tbody>
+                        @foreach($regularRows as $idx => $bomItem)
+                            @php
+                                $usage = (float)$bomItem->calculateStockKgPerUnit();
+                                $usageWaste = (float)$bomItem->calculateStockRequirement(1, true);
+                                $rateUsd = (float)($bomItem->cost_per_unit_usd ?? 0);
+                                $rateDisplay = $currencyCode === 'USD' ? $rateUsd : $rateUsd * $exchangeRate;
+                                $rowCost = $usageWaste * $rateDisplay;
+                                $breakdownTotal += $rowCost;
+                                $unitLabel = $bomItem->stock_consumption_unit ?: ($bomItem->unit ?: 'kg');
+                            @endphp
+                            <tr><td>{{ $idx+1 }}</td><td>{{ $bomItem->material->name ?? 'Material' }}</td><td>{{ number_format($usage,6) }}</td><td>{{ number_format($usageWaste,6) }}</td><td>{{ $unitLabel }}</td><td>{{ number_format($rateDisplay,4) }}</td><td>{{ number_format($rowCost,4) }}</td><td>{{ $bomItem->formula_label }}</td></tr>
+                        @endforeach
+                        </tbody></table></div>
+                        <div class="so2-breakdown-total"><span>Total Material Cost (per carton)</span><strong>{{ $saleCurrencySymbol }} {{ number_format($breakdownTotal,4) }}</strong></div>
+                    @else
+                        <div class="so2-empty"><i class="bi bi-exclamation-circle"></i>This sale item has no linked BOM material breakdown.</div>
+                    @endif
+                </template>
+            @endforeach
+        </div>
     </div>
+
+    @if($sale->status === 'draft')
+    <div class="offcanvas offcanvas-end so2-drawer" tabindex="-1" id="addCartonOffcanvas">
+        <div class="offcanvas-header">
+            <div><h5 class="offcanvas-title fw-bold"><i class="bi bi-box text-primary me-2"></i>Add Carton</h5><div class="text-muted small">Add a carton to this sale order</div></div>
+            <button type="button" class="btn-close" data-bs-dismiss="offcanvas"></button>
+        </div>
+        <div class="offcanvas-body">
+            <div class="so2-mode-tabs"><button type="button" class="so2-mode-btn active" data-so2-add-mode="existing"><i class="bi bi-box me-1"></i>Existing BOM</button><button type="button" class="so2-mode-btn" data-so2-add-mode="quick"><i class="bi bi-pencil me-1"></i>Quick Quotation</button></div>
+
+            <div class="so2-add-pane active" data-so2-add-pane="existing">
+                <div class="so2-form-grid">
+                    <div class="full"><label>{{ __('ui.product') }} *</label><select id="productSelect" class="form-select"><option value="">{{ __('ui.choose_product') }}</option>@foreach($products as $product)<option value="{{ $product->id }}">{{ $product->name }}</option>@endforeach</select></div>
+                    <div class="full"><label>BOM / Pricing Method *</label><select id="bomSelect" class="form-select" disabled><option value="">{{ __('ui.select_product_first') }}</option></select><small class="text-muted" id="pricingModeHelp">{{ __('ui.choose_pricing_help') }}</small></div>
+                    <div><label>{{ __('ui.quantity') }} *</label><input id="itemQty" type="number" class="form-control" value="1" min="1" step="1" oninput="recalculateLiveEstimate();updateAddTotals();"></div>
+                    <div><label>Manual Override Price ({{ $currencyCode }})</label><input id="manualUnitPrice" type="number" class="form-control" min="0" step="0.0001" placeholder="Leave empty for system price"></div>
+                    <div><label>System / BOM Price ({{ $currencyCode }})</label><input id="unitPrice" type="number" class="form-control" value="0" readonly><small class="text-muted" id="priceSource">{{ __('ui.select_bom_auto') }}</small></div>
+                    <div><label>{{ __('ui.exchange_rate') }}</label><input id="exchangeRate" type="number" class="form-control" value="{{ $exchangeRate }}" step="0.000001" min="0.000001" oninput="recalculateLiveEstimate();"></div>
+                    <div class="full"><label>Quotation Description</label><textarea id="quotationDescription" class="form-control" rows="2" maxlength="2000" placeholder="Customer-facing description"></textarea></div>
+                    <div class="full"><label>Line Total</label><input id="itemTotal" class="form-control" value="{{ $saleCurrencySymbol }} 0.00" readonly></div>
+                </div>
+                <div id="pricingModeNotice" class="pricing-mode-notice mt-3" style="display:none"><div class="mode-icon"><i class="bi bi-check2-circle"></i></div><div class="flex-grow-1"><div class="mode-title" id="pricingModeTitle"></div><div class="mode-copy" id="pricingModeCopy"></div></div><div class="mode-price" id="pricingModePrice"></div></div>
+                <div class="d-flex justify-content-between align-items-center mt-3"><button type="button" class="btn btn-outline-primary btn-sm" onclick="openBomCalculator()"><i class="bi bi-calculator me-1"></i>New BOM</button><select id="manualBomTemplate" class="form-select form-select-sm" style="max-width:310px"></select></div>
+                <div id="bomDetailsPreview" class="quote-estimator mt-3" style="display:none">
+                    <div class="quote-estimator-header"><div><div class="eyebrow">{{ __('ui.manual_bom_pricing') }}</div><h6><i class="bi bi-calculator-fill me-2"></i>{{ __('ui.excel_material_estimator') }}</h6></div><div><span class="badge bg-light text-dark" id="bomCodeDisplay">-</span> <span class="badge bg-warning text-dark" id="bomVersionDisplay">v1.0</span> <span class="badge bg-success" id="costCurrencyLabel">{{ $currencyCode }}</span></div></div>
+                    <div class="p-3"><div class="small text-muted mb-2" id="bomExchangeRateDisplay">1 USD = {{ number_format($exchangeRate,2) }} AFN</div><div id="bomMaterialsTableBody"></div></div>
+                    <div class="quote-summary-grid"><div class="quote-summary-card"><div class="label">{{ __('ui.raw_paper_unit') }}</div><div class="value" id="materialCostDisplay">؋0.0000</div></div><div class="quote-summary-card"><div class="label">{{ __('ui.combined_work_unit') }}</div><div class="value" id="laborCostDisplay">؋0.0000</div></div><div class="quote-summary-card"><div class="label">{{ __('ui.print_unit') }}</div><div class="value" id="printCostDisplay">؋0.0000</div></div><div class="quote-summary-card"><div class="label">{{ __('ui.final_cost_unit') }}</div><div class="value" id="totalCostDisplay">؋0.0000</div></div><div class="quote-summary-card"><div class="label">{{ __('ui.order_quantity') }}</div><div class="value" id="estimateQtyDisplay">1</div></div><div class="quote-summary-card highlight"><div class="label">{{ __('ui.quotation_total') }}</div><div class="value" id="sellingPriceUsdDisplay">{{ $saleCurrencySymbol }}0.00</div></div></div>
+                </div>
+                <div class="so2-drawer-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="offcanvas">Cancel</button><button type="button" class="btn btn-primary" id="addItemBtn" disabled><i class="bi bi-plus-lg me-1"></i>Add to Sale</button></div>
+            </div>
+
+            <div class="so2-add-pane" data-so2-add-pane="quick">
+                <div class="so2-form-grid">
+                    <div class="full"><label>Finished Carton Product *</label><select id="csProduct" class="form-select"><option value="">Select product...</option>@foreach($products as $product)<option value="{{ $product->id }}">{{ $product->name }}</option>@endforeach</select></div>
+                    <div><label>Box Style</label><select id="csBoxStyle" class="form-select"></select></div><div><label>Unit</label><select id="csUnit" class="form-select"></select></div>
+                    <div><label>Length *</label><input id="csLength" type="number" class="form-control" step="0.01" min="0.01"></div><div><label>Width *</label><input id="csWidth" type="number" class="form-control" step="0.01" min="0.01"></div><div><label>Height *</label><input id="csHeight" type="number" class="form-control" step="0.01" min="0.01"></div><div><label>Quantity *</label><input id="csQuantity" type="number" class="form-control" value="1" min="1"></div>
+                    <div class="full"><label>Board Profile *</label><select id="csBoardProfile" class="form-select"></select><small id="csProfileHelp" class="text-muted"></small></div>
+                    <div><label>Ply</label><input id="csPly" type="number" class="form-control" readonly></div><div><label>Flute</label><select id="csFlute" class="form-select"></select></div><div><label>Printing</label><select id="csPrinting" class="form-select"></select></div><div><label>Wastage %</label><input id="csWastage" type="number" class="form-control" value="5" min="0" max="100" step="0.1"></div>
+                    <div><label>Quoted Unit Price Override</label><input id="csQuotedPrice" type="number" class="form-control" min="0" step="0.0001" placeholder="Optional"></div><div class="full"><label>Quotation Description</label><input id="csDescription" class="form-control" maxlength="2000"></div>
+                </div>
+                <div id="csError" class="alert alert-danger mt-3 py-2" style="display:none"></div>
+                <div id="csSummary" style="display:none">
+                    <div class="so2-quick-summary"><div class="so2-quick-box"><small>Unit Price</small><strong id="csUnitPrice">0</strong></div><div class="so2-quick-box"><small>Material Cost</small><strong id="csMaterialCost">0</strong></div><div class="so2-quick-box"><small>Paper Kg</small><strong id="csPaperKg">0</strong></div><div class="so2-quick-box"><small>Adhesive Kg</small><strong id="csAdhesiveKg">0</strong></div><div class="so2-quick-box"><small>Work / Profit</small><strong id="csWorkProfit">0</strong></div><div class="so2-quick-box"><small>Expected Profit</small><strong id="csExpectedProfit">0</strong></div><div class="so2-quick-box"><small>Order Value</small><strong id="csOrderValue">0</strong></div><div class="so2-quick-box"><small>Stock Status</small><strong id="csStockStatus">-</strong></div></div>
+                    <div id="csShortageList" class="small mt-2"></div><div id="csAdvanced" class="so2-advanced"><div id="csAdvancedRows"></div></div>
+                </div>
+                <div class="so2-drawer-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="offcanvas">Cancel</button><button type="button" class="btn btn-outline-primary" id="csCalculateBtn"><i class="bi bi-calculator me-1"></i>Calculate</button><button type="button" class="btn btn-primary" id="csAddBtn" disabled><i class="bi bi-plus-lg me-1"></i>Add to Sale</button></div>
+            </div>
+        </div>
+    </div>
+    @endif
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function(){
+            var activateTab=function(name){
+                document.querySelectorAll('.so2-tab').forEach(function(b){b.classList.toggle('active',b.dataset.so2Tab===name)});
+                document.querySelectorAll('.so2-panel').forEach(function(p){p.classList.toggle('active',p.dataset.so2Panel===name)});
+            };
+            document.querySelectorAll('.so2-tab').forEach(function(btn){btn.addEventListener('click',function(){activateTab(btn.dataset.so2Tab)})});
+            document.querySelectorAll('.so2-item-selector').forEach(function(box){
+                box.addEventListener('change',function(){
+                    document.querySelectorAll('.so2-item-selector').forEach(function(other){if(other!==box)other.checked=false});
+                    document.querySelectorAll('[data-so2-item-row]').forEach(function(r){r.classList.remove('selected')});
+                    if(!box.checked){document.getElementById('so2BomBreakdownBody').style.display='none';document.getElementById('so2BomEmpty').style.display='block';return}
+                    var row=document.querySelector('[data-so2-item-row="'+box.value+'"]'); if(row)row.classList.add('selected');
+                    var tpl=document.getElementById('so2-bom-template-'+box.value);
+                    var body=document.getElementById('so2BomBreakdownBody');
+                    body.innerHTML=tpl?tpl.innerHTML:'<div class="so2-empty">No BOM breakdown available.</div>';
+                    body.style.display='block';document.getElementById('so2BomEmpty').style.display='none';activateTab('bom');
+                });
+            });
+            document.querySelectorAll('[data-so2-add-mode]').forEach(function(btn){btn.addEventListener('click',function(){
+                document.querySelectorAll('[data-so2-add-mode]').forEach(function(x){x.classList.toggle('active',x===btn)});
+                document.querySelectorAll('[data-so2-add-pane]').forEach(function(p){p.classList.toggle('active',p.dataset.so2AddPane===btn.dataset.so2AddMode)});
+            })});
+            document.querySelectorAll('.so2-edit-description').forEach(function(btn){btn.addEventListener('click',function(){
+                var field=document.querySelector('.quotation-description-input[data-id="'+btn.dataset.id+'"]'); if(field){field.style.display=field.style.display==='block'?'none':'block';if(field.style.display==='block')field.focus()}
+            })});
+            var search=document.getElementById('so2ItemSearch'); if(search)search.addEventListener('input',function(){var q=search.value.toLowerCase();document.querySelectorAll('[data-so2-item-row]').forEach(function(r){r.style.display=(r.dataset.search||'').includes(q)?'':'none'})});
+        });
+    </script>
 
     {{-- ─── CONFIRMATION MODAL ─── --}}
     <div class="modal fade" id="confirmModal" tabindex="-1" aria-hidden="true">
