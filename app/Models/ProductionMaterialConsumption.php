@@ -64,4 +64,12 @@ class ProductionMaterialConsumption extends Model
     {
         return $this->belongsTo(PurchaseItem::class);
     }
+
+    public function reelConsumptions()
+    {
+        return $this->hasMany(
+            ProductionReelConsumption::class,
+            'production_material_consumption_id'
+        );
+    }
 }
