@@ -22,6 +22,7 @@ return new class extends Migration
             $table->decimal('unit_cost_usd', 18, 6)->nullable();
             $table->string('reference_type', 100)->nullable()->index();
             $table->unsignedBigInteger('reference_id')->nullable()->index();
+            $table->unsignedBigInteger('reversal_of_id')->nullable()->index();
             $table->unsignedBigInteger('actor_id')->nullable()->index();
             $table->timestamp('occurred_at')->index();
             $table->json('metadata')->nullable();
