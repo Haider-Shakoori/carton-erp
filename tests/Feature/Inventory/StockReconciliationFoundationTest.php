@@ -303,6 +303,10 @@ it('blocks posting when an old negative variance would make the current batch ne
     $service->updateCount($reconciliation, $paper, 0, 'reel_weight_difference');
     $service->updateCount($reconciliation, $corn, 50);
     $service->submit($reconciliation);
+
+    // This USD 900 variance is above the independent-approval threshold.
+    $approver = User::factory()->create();
+    Auth::login($approver);
     $service->approve($reconciliation->fresh());
 
     // Leave only 500 kg after legitimate production movement. Applying the
