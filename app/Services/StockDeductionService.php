@@ -463,6 +463,11 @@ class StockDeductionService
                 'created_by' => Auth::id(),
             ]);
 
+            if ($isRoll) {
+                app(ReelInventoryService::class)
+                    ->consumeForConsumption($record);
+            }
+
             $records->push($record);
             $remaining -= $quantityFromBatch;
         }
@@ -699,6 +704,11 @@ class StockDeductionService
 
                 $batch->save();
 
+                if ($batch->isRollBatch()) {
+                    app(ReelInventoryService::class)
+                        ->restoreConsumption($consumption);
+                }
+
                 Log::info('✅ Restored batch', [
                     'purchase_item_id' => $batch->id,
                     'restored_quantity' => $consumption->actual_quantity,
@@ -856,6 +866,11 @@ class StockDeductionService
                 }
 
                 $batch->save();
+
+                if ($batch->isRollBatch()) {
+                    app(ReelInventoryService::class)
+                        ->restoreConsumption($consumption, $toRestore);
+                }
 
                 $newActual = max($current - $toRestore, 0);
                 if ($newActual <= self::EPSILON) {
