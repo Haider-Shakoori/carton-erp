@@ -60,11 +60,6 @@
                 country: "China",
                 flag: "cn"
             },
-            CNY: {
-                symbol: "¥",
-                country: "China",
-                flag: "cn"
-            },
             IRR: {
                 symbol: "﷼",
                 country: "Iran",
