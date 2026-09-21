@@ -74,5 +74,16 @@ Artisan::command('management-notifications:sync', function () {
 })->purpose('Synchronize stock-management notifications and reminders');
 
 Schedule::command('management-notifications:sync')
-    ->everyFifteenMinutes()
+    ->cron(
+        '*/'.max(
+            1,
+            min(
+                59,
+                (int) config(
+                    'stock_reconciliation.notifications.sync_every_minutes',
+                    15
+                )
+            )
+        ).' * * * *'
+    )
     ->withoutOverlapping();
