@@ -17,6 +17,9 @@ it('exposes weekly cycle count reporting, blind print, approval and audit contro
     $managementControl = file_get_contents(resource_path('views/admin/stock-reconciliations/management-control/index.blade.php'));
     $managementEscalation = file_get_contents(resource_path('views/admin/stock-reconciliations/management-control/escalation.blade.php'));
     $managementReview = file_get_contents(resource_path('views/admin/stock-reconciliations/management-control/review.blade.php'));
+    $managementNotifications = file_get_contents(resource_path('views/admin/notifications/management/index.blade.php'));
+    $managementNotificationSettings = file_get_contents(resource_path('views/admin/notifications/management/settings.blade.php'));
+    $navbar = file_get_contents(resource_path('views/layouts/admin/navbar.blade.php'));
 
     expect($index)
         ->toContain('New Cycle Count')
@@ -128,4 +131,23 @@ it('exposes weekly cycle count reporting, blind print, approval and audit contro
         ->toContain('Management Decisions / Actions')
         ->toContain('Complete Weekly Review')
         ->toContain('freezes its weekly management notes');
+
+    expect($managementNotifications)
+        ->toContain('Management Notifications')
+        ->toContain('Mark All Read')
+        ->toContain('Notification Settings')
+        ->toContain('Sync Now');
+
+    expect($managementNotificationSettings)
+        ->toContain('Delivery Channels')
+        ->toContain('Level 3 / Critical Escalations')
+        ->toContain('Recurrence After Corrective Action')
+        ->toContain('Recent Delivery Audit')
+        ->toContain('never blocks stock or production transactions');
+
+    expect($navbar)
+        ->toContain('admin.management-notifications.index')
+        ->toContain('admin.management-notifications.mark-all-read')
+        ->toContain('unreadNotifications()->count()')
+        ->toContain('View all notifications');
 });
