@@ -134,7 +134,7 @@ class StockControlNotificationService
             }
 
             $result = $this->dispatchEvent(
-                eventKey: 'stock-control:escalation:'.$event->escalation_id
+                eventKey: 'stock-control:escalation:'.$event->stock_control_escalation_id
                     .':assignment-event:'.$event->id,
                 eventType: 'escalation_assignment',
                 title: 'Stock Control Escalation Assigned to You',
@@ -149,7 +149,7 @@ class StockControlNotificationService
                 minimumLevel: (int) $event->escalation->level,
                 category: 'assignment',
                 entityType: StockControlEscalation::class,
-                entityId: $event->escalation_id
+                entityId: $event->stock_control_escalation_id
             );
 
             $created += $result['created'];
