@@ -58,4 +58,16 @@ return [
             'other' => 'Other',
         ],
     ],
+
+    // Derived prevention intelligence. These thresholds create management
+    // signals only; they never mutate stock, investigations or historical
+    // adjustments.
+    'prevention' => [
+        'default_lookback_days' => 180,
+        'recurrence_count_threshold' => 3,
+        'critical_count_threshold' => 5,
+        'high_value_threshold_usd' => 100.00,
+        'effectiveness_pre_days' => 30,
+        'effectiveness_post_days' => 30,
+    ],
 ];
