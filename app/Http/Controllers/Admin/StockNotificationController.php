@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Jobs\DeliverStockControlNotification;
 use App\Models\StockNotificationDelivery;
 use App\Services\StockControlNotificationService;
 use Illuminate\Http\Request;
@@ -51,7 +52,16 @@ class StockNotificationController extends Controller
         $url = data_get($notification->data, 'url');
 
         if (is_string($url) && $url !== '') {
-            return redirect()->to($url);
+            $appHost = parse_url(config('app.url'), PHP_URL_HOST);
+            $targetHost = parse_url($url, PHP_URL_HOST);
+
+            if (
+                $targetHost === null
+                || $appHost === null
+                || strcasecmp($targetHost, $appHost) === 0
+            ) {
+                return redirect()->to($url);
+            }
         }
 
         return redirect()->route('admin.stock-notifications.index');
@@ -87,12 +97,42 @@ class StockNotificationController extends Controller
             'email_enabled' => $request->boolean('email_enabled'),
             'whatsapp_enabled' => $request->boolean('whatsapp_enabled'),
             'minimum_escalation_level' => (int) $validated['minimum_escalation_level'],
+            'assignment_alerts_enabled' => $request->boolean('assignment_alerts_enabled'),
             'overdue_reminders_enabled' => $request->boolean('overdue_reminders_enabled'),
             'recurrence_alerts_enabled' => $request->boolean('recurrence_alerts_enabled'),
             'weekly_review_alerts_enabled' => $request->boolean('weekly_review_alerts_enabled'),
         ]);
 
         return back()->with('success', 'Notification settings updated.');
+    }
+
+    public function retryDelivery(
+        StockNotificationDelivery $delivery
+    ) {
+        abort_unless(
+            (int) $delivery->user_id === (int) Auth::id(),
+            404
+        );
+
+        abort_unless(
+            in_array($delivery->channel, ['email', 'whatsapp'], true),
+            422
+        );
+
+        if ($delivery->status === StockNotificationDelivery::STATUS_SENT) {
+            return back()->with('success', 'This delivery was already sent.');
+        }
+
+        $delivery->update([
+            'status' => StockNotificationDelivery::STATUS_QUEUED,
+            'failed_at' => null,
+            'last_error' => null,
+            'queued_at' => now(),
+        ]);
+
+        DeliverStockControlNotification::dispatch($delivery->id);
+
+        return back()->with('success', 'Notification delivery queued for retry.');
     }
 
     private function ensureOwned(DatabaseNotification $notification): void
