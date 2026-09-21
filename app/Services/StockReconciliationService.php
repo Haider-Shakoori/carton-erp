@@ -16,14 +16,34 @@ class StockReconciliationService
 {
     private const EPSILON = 0.000001;
 
-    public function createSnapshot(?string $countDate = null, ?string $notes = null): StockReconciliation
-    {
-        return DB::transaction(function () use ($countDate, $notes): StockReconciliation {
+    public function createSnapshot(
+        ?string $countDate = null,
+        ?string $notes = null,
+        ?array $productIds = null
+    ): StockReconciliation {
+        return DB::transaction(function () use ($countDate, $notes, $productIds): StockReconciliation {
             $snapshotAt = now();
+
+            $normalisedProductIds = $productIds === null
+                ? null
+                : collect($productIds)
+                    ->map(fn ($id) => (int) $id)
+                    ->filter(fn (int $id) => $id > 0)
+                    ->unique()
+                    ->values()
+                    ->all();
+
+            if ($productIds !== null && $normalisedProductIds === []) {
+                throw new RuntimeException('At least one material must be selected for a targeted cycle count.');
+            }
 
             $batches = PurchaseItem::query()
                 ->whereHas('purchase', fn ($q) => $q->where('status', 'arrived'))
                 ->whereHas('product', fn ($q) => $q->where('is_active', true))
+                ->when(
+                    $normalisedProductIds !== null,
+                    fn ($q) => $q->whereIn('product_id', $normalisedProductIds)
+                )
                 ->with(['purchase:id,purchase_no,status', 'product:id,name,unit,type'])
                 ->orderBy('product_id')
                 ->orderBy('id')
@@ -32,7 +52,11 @@ class StockReconciliationService
                 ->values();
 
             if ($batches->isEmpty()) {
-                throw new RuntimeException('No arrived inventory with available stock exists to count.');
+                throw new RuntimeException(
+                    $normalisedProductIds === null
+                        ? 'No arrived inventory with available stock exists to count.'
+                        : 'None of the selected materials has arrived inventory with available stock to count.'
+                );
             }
 
             $reconciliation = StockReconciliation::create([
