@@ -14,6 +14,12 @@ it('requires real output and actual material consumption at production completio
         ->toContain('name="materials[{{ $index }}][actual_quantity]"')
         ->toContain('name="materials[{{ $index }}][wastage_quantity]"')
         ->toContain('BOM remains the planned baseline')
+        ->toContain('Use physical reel declaration')
+        ->toContain('Scan / enter reel code')
+        ->toContain('name="materials[{{ $index }}][use_reel_selection]"')
+        ->toContain('[consumed_kg]')
+        ->toContain('[final_remaining_kg]')
+        ->toContain('Scale remainders are observational')
         ->toContain('Save Actuals & Complete Production')
         ->toContain('Planned vs Actual Production Variance')
         ->not->toContain('reconcile raw-material consumption to this actual quantity');
