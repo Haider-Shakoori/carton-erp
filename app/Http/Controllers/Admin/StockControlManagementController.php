@@ -101,7 +101,7 @@ class StockControlManagementController extends Controller
     {
         $result = $this->service->syncEscalations();
         $this->service->ensureWeeklyReview();
-        $this->notifications->sync();
+        $this->notifications->syncSafely();
 
         return back()->with(
             'success',
@@ -156,7 +156,7 @@ class StockControlManagementController extends Controller
                 $validated['review_due_date'] ?? null,
                 $validated['notes'] ?? null
             );
-            $this->notifications->sync();
+            $this->notifications->syncSafely();
 
             return back()->with('success', 'Escalation ownership updated.');
         } catch (RuntimeException $e) {
@@ -242,7 +242,7 @@ class StockControlManagementController extends Controller
                     : null,
                 $validated['review_notes'] ?? null
             );
-            $this->notifications->sync();
+            $this->notifications->syncSafely();
 
             return back()->with('success', 'Weekly control review updated.');
         } catch (RuntimeException $e) {
