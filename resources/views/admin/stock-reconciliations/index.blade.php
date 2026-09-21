@@ -10,6 +10,15 @@
             <p class="text-muted mb-0">Cycle counts compare ERP batch balances with physical warehouse stock.</p>
         </div>
         <div class="d-flex gap-2 flex-wrap">
+            <a href="{{ route('admin.stock-reconciliations.planning') }}" class="btn btn-outline-dark">
+                <i class="bi bi-calendar-check me-1"></i> ABC Planner
+            </a>
+            <a href="{{ route('admin.stock-reconciliations.trends') }}" class="btn btn-outline-info">
+                <i class="bi bi-graph-up-arrow me-1"></i> Variance Trends
+            </a>
+            <a href="{{ route('admin.stock-reconciliations.control-analysis') }}" class="btn btn-outline-secondary">
+                <i class="bi bi-diagram-3 me-1"></i> Production → Physical
+            </a>
             <a href="{{ route('admin.stock-reconciliations.report', ['unresolved' => 1]) }}" class="btn btn-outline-warning">
                 <i class="bi bi-exclamation-diamond me-1"></i> Unresolved Variances
             </a>

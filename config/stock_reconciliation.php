@@ -29,4 +29,18 @@ return [
     'unresolved_reason_codes' => [
         'unknown',
     ],
+
+    // ABC cycle-count planning by cumulative current inventory value.
+    // A materials carry the highest value and are counted most frequently.
+    'abc' => [
+        'a_cumulative_percentage' => 80.0,
+        'b_cumulative_percentage' => 95.0,
+        'frequency_days' => [
+            'A' => 7,
+            'B' => 14,
+            'C' => 30,
+        ],
+    ],
+
+    'trend_default_days' => 90,
 ];
