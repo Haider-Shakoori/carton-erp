@@ -248,7 +248,7 @@
             <div class="table-responsive">
                 <table class="table table-sm align-middle mb-0">
                     <thead class="table-light">
-                        <tr><th>Date</th><th>Production</th><th>Reel</th><th class="text-end">Consumed</th><th class="text-end">Before</th><th class="text-end">After</th></tr>
+                        <tr><th>Date</th><th>Production</th><th>Reel</th><th>Allocation</th><th class="text-end">Consumed</th><th class="text-end">Before</th><th class="text-end">After</th><th class="text-end">Measured Final</th></tr>
                     </thead>
                     <tbody>
                     @forelse($recentConsumptions as $row)
@@ -262,12 +262,28 @@
                                 @endif
                             </td>
                             <td>{{ $row->reel?->reel_code ?? '—' }}</td>
+                            <td>
+                                @if($row->allocation_method === 'operator_selected')
+                                    <span class="badge bg-primary-subtle text-primary border border-primary-subtle">Operator selected</span>
+                                    <div class="small text-muted mt-1">
+                                        {{ $row->selectedBy?->name ?? 'Unknown user' }}
+                                        @if($row->selection_note)
+                                            · {{ $row->selection_note }}
+                                        @endif
+                                    </div>
+                                @else
+                                    <span class="badge bg-light text-dark border">FIFO</span>
+                                @endif
+                            </td>
                             <td class="text-end">{{ number_format((float) $row->quantity_kg, 4) }} kg</td>
                             <td class="text-end">{{ number_format((float) $row->before_weight_kg, 4) }} kg</td>
                             <td class="text-end">{{ number_format((float) $row->after_weight_kg, 4) }} kg</td>
+                            <td class="text-end">
+                                {{ $row->declared_final_weight_kg !== null ? number_format((float) $row->declared_final_weight_kg, 4).' kg' : '—' }}
+                            </td>
                         </tr>
                     @empty
-                        <tr><td colspan="6" class="text-center py-4 text-muted">No production has consumed a tracked reel from this batch yet.</td></tr>
+                        <tr><td colspan="8" class="text-center py-4 text-muted">No production has consumed a tracked reel from this batch yet.</td></tr>
                     @endforelse
                     </tbody>
                 </table>

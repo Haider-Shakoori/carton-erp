@@ -134,6 +134,7 @@ class ReelInventoryController extends Controller
         $recentConsumptions = ProductionReelConsumption::query()
             ->with([
                 'reel',
+                'selectedBy',
                 'materialConsumption.productionOrder',
             ])
             ->whereHas(

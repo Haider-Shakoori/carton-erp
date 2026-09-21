@@ -15,6 +15,10 @@ class ProductionReelConsumption extends Model
         'quantity_kg',
         'before_weight_kg',
         'after_weight_kg',
+        'allocation_method',
+        'selected_by',
+        'declared_final_weight_kg',
+        'selection_note',
         'consumed_at',
         'created_at',
     ];
@@ -23,6 +27,7 @@ class ProductionReelConsumption extends Model
         'quantity_kg' => 'decimal:4',
         'before_weight_kg' => 'decimal:4',
         'after_weight_kg' => 'decimal:4',
+        'declared_final_weight_kg' => 'decimal:4',
         'consumed_at' => 'datetime',
         'created_at' => 'datetime',
     ];
@@ -41,5 +46,10 @@ class ProductionReelConsumption extends Model
             PurchaseItemReel::class,
             'purchase_item_reel_id'
         );
+    }
+
+    public function selectedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'selected_by');
     }
 }

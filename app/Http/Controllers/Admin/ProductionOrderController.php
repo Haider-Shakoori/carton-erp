@@ -9,6 +9,7 @@ use App\Models\ProductionOrderMaterial;
 use App\Models\Product;
 use App\Models\BOM;
 use App\Models\PurchaseItem;
+use App\Models\PurchaseItemReel;
 use App\Models\Currency;
 use App\Models\Sale;
 use App\Models\Transaction;
@@ -478,19 +479,95 @@ class ProductionOrderController extends Controller
                     ->get()
                     ->keyBy(fn ($row) => (int) $row->material_id);
 
-                $completionMaterials = collect($plannedRows)->map(function (array $row) use ($currentConsumption) {
-                    $materialId = (int) $row['material_id'];
-                    $current = $currentConsumption->get($materialId);
+                $materialIds = collect($plannedRows)
+                    ->pluck('material_id')
+                    ->map(fn ($id) => (int) $id)
+                    ->unique()
+                    ->values();
 
-                    return [
-                        'material_id' => $materialId,
-                        'material_name' => $row['material_name'] ?? ('Material #' . $materialId),
-                        'unit' => $row['unit'] ?? 'unit',
-                        'planned_quantity' => (float) ($row['quantity'] ?? 0),
-                        'current_actual_quantity' => (float) ($current->actual_quantity ?? 0),
-                        'current_wastage_quantity' => (float) ($current->wastage_quantity ?? 0),
-                    ];
-                })->values()->all();
+                $currentReelUsage = DB::table('production_reel_consumptions as prc')
+                    ->join(
+                        'production_material_consumptions as pmc',
+                        'pmc.id',
+                        '=',
+                        'prc.production_material_consumption_id'
+                    )
+                    ->where('pmc.production_order_id', $productionOrder->id)
+                    ->selectRaw(
+                        'prc.purchase_item_reel_id, SUM(prc.quantity_kg) AS quantity_kg'
+                    )
+                    ->groupBy('prc.purchase_item_reel_id')
+                    ->get()
+                    ->keyBy(fn ($row) => (int) $row->purchase_item_reel_id);
+
+                $reelOptionsByMaterial = PurchaseItemReel::query()
+                    ->whereHas('purchaseItem', function ($query) use ($materialIds): void {
+                        $query->whereIn('product_id', $materialIds)
+                            ->whereHas(
+                                'purchase',
+                                fn ($purchase) => $purchase->where('status', 'arrived')
+                            );
+                    })
+                    ->with(['purchaseItem.purchase'])
+                    ->orderBy('purchase_item_id')
+                    ->orderBy('sequence_no')
+                    ->get()
+                    ->map(function (PurchaseItemReel $reel) use ($currentReelUsage): array {
+                        $usedByThisRun = (float) data_get(
+                            $currentReelUsage->get((int) $reel->id),
+                            'quantity_kg',
+                            0
+                        );
+                        $availableForRun = max(
+                            (float) $reel->system_remaining_weight_kg
+                                + $usedByThisRun,
+                            0
+                        );
+
+                        $selectable = ! $reel->isBlockedFromProduction()
+                            && $availableForRun > 0.000001
+                            && (
+                                $reel->status !== PurchaseItemReel::STATUS_CONSUMED
+                                || $usedByThisRun > 0.000001
+                            );
+
+                        return [
+                            'id' => (int) $reel->id,
+                            'material_id' => (int) $reel->purchaseItem->product_id,
+                            'reel_code' => $reel->reel_code,
+                            'status' => $reel->status,
+                            'selectable' => $selectable,
+                            'batch_no' => $reel->purchaseItem->batch_no,
+                            'purchase_no' => $reel->purchaseItem->purchase?->purchase_no,
+                            'system_remaining_kg' => (float) $reel->system_remaining_weight_kg,
+                            'current_run_consumed_kg' => $usedByThisRun,
+                            'available_for_run_kg' => $availableForRun,
+                        ];
+                    })
+                    ->groupBy('material_id');
+
+                $completionMaterials = collect($plannedRows)->map(
+                    function (array $row) use (
+                        $currentConsumption,
+                        $reelOptionsByMaterial
+                    ): array {
+                        $materialId = (int) $row['material_id'];
+                        $current = $currentConsumption->get($materialId);
+                        $reelOptions = collect(
+                            $reelOptionsByMaterial->get($materialId, collect())
+                        )->values()->all();
+
+                        return [
+                            'material_id' => $materialId,
+                            'material_name' => $row['material_name'] ?? ('Material #' . $materialId),
+                            'unit' => $row['unit'] ?? 'unit',
+                            'planned_quantity' => (float) ($row['quantity'] ?? 0),
+                            'current_actual_quantity' => (float) ($current->actual_quantity ?? 0),
+                            'current_wastage_quantity' => (float) ($current->wastage_quantity ?? 0),
+                            'reel_options' => $reelOptions,
+                        ];
+                    }
+                )->values()->all();
             } catch (\Throwable $e) {
                 Log::warning('Could not prepare production completion material rows', [
                     'production_order_id' => $productionOrder->id,
@@ -881,6 +958,12 @@ class ProductionOrderController extends Controller
                 'materials.*.actual_quantity' => 'required|numeric|min:0|max:999999999.999999',
                 'materials.*.wastage_quantity' => 'nullable|numeric|min:0|max:999999999.999999',
                 'materials.*.unit' => 'nullable|string|max:50',
+                'materials.*.use_reel_selection' => 'nullable|boolean',
+                'materials.*.selection_note' => 'nullable|string|max:1000',
+                'materials.*.reels' => 'nullable|array|max:100',
+                'materials.*.reels.*.reel_id' => 'nullable|integer|exists:purchase_item_reels,id',
+                'materials.*.reels.*.consumed_kg' => 'nullable|numeric|min:0|max:999999999.999999',
+                'materials.*.reels.*.final_remaining_kg' => 'nullable|numeric|min:0|max:999999999.999999',
             ]);
 
             $manufacturedQuantity = (float) $validated['quantity_manufactured'];
@@ -914,11 +997,41 @@ class ProductionOrderController extends Controller
 
             $submittedMaterials = collect($validated['materials'])
                 ->map(function (array $row): array {
+                    $useReelSelection = (bool) (
+                        $row['use_reel_selection'] ?? false
+                    );
+
+                    $reels = collect($row['reels'] ?? [])
+                        ->filter(function (array $reel): bool {
+                            return filled($reel['consumed_kg'] ?? null)
+                                || filled($reel['final_remaining_kg'] ?? null);
+                        })
+                        ->map(function (array $reel): array {
+                            return [
+                                'reel_id' => (int) ($reel['reel_id'] ?? 0),
+                                'consumed_kg' => filled($reel['consumed_kg'] ?? null)
+                                    ? (float) $reel['consumed_kg']
+                                    : null,
+                                'final_remaining_kg' => filled(
+                                    $reel['final_remaining_kg'] ?? null
+                                )
+                                    ? (float) $reel['final_remaining_kg']
+                                    : null,
+                            ];
+                        })
+                        ->values()
+                        ->all();
+
                     return [
                         'material_id' => (int) $row['material_id'],
                         'actual_quantity' => (float) $row['actual_quantity'],
                         'wastage_quantity' => (float) ($row['wastage_quantity'] ?? 0),
                         'unit' => $row['unit'] ?? null,
+                        'use_reel_selection' => $useReelSelection,
+                        'selection_note' => isset($row['selection_note'])
+                            ? trim((string) $row['selection_note'])
+                            : null,
+                        'reels' => $useReelSelection ? $reels : [],
                     ];
                 });
 
@@ -936,6 +1049,33 @@ class ProductionOrderController extends Controller
                     throw \Illuminate\Validation\ValidationException::withMessages([
                         "materials.{$index}.wastage_quantity" => 'Actual waste cannot exceed total actual material consumed.',
                     ]);
+                }
+
+                if ($row['use_reel_selection']) {
+                    if ($row['actual_quantity'] <= 0.000001) {
+                        throw \Illuminate\Validation\ValidationException::withMessages([
+                            "materials.{$index}.actual_quantity" => 'Physical reel selection requires positive actual consumption.',
+                        ]);
+                    }
+
+                    if ($row['reels'] === []) {
+                        throw \Illuminate\Validation\ValidationException::withMessages([
+                            "materials.{$index}.reels" => 'Enter consumed kg or a final measured remainder for at least one physical reel.',
+                        ]);
+                    }
+
+                    $reelIds = collect($row['reels'])->pluck('reel_id');
+                    if ($reelIds->contains(fn ($id) => (int) $id <= 0)) {
+                        throw \Illuminate\Validation\ValidationException::withMessages([
+                            "materials.{$index}.reels" => 'Every physical reel declaration requires a valid reel.',
+                        ]);
+                    }
+
+                    if ($reelIds->unique()->count() !== $reelIds->count()) {
+                        throw \Illuminate\Validation\ValidationException::withMessages([
+                            "materials.{$index}.reels" => 'The same physical reel cannot be entered twice.',
+                        ]);
+                    }
                 }
             }
 
@@ -973,7 +1113,7 @@ class ProductionOrderController extends Controller
                 );
             }
 
-            $message .= ' FIFO stock and actual production cost were reconciled to the material quantities entered at completion.';
+            $message .= ' Stock and actual production cost were reconciled to the material quantities entered at completion. Materials without an explicit physical reel declaration retain FIFO allocation.';
 
             if ($sale) {
                 $message .= ' The final invoice quantity uses the good/usable finished quantity.';

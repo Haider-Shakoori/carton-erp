@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\ProductionMaterialConsumption;
 use App\Models\PurchaseItem;
+use App\Models\PurchaseItemReel;
 use App\Models\Product;
 use App\Models\Currency;
 use App\Models\Sale;
@@ -274,6 +275,324 @@ class StockDeductionService
             ]);
 
             return $consumptions->values();
+        });
+    }
+
+    /**
+     * Replace this production order's provisional allocation for one roll
+     * material with an explicit operator reel declaration.
+     *
+     * The whole operation is transactional: existing provisional consumption is
+     * restored first, then the declared reels are consumed exactly. Any invalid
+     * reel, blocked status, shortage, or quantity mismatch rolls everything back.
+     */
+    public function replaceProductionMaterialWithReelSelections(
+        int $productionOrderId,
+        ?int $saleId,
+        ?int $saleItemId,
+        int $materialId,
+        float $actualQuantity,
+        float $plannedQuantity,
+        array $selections
+    ): Collection {
+        if ($actualQuantity <= self::EPSILON) {
+            throw new RuntimeException(
+                'Operator reel selection requires a positive actual material quantity.'
+            );
+        }
+
+        if ($selections === []) {
+            throw new RuntimeException(
+                'At least one physical reel must be declared when reel selection is enabled.'
+            );
+        }
+
+        return DB::transaction(function () use (
+            $productionOrderId,
+            $saleId,
+            $saleItemId,
+            $materialId,
+            $actualQuantity,
+            $plannedQuantity,
+            $selections
+        ): Collection {
+            $current = ProductionMaterialConsumption::query()
+                ->where('production_order_id', $productionOrderId)
+                ->where('material_id', $materialId)
+                ->where('actual_quantity', '>', 0)
+                ->lockForUpdate()
+                ->get();
+
+            $currentActual = (float) $current->sum('actual_quantity');
+            if ($currentActual > self::EPSILON) {
+                $this->restoreProductionMaterialQuantity(
+                    $productionOrderId,
+                    $materialId,
+                    $currentActual
+                );
+            }
+
+            $rows = collect($selections)
+                ->map(function ($row): array {
+                    if (! is_array($row)) {
+                        throw new RuntimeException(
+                            'Every reel selection must be an array.'
+                        );
+                    }
+
+                    $reelId = (int) ($row['reel_id'] ?? 0);
+                    $consumed = array_key_exists('consumed_kg', $row)
+                        && $row['consumed_kg'] !== null
+                        && $row['consumed_kg'] !== ''
+                            ? (float) $row['consumed_kg']
+                            : null;
+                    $final = array_key_exists('final_remaining_kg', $row)
+                        && $row['final_remaining_kg'] !== null
+                        && $row['final_remaining_kg'] !== ''
+                            ? (float) $row['final_remaining_kg']
+                            : null;
+
+                    if ($reelId <= 0) {
+                        throw new RuntimeException(
+                            'Every reel declaration requires a valid reel.'
+                        );
+                    }
+
+                    if ($consumed === null && $final === null) {
+                        throw new RuntimeException(sprintf(
+                            'Reel #%d needs consumed kg or a final measured remainder.',
+                            $reelId
+                        ));
+                    }
+
+                    if ($consumed !== null && $consumed < -self::EPSILON) {
+                        throw new RuntimeException(
+                            'Selected reel consumption cannot be negative.'
+                        );
+                    }
+
+                    if ($final !== null && $final < -self::EPSILON) {
+                        throw new RuntimeException(
+                            'Final measured reel remainder cannot be negative.'
+                        );
+                    }
+
+                    return [
+                        'reel_id' => $reelId,
+                        'consumed_kg' => $consumed,
+                        'final_remaining_kg' => $final,
+                        'note' => isset($row['note'])
+                            ? trim((string) $row['note'])
+                            : null,
+                    ];
+                })
+                ->values();
+
+            if ($rows->pluck('reel_id')->unique()->count() !== $rows->count()) {
+                throw new RuntimeException(
+                    'The same physical reel cannot be declared more than once.'
+                );
+            }
+
+            $reels = PurchaseItemReel::query()
+                ->whereIn('id', $rows->pluck('reel_id')->all())
+                ->lockForUpdate()
+                ->get()
+                ->keyBy('id');
+
+            if ($reels->count() !== $rows->count()) {
+                throw new RuntimeException(
+                    'One or more selected physical reels no longer exist.'
+                );
+            }
+
+            $batchIds = $reels->pluck('purchase_item_id')->unique()->values();
+            $batches = PurchaseItem::query()
+                ->with('purchase')
+                ->whereIn('id', $batchIds)
+                ->lockForUpdate()
+                ->get()
+                ->keyBy('id');
+
+            $prepared = collect();
+
+            foreach ($rows as $row) {
+                /** @var PurchaseItemReel $reel */
+                $reel = $reels->get($row['reel_id']);
+                /** @var PurchaseItem|null $batch */
+                $batch = $batches->get($reel->purchase_item_id);
+
+                if (! $batch || (int) $batch->product_id !== $materialId) {
+                    throw new RuntimeException(sprintf(
+                        'Reel %s does not belong to material #%d.',
+                        $reel->reel_code,
+                        $materialId
+                    ));
+                }
+
+                if (
+                    ! $batch->isRollBatch()
+                    || strtolower((string) ($batch->purchase?->status ?? '')) !== 'arrived'
+                ) {
+                    throw new RuntimeException(sprintf(
+                        'Reel %s is not in an arrived roll inventory batch.',
+                        $reel->reel_code
+                    ));
+                }
+
+                if (! $reel->isProductionEligible()) {
+                    throw new RuntimeException(sprintf(
+                        'Reel %s is not production eligible because its status is %s.',
+                        $reel->reel_code,
+                        $reel->status
+                    ));
+                }
+
+                $before = (float) $reel->system_remaining_weight_kg;
+                $consumed = $row['consumed_kg'];
+                $final = $row['final_remaining_kg'];
+
+                if ($consumed === null) {
+                    if ($final > $before + 0.0001) {
+                        throw new RuntimeException(sprintf(
+                            'Final remainder %.4f kg for reel %s exceeds its pre-run system weight %.4f kg, so consumed kg cannot be inferred.',
+                            $final,
+                            $reel->reel_code,
+                            $before
+                        ));
+                    }
+
+                    $consumed = max($before - $final, 0);
+                }
+
+                if ($consumed <= self::EPSILON) {
+                    throw new RuntimeException(sprintf(
+                        'Declared consumption for reel %s must be greater than zero.',
+                        $reel->reel_code
+                    ));
+                }
+
+                if ($consumed > $before + self::EPSILON) {
+                    throw new RuntimeException(sprintf(
+                        'Reel %s has %.4f kg available for this run but %.4f kg was declared consumed.',
+                        $reel->reel_code,
+                        $before,
+                        $consumed
+                    ));
+                }
+
+                $prepared->push([
+                    'reel' => $reel,
+                    'batch' => $batch,
+                    'quantity_kg' => $consumed,
+                    'final_remaining_kg' => $final,
+                    'note' => $row['note'],
+                ]);
+            }
+
+            $declaredTotal = (float) $prepared->sum('quantity_kg');
+            if (abs($declaredTotal - $actualQuantity) > 0.0001) {
+                throw new RuntimeException(sprintf(
+                    'Selected reel consumption totals %.4f kg but actual material consumption is %.4f kg.',
+                    $declaredTotal,
+                    $actualQuantity
+                ));
+            }
+
+            $records = collect();
+            $plannedRemaining = max($plannedQuantity, 0);
+
+            foreach ($prepared as $selection) {
+                /** @var PurchaseItem $batch */
+                $batch = $selection['batch'];
+                /** @var PurchaseItemReel $reel */
+                $reel = $selection['reel'];
+                $quantityKg = (float) $selection['quantity_kg'];
+
+                if ($batch->availableKg() + self::EPSILON < $quantityKg) {
+                    throw new RuntimeException(sprintf(
+                        'Batch %s contains only %.4f kg but reel %s declares %.4f kg consumed.',
+                        $batch->batch_no ?: $batch->id,
+                        $batch->availableKg(),
+                        $reel->reel_code,
+                        $quantityKg
+                    ));
+                }
+
+                $kgPerRoll = max((float) $batch->kg_per_roll, self::EPSILON);
+                $consumedRolls = $quantityKg / $kgPerRoll;
+
+                $batch->qty_kg_available = max(
+                    (float) $batch->qty_kg_available - $quantityKg,
+                    0
+                );
+                $batch->qty_kg_used = (float) ($batch->qty_kg_used ?? 0)
+                    + $quantityKg;
+                $batch->qty_available = max(
+                    (float) $batch->qty_available - $consumedRolls,
+                    0
+                );
+                $batch->qty_used = (float) ($batch->qty_used ?? 0)
+                    + $consumedRolls;
+                $batch->save();
+
+                $usdUnitCost = $batch->landedCostPerKg();
+                $exchangeRate = $this->resolveConsumptionExchangeRate(
+                    $saleId,
+                    $batch
+                );
+                $afnUnitCost = $usdUnitCost * $exchangeRate;
+
+                $plannedForReel = min(
+                    $plannedRemaining,
+                    $quantityKg
+                );
+                $plannedRemaining = max(
+                    $plannedRemaining - $plannedForReel,
+                    0
+                );
+
+                $record = ProductionMaterialConsumption::create([
+                    'production_order_id' => $productionOrderId,
+                    'sale_id' => $saleId,
+                    'sale_item_id' => $saleItemId,
+                    'material_id' => $materialId,
+                    'purchase_item_id' => $batch->id,
+                    'planned_quantity' => $plannedForReel,
+                    'actual_quantity' => $quantityKg,
+                    'wastage_quantity' => 0,
+                    'unit' => 'kg',
+                    'cost_per_unit_usd' => $usdUnitCost,
+                    'cost_per_unit_afn' => $afnUnitCost,
+                    'total_cost_usd' => $quantityKg * $usdUnitCost,
+                    'total_cost_afn' => $quantityKg * $afnUnitCost,
+                    'wastage_cost_usd' => 0,
+                    'wastage_cost_afn' => 0,
+                    'consumed_at' => now(),
+                    'created_by' => Auth::id(),
+                ]);
+
+                app(ReelInventoryService::class)
+                    ->consumeSelectedReelForConsumption(
+                        $record,
+                        $reel,
+                        $quantityKg,
+                        $selection['final_remaining_kg'],
+                        $selection['note']
+                    );
+
+                $records->push($record);
+            }
+
+            Log::info('Production material allocation replaced by operator reel declaration', [
+                'production_order_id' => $productionOrderId,
+                'material_id' => $materialId,
+                'actual_quantity' => $actualQuantity,
+                'reel_ids' => $prepared->pluck('reel.id')->all(),
+                'consumption_ids' => $records->pluck('id')->all(),
+            ]);
+
+            return $records;
         });
     }
 
