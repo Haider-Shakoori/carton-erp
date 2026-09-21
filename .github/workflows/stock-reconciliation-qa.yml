@@ -13,6 +13,7 @@ on:
       - feat/inventory-prevention-intelligence
       - feat/stock-control-escalation-reviews
       - feat/stock-control-notifications
+      - fix/stock-notification-hardening
   workflow_dispatch:
 
 permissions:
@@ -102,6 +103,7 @@ jobs:
           php -l app/Models/StockControlReviewItem.php
           php -l app/Models/StockNotificationPreference.php
           php -l app/Models/StockNotificationDelivery.php
+          php -l app/Models/User.php
           php -l app/Services/StockReconciliationService.php
           php -l app/Services/StockCycleCountPlanningService.php
           php -l app/Services/InventoryControlAnalysisService.php
@@ -110,6 +112,7 @@ jobs:
           php -l app/Services/StockControlManagementService.php
           php -l app/Services/StockControlNotificationService.php
           php -l app/Jobs/DeliverStockControlNotification.php
+          php -l app/Helpers/WhatsAppHelper.php
           php -l app/Http/Controllers/Admin/StockReconciliationController.php
           php -l app/Http/Controllers/Admin/StockVarianceInvestigationController.php
           php -l app/Http/Controllers/Admin/StockControlManagementController.php
@@ -121,6 +124,7 @@ jobs:
           php -l database/migrations/2026_09_21_030000_create_stock_variance_investigations.php
           php -l database/migrations/2026_09_21_040000_create_stock_control_escalations_and_reviews.php
           php -l database/migrations/2026_09_21_050000_create_stock_control_notifications.php
+          php -l database/migrations/2026_09_21_051000_add_assignment_stock_notification_preference.php
 
       - name: Fresh MySQL install
         run: php artisan migrate:fresh --seed --force
