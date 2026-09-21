@@ -19,6 +19,14 @@ class CustomerCartonSizeSeeder extends Seeder
     {
         $rows = $this->rows();
 
+        $productNameCounts = collect($rows)
+            ->countBy(
+                fn (array $row) => mb_strtolower(
+                    trim((string) ($row['product_name'] ?? ''))
+                )
+            )
+            ->all();
+
         $category = Category::firstOrCreate(
             ['name' => 'Custom Cartons'],
             [
@@ -38,7 +46,8 @@ class CustomerCartonSizeSeeder extends Seeder
             &$createdCustomers,
             &$createdProducts,
             &$createdSpecifications,
-            &$customerCache
+            &$customerCache,
+            $productNameCounts
         ): void {
             foreach ($rows as $row) {
                 $customerName = trim((string) ($row['customer'] ?? ''));
@@ -67,7 +76,8 @@ class CustomerCartonSizeSeeder extends Seeder
                 [$product, $productWasCreated] = $this->findOrCreateProduct(
                     $row,
                     $customerName,
-                    $category
+                    $category,
+                    $productNameCounts
                 );
 
                 if ($productWasCreated) {
@@ -158,9 +168,10 @@ class CustomerCartonSizeSeeder extends Seeder
     private function findOrCreateProduct(
         array $row,
         string $customerName,
-        Category $category
+        Category $category,
+        array $productNameCounts
     ): array {
-        $name = trim((string) ($row['product_name'] ?? ''));
+        $name = $this->resolvedProductName($row, $productNameCounts);
 
         if ($name === '') {
             throw new RuntimeException(
@@ -191,6 +202,36 @@ class CustomerCartonSizeSeeder extends Seeder
         ]);
 
         return [$product, true];
+    }
+
+    private function resolvedProductName(
+        array $row,
+        array $productNameCounts
+    ): string {
+        $baseName = trim((string) ($row['product_name'] ?? ''));
+
+        if ($baseName === '') {
+            return '';
+        }
+
+        $count = (int) (
+            $productNameCounts[mb_strtolower($baseName)]
+            ?? 0
+        );
+
+        if ($count <= 1) {
+            return $baseName;
+        }
+
+        $disambiguator = $this->nullableText($row['print_spec'] ?? null)
+            ?: $this->nullableText($row['source_customer_label'] ?? null)
+            ?: 'Source row '.((int) ($row['source_row'] ?? 0));
+
+        return Str::limit(
+            $baseName.' - '.$disambiguator,
+            250,
+            ''
+        );
     }
 
     private function specificationAttributes(
