@@ -139,6 +139,7 @@
                         <th class="text-end">After</th>
                         <th class="text-end">Value USD</th>
                         <th>Reason</th>
+                        <th>Investigation</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -167,13 +168,45 @@
                             </td>
                             <td>
                                 {{ $reasonCodes[$row->reason_code] ?? ($row->reason_code ?: '—') }}
-                                @if(in_array($row->reason_code, $unresolvedReasonCodes, true))
+                                @if(
+                                    in_array($row->reason_code, $unresolvedReasonCodes, true)
+                                    && (! $row->investigation || $row->investigation->status !== 'resolved')
+                                )
                                     <span class="badge bg-warning text-dark ms-1">Unresolved</span>
+                                @endif
+                            </td>
+                            <td>
+                                @if($row->investigation)
+                                    @php
+                                        $caseBadge = match($row->investigation->status) {
+                                            'resolved' => 'success',
+                                            'investigating' => 'primary',
+                                            default => 'warning',
+                                        };
+                                    @endphp
+                                    <a href="{{ route('admin.stock-reconciliations.investigations.show', $row->investigation) }}"
+                                       class="badge bg-{{ $caseBadge }} text-decoration-none">
+                                        {{ ucfirst($row->investigation->status) }}
+                                    </a>
+                                    @if($row->investigation->assignee)
+                                        <div class="small text-muted mt-1">{{ $row->investigation->assignee->name }}</div>
+                                    @endif
+                                @else
+                                    @can('investigate stock reconciliations')
+                                        <form method="POST" action="{{ route('admin.stock-reconciliations.investigations.store', $row) }}">
+                                            @csrf
+                                            <button class="btn btn-sm btn-outline-warning">
+                                                <i class="bi bi-search me-1"></i> Open Case
+                                            </button>
+                                        </form>
+                                    @else
+                                        <span class="text-muted">No case</span>
+                                    @endcan
                                 @endif
                             </td>
                         </tr>
                     @empty
-                        <tr><td colspan="7" class="text-center py-5 text-muted">No posted reconciliation variances match these filters.</td></tr>
+                        <tr><td colspan="8" class="text-center py-5 text-muted">No posted reconciliation variances match these filters.</td></tr>
                     @endforelse
                 </tbody>
             </table>
