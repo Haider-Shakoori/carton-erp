@@ -16,7 +16,10 @@ use App\Models\PurchaseItem;
 use App\Models\Sale;
 use App\Models\Transaction;
 use App\Models\User;
-use Database\Seeders\DatabaseSeeder;
+use Database\Seeders\BoardProfileSeeder;
+use Database\Seeders\ClientCartonRawMaterialSeeder;
+use Database\Seeders\CustomerCartonBomSeeder;
+use Database\Seeders\CustomerCartonSizeSeeder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -70,10 +73,16 @@ it('runs the seeded CNP 5-ply carton through real-client purchase, sale, product
     ]);
     Auth::login($user);
 
-    // Seed the same production master data used by a fresh installation:
-    // client raw materials, board profiles, 37 customers, 171 carton variants,
-    // and the eligible draft customer BOMs.
-    $this->seed(DatabaseSeeder::class);
+    // Seed the exact client master-data chain used by DatabaseSeeder. The CI
+    // fresh-install stage separately verifies DatabaseSeeder itself; invoking
+    // PermissionsSeeder inside RefreshDatabase would invalidate MySQL's nested
+    // test savepoint before this UAT starts.
+    $this->seed([
+        ClientCartonRawMaterialSeeder::class,
+        BoardProfileSeeder::class,
+        CustomerCartonSizeSeeder::class,
+        CustomerCartonBomSeeder::class,
+    ]);
 
     $usd = cnpUatCreateCurrency('US Dollar', 'USD', '$', 1, true);
     $afn = cnpUatCreateCurrency('Afghan Afghani', 'AFN', '؋', 66, false);
