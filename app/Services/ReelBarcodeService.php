@@ -66,7 +66,8 @@ class ReelBarcodeService
         $batch = $reel->purchaseItem;
 
         return [
-            'reel' => $reel,
+            'reel_id' => (int) $reel->id,
+            'reel_code' => (string) $reel->reel_code,
             'scan_key' => $scanKey,
             'barcode_svg' => $this->barcodeSvg($scanKey),
             'material_name' => $batch?->product?->name ?? 'Unknown material',
