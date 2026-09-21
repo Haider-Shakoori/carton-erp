@@ -295,8 +295,19 @@ class RemittanceController extends Controller
 
     public function summary()
     {
-        $accountId = 1; // main cash account
-        $currencyId = 2; // CNY
+        $currencyId = Currency::query()->where('code', 'AFN')->value('id')
+            ?? Currency::query()->where('is_default', true)->value('id')
+            ?? Currency::query()->orderBy('id')->value('id');
+
+        if (! $currencyId) {
+            return response()->json([
+                'safe_balance' => '0',
+                'customers_balance' => '0',
+                'available_balance' => '0',
+                'pending' => '0',
+                'currency' => '',
+            ]);
+        }
 
         $customers_credit = DB::table('accounts')
             ->join('transactions', 'accounts.id', '=', 'transactions.account_id')
