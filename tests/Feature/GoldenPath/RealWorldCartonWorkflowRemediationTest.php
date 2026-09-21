@@ -330,11 +330,15 @@ function rwCreateSaleWithBom(array $fx, BOM $bom, string $saleNo): Sale
         ]],
     ]));
 
+    $payload = $response->getData(true);
+
     expect($response->getStatusCode())->toBe(200)
-        ->and($response->getData(true)['success'])->toBeTrue();
+        ->and($payload['success'])->toBeTrue()
+        ->and((float) $payload['sale_total'])->toBeGreaterThan(0);
 
     $sale = $sale->fresh(['items', 'currency']);
-    expect($sale->items)->toHaveCount(1);
+    expect($sale->items)->toHaveCount(1)
+        ->and((float) $sale->grand_total)->toBeGreaterThan(0);
 
     return $sale;
 }
