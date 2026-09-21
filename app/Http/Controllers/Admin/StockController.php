@@ -10,6 +10,7 @@ use App\Models\SaleItem;
 use App\Models\Purchase;
 use App\Models\Sale;
 use App\Models\ProductionOrder;
+use App\Models\StockAdjustmentItem;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -370,6 +371,16 @@ class StockController extends Controller
             ];
         });
 
+        // Posted stock reconciliation adjustments are a separate,
+        // auditable inventory movement class. Keep them distinct from production
+        // use/waste while surfacing them in normal inventory history.
+        $reconciliationAdjustments = StockAdjustmentItem::query()
+            ->where('product_id', $product->id)
+            ->with(['adjustment.reconciliation', 'purchaseItem'])
+            ->latest('id')
+            ->limit(25)
+            ->get();
+
         // Get recent activity (last 30 days)
         $recentActivity = PurchaseItem::where('product_id', $product->id)
             ->whereHas('purchase', function ($query) {
@@ -381,6 +392,13 @@ class StockController extends Controller
             ->limit(10)
             ->get();
 
-        return view('admin.products.show', compact('product', 'purchaseItems', 'stats', 'batchMetrics', 'recentActivity'));
+        return view('admin.products.show', compact(
+            'product',
+            'purchaseItems',
+            'stats',
+            'batchMetrics',
+            'recentActivity',
+            'reconciliationAdjustments'
+        ));
     }
 }

@@ -5,6 +5,8 @@ it('exposes weekly cycle count reporting, blind print, approval and audit contro
     $show = file_get_contents(resource_path('views/admin/stock-reconciliations/show.blade.php'));
     $report = file_get_contents(resource_path('views/admin/stock-reconciliations/report.blade.php'));
     $print = file_get_contents(resource_path('views/admin/stock-reconciliations/print.blade.php'));
+    $stockIndex = file_get_contents(resource_path('views/admin/stock/index.blade.php'));
+    $productHistory = file_get_contents(resource_path('views/admin/products/show.blade.php'));
 
     expect($index)
         ->toContain('New Cycle Count')
@@ -30,4 +32,13 @@ it('exposes weekly cycle count reporting, blind print, approval and audit contro
         ->toContain('Blind Physical Count Sheet')
         ->toContain('ERP/system quantities are intentionally hidden')
         ->toContain('@unless($blind)<th class="right">System Qty</th>@endunless');
+
+    expect($stockIndex)
+        ->toContain("route('admin.products.show', \$product->id)")
+        ->toContain('Inventory history');
+
+    expect($productHistory)
+        ->toContain('Reconciliation Adjustment History')
+        ->toContain('Full Variance Report')
+        ->toContain('$reconciliationAdjustments');
 });

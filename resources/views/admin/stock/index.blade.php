@@ -366,6 +366,9 @@ STATS CARDS - Premium Glassmorphism (Icon + Value on top row)
                                     <a href="{{ route('admin.stock.stock-out', $product->id) }}" class="btn-stock-out" title="{{ __('ui.stock_out') }}">
                                         <i class="bi bi-arrow-up-circle"></i> OUT
                                     </a>
+                                    <a href="{{ route('admin.products.show', $product->id) }}" class="btn-stock-view" title="Inventory history">
+                                        <i class="bi bi-clock-history"></i>
+                                    </a>
                                 </div>
                             </td>
                         </tr>
