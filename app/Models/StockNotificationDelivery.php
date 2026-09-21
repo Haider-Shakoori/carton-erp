@@ -40,4 +40,25 @@ class StockNotificationDelivery extends Model
     {
         return $this->belongsTo(User::class);
     }
+
+    public static function maskRecipient(
+        ?string $recipient,
+        string $channel
+    ): ?string {
+        $recipient = trim((string) $recipient);
+        if ($recipient === '') {
+            return null;
+        }
+
+        if ($channel === 'email' && str_contains($recipient, '@')) {
+            [$local, $domain] = explode('@', $recipient, 2);
+
+            return substr($local, 0, 1)
+                .str_repeat('*', max(strlen($local) - 1, 3))
+                .'@'.$domain;
+        }
+
+        return str_repeat('*', max(strlen($recipient) - 4, 4))
+            .substr($recipient, -4);
+    }
 }
