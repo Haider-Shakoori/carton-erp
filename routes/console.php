@@ -73,6 +73,12 @@ Artisan::command('stock-notifications:sync', function () {
 })->purpose('Create and queue stock-control management notifications');
 
 Artisan::command('stock-notifications:drain', function () {
+    if (in_array(config('queue.default'), ['sync', 'null'], true)) {
+        $this->info('No persistent queue configured; nothing to drain.');
+
+        return;
+    }
+
     $this->call('queue:work', [
         '--stop-when-empty' => true,
         '--tries' => 3,
@@ -84,10 +90,13 @@ Schedule::command('stock-notifications:sync')
     ->everyFifteenMinutes()
     ->withoutOverlapping();
 
-if (config(
-    'stock_reconciliation.notifications.shared_host_queue_drain_enabled',
-    true
-)) {
+if (
+    config(
+        'stock_reconciliation.notifications.shared_host_queue_drain_enabled',
+        true
+    )
+    && ! in_array(config('queue.default'), ['sync', 'null'], true)
+) {
     Schedule::command('stock-notifications:drain')
         ->everyMinute()
         ->withoutOverlapping();
