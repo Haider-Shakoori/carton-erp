@@ -290,51 +290,25 @@ class ReelInventoryService
                 );
             }
 
-            $reelsToMeasure = $reels->filter(
-                fn (PurchaseItemReel $reel) =>
-                    $reel->status !== PurchaseItemReel::STATUS_CONSUMED
-                    || (float) ($reel->last_measured_weight_kg ?? 0)
-                        > self::EPSILON
-            );
+            $readiness = $this->measurementReadiness($locked, $reels);
 
-            $unmeasured = $reelsToMeasure->filter(
-                fn (PurchaseItemReel $reel) =>
-                    $reel->last_measured_weight_kg === null
-            );
-
-            if ($unmeasured->isNotEmpty()) {
+            if ($readiness['unmeasured_count'] > 0) {
                 throw new RuntimeException(
                     'Every active physical reel must have a current measured weight before re-baselining.'
                 );
             }
 
-            $batchChangedAt = $locked->updated_at;
-            $staleMeasurements = $reelsToMeasure->filter(
-                fn (PurchaseItemReel $reel) =>
-                    ! $reel->last_measured_at
-                    || (
-                        $batchChangedAt
-                        && $reel->last_measured_at->lt($batchChangedAt)
-                    )
-            );
-
-            if ($staleMeasurements->isNotEmpty()) {
+            if ($readiness['stale_count'] > 0) {
                 throw new RuntimeException(
                     'Reel measurements are stale relative to the latest batch stock change. '
                     .'Re-weigh every registered reel before re-baselining.'
                 );
             }
 
-            $measuredTotal = (float) $reelsToMeasure->sum(
-                fn (PurchaseItemReel $reel) =>
-                    (float) $reel->last_measured_weight_kg
-            );
-            $batchTotal = $locked->availableKg();
+            $measuredTotal = (float) $readiness['measured_total_kg'];
+            $batchTotal = (float) $readiness['batch_available_kg'];
 
-            if (
-                abs($measuredTotal - $batchTotal)
-                > self::ALIGNMENT_TOLERANCE_KG
-            ) {
+            if (! $readiness['aligned']) {
                 throw new RuntimeException(sprintf(
                     'Measured reel total %.4f kg does not match the authoritative batch balance %.4f kg. '
                     .'Post the approved stock reconciliation first, then re-baseline the reels.',
@@ -792,6 +766,133 @@ class ReelInventoryService
         });
     }
 
+    public function measurementReadiness(
+        PurchaseItem $batch,
+        ?Collection $reels = null
+    ): array {
+        $reels ??= $batch->reels()
+            ->orderBy('sequence_no')
+            ->get();
+
+        if ($reels->isEmpty()) {
+            return [
+                'state' => 'untracked',
+                'label' => 'Not tracked',
+                'message' => 'Physical reel tracking has not been initialized for this batch.',
+                'active_count' => 0,
+                'fresh_count' => 0,
+                'unmeasured_count' => 0,
+                'stale_count' => 0,
+                'measured_total_kg' => 0.0,
+                'batch_available_kg' => $batch->availableKg(),
+                'variance_kg' => 0.0,
+                'complete' => false,
+                'aligned' => false,
+                'needs_reconciliation' => false,
+                'can_rebaseline' => false,
+                'unmeasured_reel_ids' => [],
+                'stale_reel_ids' => [],
+                'fresh_reel_ids' => [],
+            ];
+        }
+
+        $activeReels = $reels->filter(
+            fn (PurchaseItemReel $reel) =>
+                $reel->status !== PurchaseItemReel::STATUS_CONSUMED
+                || (float) ($reel->last_measured_weight_kg ?? 0)
+                    > self::EPSILON
+        );
+
+        $unmeasured = $activeReels->filter(
+            fn (PurchaseItemReel $reel) =>
+                $reel->last_measured_weight_kg === null
+        );
+
+        $batchChangedAt = $batch->updated_at;
+        $stale = $activeReels->filter(
+            fn (PurchaseItemReel $reel) =>
+                $reel->last_measured_weight_kg !== null
+                && (
+                    ! $reel->last_measured_at
+                    || (
+                        $batchChangedAt
+                        && $reel->last_measured_at->lt($batchChangedAt)
+                    )
+                )
+        );
+
+        $fresh = $activeReels->reject(
+            fn (PurchaseItemReel $reel) =>
+                $unmeasured->contains('id', $reel->id)
+                || $stale->contains('id', $reel->id)
+        );
+
+        $measuredTotal = (float) $activeReels->sum(
+            fn (PurchaseItemReel $reel) =>
+                (float) ($reel->last_measured_weight_kg ?? 0)
+        );
+        $batchKg = $batch->availableKg();
+        $variance = $measuredTotal - $batchKg;
+        $complete = $activeReels->isNotEmpty()
+            && $unmeasured->isEmpty()
+            && $stale->isEmpty();
+        $aligned = $complete
+            && abs($variance) <= self::ALIGNMENT_TOLERANCE_KG;
+        $needsReconciliation = $complete && ! $aligned;
+
+        if ($activeReels->isEmpty()) {
+            $state = 'no_active';
+            $label = 'No active reels';
+            $message = 'No active physical reels require weighing for this batch.';
+        } elseif ($unmeasured->isNotEmpty()) {
+            $state = 'incomplete';
+            $label = 'Weighing incomplete';
+            $message = sprintf(
+                '%d of %d active reel(s) still need a measurement.',
+                $unmeasured->count(),
+                $activeReels->count()
+            );
+        } elseif ($stale->isNotEmpty()) {
+            $state = 'stale';
+            $label = 'Re-weigh required';
+            $message = sprintf(
+                '%d active reel measurement(s) are stale after a later stock movement.',
+                $stale->count()
+            );
+        } elseif ($needsReconciliation) {
+            $state = 'reconcile';
+            $label = 'Ready to reconcile';
+            $message = sprintf(
+                'Fresh measured total differs from ERP by %+.4f kg. Create the controlled reconciliation before re-baselining.',
+                $variance
+            );
+        } else {
+            $state = 'aligned';
+            $label = 'Fresh & aligned';
+            $message = 'All active reels have fresh measurements and the total matches the authoritative batch balance.';
+        }
+
+        return [
+            'state' => $state,
+            'label' => $label,
+            'message' => $message,
+            'active_count' => $activeReels->count(),
+            'fresh_count' => $fresh->count(),
+            'unmeasured_count' => $unmeasured->count(),
+            'stale_count' => $stale->count(),
+            'measured_total_kg' => $measuredTotal,
+            'batch_available_kg' => $batchKg,
+            'variance_kg' => $variance,
+            'complete' => $complete,
+            'aligned' => $aligned,
+            'needs_reconciliation' => $needsReconciliation,
+            'can_rebaseline' => $aligned,
+            'unmeasured_reel_ids' => $unmeasured->pluck('id')->map(fn ($id) => (int) $id)->all(),
+            'stale_reel_ids' => $stale->pluck('id')->map(fn ($id) => (int) $id)->all(),
+            'fresh_reel_ids' => $fresh->pluck('id')->map(fn ($id) => (int) $id)->all(),
+        ];
+    }
+
     public function summary(PurchaseItem $batch): array
     {
         $batch->loadMissing('purchase');
@@ -802,6 +903,7 @@ class ReelInventoryService
             ->get();
 
         $trackedKg = (float) $reels->sum('system_remaining_weight_kg');
+        $measurementReadiness = $this->measurementReadiness($batch, $reels);
         $measuredReels = $reels->filter(
             fn (PurchaseItemReel $reel) =>
                 $reel->last_measured_weight_kg !== null
@@ -868,6 +970,7 @@ class ReelInventoryService
             'unmeasured_count' => $reels->count()
                 - $measuredReels->count(),
             'latest_measured_total_kg' => $measuredKg,
+            'measurement_readiness' => $measurementReadiness,
             'reels' => $reels,
         ];
     }

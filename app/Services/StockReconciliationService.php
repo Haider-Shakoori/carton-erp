@@ -16,6 +16,11 @@ class StockReconciliationService
 {
     private const EPSILON = 0.000001;
 
+    public function __construct(
+        private readonly ReelInventoryService $reelInventoryService
+    ) {
+    }
+
     public function createSnapshot(
         ?string $countDate = null,
         ?string $notes = null,
@@ -138,45 +143,32 @@ class StockReconciliationService
                 );
             }
 
-            $reelsToMeasure = $reels->filter(
-                fn ($reel) =>
-                    $reel->status !== \App\Models\PurchaseItemReel::STATUS_CONSUMED
-                    || (float) ($reel->last_measured_weight_kg ?? 0) > self::EPSILON
-            );
+            $readiness = $this->reelInventoryService
+                ->measurementReadiness($locked, $reels);
 
-            $unmeasured = $reelsToMeasure->filter(
-                fn ($reel) => $reel->last_measured_weight_kg === null
-            );
+            if ($readiness['active_count'] < 1) {
+                throw new RuntimeException(
+                    'No active physical reels require reconciliation for this inventory batch.'
+                );
+            }
 
-            if ($unmeasured->isNotEmpty()) {
+            if ($readiness['unmeasured_count'] > 0) {
                 throw new RuntimeException(
                     'Every active physical reel must be weighed before creating a reconciliation from reel measurements.'
                 );
             }
 
-            $batchChangedAt = $locked->updated_at;
-            $stale = $reelsToMeasure->filter(
-                fn ($reel) =>
-                    ! $reel->last_measured_at
-                    || (
-                        $batchChangedAt
-                        && $reel->last_measured_at->lt($batchChangedAt)
-                    )
-            );
-
-            if ($stale->isNotEmpty()) {
+            if ($readiness['stale_count'] > 0) {
                 throw new RuntimeException(
                     'Reel measurements are stale relative to the latest stock movement. Re-weigh every active reel before starting reconciliation.'
                 );
             }
 
-            $measuredTotal = (float) $reelsToMeasure->sum(
-                fn ($reel) => (float) $reel->last_measured_weight_kg
-            );
-            $systemQuantity = $locked->availableInventoryQuantity();
-            $variance = $measuredTotal - $systemQuantity;
+            $measuredTotal = (float) $readiness['measured_total_kg'];
+            $systemQuantity = (float) $readiness['batch_available_kg'];
+            $variance = (float) $readiness['variance_kg'];
 
-            if (abs($variance) <= 0.05) {
+            if (! $readiness['needs_reconciliation']) {
                 throw new RuntimeException(
                     'Measured reel total already matches the authoritative batch balance; no reconciliation is required.'
                 );
@@ -213,6 +205,16 @@ class StockReconciliationService
                 'created_by' => Auth::id(),
             ]);
 
+            $reelsToMeasure = $reels->filter(
+                fn ($reel) => in_array(
+                    (int) $reel->id,
+                    array_merge(
+                        $readiness['fresh_reel_ids'],
+                        $readiness['stale_reel_ids']
+                    ),
+                    true
+                )
+            );
             $measurementAt = $reelsToMeasure
                 ->max(fn ($reel) => $reel->last_measured_at?->getTimestamp());
             $measurementLabel = $measurementAt
