@@ -398,6 +398,13 @@ class ProductionQuantityService
                     'actual_quantity' => max($actual, 0.0),
                     'wastage_quantity' => max($wastage, 0.0),
                     'unit' => isset($row['unit']) ? (string) $row['unit'] : null,
+                    'use_reel_selection' => (bool) ($row['use_reel_selection'] ?? false),
+                    'reel_selections' => is_array($row['reels'] ?? null)
+                        ? $row['reels']
+                        : [],
+                    'selection_note' => isset($row['selection_note'])
+                        ? trim((string) $row['selection_note'])
+                        : null,
                 ];
             })
             ->groupBy('material_id')
@@ -409,6 +416,9 @@ class ProductionQuantityService
                     'actual_quantity' => (float) $group->sum('actual_quantity'),
                     'wastage_quantity' => (float) $group->sum('wastage_quantity'),
                     'unit' => $first['unit'],
+                    'use_reel_selection' => (bool) $first['use_reel_selection'],
+                    'reel_selections' => $first['reel_selections'],
+                    'selection_note' => $first['selection_note'],
                 ];
             })
             ->keyBy('material_id');
@@ -446,6 +456,13 @@ class ProductionQuantityService
             );
         }
 
+        $plannedRunQty = (float) (
+            $order->quantity_planned ?: $order->quantity_ordered
+        );
+        $plannedByMaterial = collect(
+            $this->requirementsForQuantity($order, $plannedRunQty)
+        )->keyBy('material_id');
+
         $current = ProductionMaterialConsumption::query()
             ->where('production_order_id', $order->id)
             ->selectRaw('material_id, SUM(actual_quantity) AS actual_quantity')
@@ -458,6 +475,50 @@ class ProductionQuantityService
         foreach ($expectedMaterialIds as $materialId) {
             $row = $rows->get((int) $materialId);
             $target = (float) $row['actual_quantity'];
+
+            if ($row['use_reel_selection']) {
+                if ($target <= self::EPSILON) {
+                    throw new RuntimeException(
+                        "Physical reel selection for material #{$materialId} requires positive actual consumption."
+                    );
+                }
+
+                $selectionNote = $row['selection_note'];
+                $selections = collect($row['reel_selections'])
+                    ->map(function ($selection) use ($selectionNote): array {
+                        $selection = is_array($selection)
+                            ? $selection
+                            : (array) $selection;
+
+                        if (
+                            ! isset($selection['note'])
+                            || trim((string) $selection['note']) === ''
+                        ) {
+                            $selection['note'] = $selectionNote;
+                        }
+
+                        return $selection;
+                    })
+                    ->all();
+
+                $this->stockService
+                    ->replaceProductionMaterialWithReelSelections(
+                        productionOrderId: $order->id,
+                        saleId: $sale?->id,
+                        saleItemId: $saleItem?->id,
+                        materialId: (int) $materialId,
+                        actualQuantity: $target,
+                        plannedQuantity: (float) data_get(
+                            $plannedByMaterial->get((int) $materialId),
+                            'quantity',
+                            0
+                        ),
+                        selections: $selections
+                    );
+
+                continue;
+            }
+
             $consumed = (float) data_get($current->get((int) $materialId), 'actual_quantity', 0);
             $difference = $target - $consumed;
 
