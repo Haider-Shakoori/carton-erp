@@ -959,6 +959,7 @@
                                                                                 @foreach($material['reel_options'] as $reelIndex => $reel)
                                                                                     <tr class="reel-option-row"
                                                                                         data-reel-code="{{ strtoupper($reel['reel_code']) }}"
+                                                                                        data-scan-key="{{ strtoupper($reel['scan_key']) }}"
                                                                                         data-selectable="{{ $reel['selectable'] ? '1' : '0' }}">
                                                                                         <td>
                                                                                             <div class="fw-semibold">{{ $reel['reel_code'] }}</div>
@@ -1754,7 +1755,8 @@
                         panel.querySelectorAll('.reel-option-row')
                     );
                     const match = rows.find(function(row) {
-                        return row.dataset.reelCode === code;
+                        return row.dataset.reelCode === code
+                            || row.dataset.scanKey === code;
                     });
 
                     if (!match) {
