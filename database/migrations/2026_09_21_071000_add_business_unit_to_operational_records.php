@@ -27,8 +27,7 @@ return new class extends Migration
                 $table->foreignId('business_unit_id')
                     ->nullable()
                     ->constrained('business_units')
-                    ->nullOnDelete()
-                    ->index();
+                    ->nullOnDelete();
             });
         }
     }
