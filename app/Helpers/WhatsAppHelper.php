@@ -10,9 +10,9 @@ class WhatsAppHelper
     public static function sendMessage($to, $message): bool
     {
         if (empty($to) || empty($message)) {
-            Log::warning('❌ WhatsApp message not sent: missing to/text', [
-                'to' => $to,
-                'message' => $message,
+            Log::warning('WhatsApp message not sent: missing destination or text.', [
+                'has_destination' => ! empty($to),
+                'message_length' => is_string($message) ? strlen($message) : 0,
             ]);
             return false;
         }
@@ -28,20 +28,34 @@ class WhatsAppHelper
         }, 500); // retry 3 times, wait 500ms between tries
 
 
+        $maskedDestination = self::maskDestination((string) $to);
+
         if (!$response->successful()) {
-            Log::error('❌ Failed to send WhatsApp message', [
-                'to'     => $to,
+            Log::error('WhatsApp message delivery failed.', [
+                'destination' => $maskedDestination,
                 'status' => $response->status(),
-                'body'   => $response->body(),
+                'message_length' => strlen((string) $message),
             ]);
         } else {
-            Log::info('✅ WhatsApp message sent', [
-                'to' => $to,
-                'length' => strlen($message),
+            Log::info('WhatsApp message sent.', [
+                'destination' => $maskedDestination,
+                'message_length' => strlen((string) $message),
             ]);
         }
 
         return $response->successful();
+    }
+
+    private static function maskDestination(string $value): string
+    {
+        $value = trim($value);
+        if ($value === '') {
+            return '[empty]';
+        }
+
+        $visible = substr($value, -4);
+
+        return str_repeat('*', max(strlen($value) - 4, 4)).$visible;
     }
 }
 
