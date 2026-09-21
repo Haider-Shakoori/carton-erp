@@ -136,7 +136,10 @@ it('creates physical reel schema and initializes an untouched roll batch without
         ->and(Schema::hasTable('production_reel_consumptions'))->toBeTrue()
         ->and(Schema::hasTable('purchase_item_reel_status_events'))->toBeTrue()
         ->and(Schema::hasColumn('purchase_item_reels', 'status_reason'))->toBeTrue()
-        ->and(Schema::hasColumn('purchase_item_reels', 'status_changed_at'))->toBeTrue();
+        ->and(Schema::hasColumn('purchase_item_reels', 'status_changed_at'))->toBeTrue()
+        ->and(Schema::hasColumn('production_reel_consumptions', 'allocation_method'))->toBeTrue()
+        ->and(Schema::hasColumn('production_reel_consumptions', 'selected_by'))->toBeTrue()
+        ->and(Schema::hasColumn('production_reel_consumptions', 'declared_final_weight_kg'))->toBeTrue();
 
     $fx = reelTrackingFixture(3, 500);
     $batch = $fx['batch']->fresh();
@@ -208,7 +211,9 @@ it('allocates actual FIFO production consumption across physical reels and prese
         ->and($reels[1]->status)->toBe(PurchaseItemReel::STATUS_OPEN)
         ->and($lineage)->toHaveCount(2)
         ->and((float) $lineage[0]->quantity_kg)->toBe(500.0)
-        ->and((float) $lineage[1]->quantity_kg)->toBe(100.0);
+        ->and((float) $lineage[1]->quantity_kg)->toBe(100.0)
+        ->and($lineage->pluck('allocation_method')->unique()->values()->all())
+            ->toBe(['fifo']);
 });
 
 it('restores partial and full production quantities back through the original reel lineage', function () {
@@ -624,5 +629,305 @@ it('initializes legacy partially used batches from current reel weights without 
         ->and((float) $historical->total_cost_usd)->toBe((float) $before['total_cost_usd'])
         ->and($historical->reelConsumptions()->count())->toBe(0)
         ->and($batch->fresh()->availableKg())->toBe(900.0);
+});
+
+it('replaces provisional FIFO with the operator selected reel at production completion', function () {
+    $fx = reelTrackingFixture();
+    $reelService = app(ReelInventoryService::class);
+    $stock = app(StockDeductionService::class);
+
+    $reelService->initializeBatch($fx['batch']);
+    $stock->deductMaterials(
+        $fx['productionOrderId'],
+        null,
+        [[
+            'material_id' => $fx['materialId'],
+            'quantity' => 100,
+            'planned_quantity' => 100,
+            'wastage_quantity' => 0,
+            'unit' => 'kg',
+        ]]
+    );
+
+    $reels = $fx['batch']->fresh()->reels()
+        ->orderBy('sequence_no')
+        ->get();
+
+    expect((float) $reels[0]->system_remaining_weight_kg)->toBe(400.0)
+        ->and((float) $reels[1]->system_remaining_weight_kg)->toBe(500.0);
+
+    $actuals = [[
+        'material_id' => $fx['materialId'],
+        'actual_quantity' => 100,
+        'wastage_quantity' => 0,
+        'unit' => 'kg',
+        'use_reel_selection' => true,
+        'selection_note' => 'Scanned on production floor',
+        'reels' => [[
+            'reel_id' => $reels[1]->id,
+            'consumed_kg' => 100,
+        ]],
+    ]];
+
+    app(ProductionQuantityService::class)->complete(
+        ProductionOrder::findOrFail($fx['productionOrderId']),
+        100,
+        null,
+        100,
+        0,
+        $actuals
+    );
+
+    $batch = $fx['batch']->fresh();
+    $reels = $batch->reels()->orderBy('sequence_no')->get();
+    $lineage = ProductionReelConsumption::query()->get();
+
+    expect($batch->availableKg())->toBe(900.0)
+        ->and((float) $reels[0]->system_remaining_weight_kg)->toBe(500.0)
+        ->and($reels[0]->status)->toBe(PurchaseItemReel::STATUS_SEALED)
+        ->and((float) $reels[1]->system_remaining_weight_kg)->toBe(400.0)
+        ->and($reels[1]->status)->toBe(PurchaseItemReel::STATUS_OPEN)
+        ->and($lineage)->toHaveCount(1)
+        ->and((int) $lineage->first()->purchase_item_reel_id)
+            ->toBe((int) $reels[1]->id)
+        ->and($lineage->first()->allocation_method)
+            ->toBe('operator_selected')
+        ->and((int) $lineage->first()->selected_by)
+            ->toBe((int) $fx['user']->id)
+        ->and($lineage->first()->selection_note)
+            ->toBe('Scanned on production floor');
+});
+
+it('keeps a declared final reel weight as observational variance instead of overwriting stock', function () {
+    $fx = reelTrackingFixture();
+    $reelService = app(ReelInventoryService::class);
+    $stock = app(StockDeductionService::class);
+
+    $reelService->initializeBatch($fx['batch']);
+    $stock->deductMaterials(
+        $fx['productionOrderId'],
+        null,
+        [[
+            'material_id' => $fx['materialId'],
+            'quantity' => 100,
+            'planned_quantity' => 100,
+            'wastage_quantity' => 0,
+            'unit' => 'kg',
+        ]]
+    );
+
+    $secondReel = $fx['batch']->fresh()->reels()
+        ->orderBy('sequence_no')
+        ->skip(1)
+        ->firstOrFail();
+
+    app(ProductionQuantityService::class)->complete(
+        ProductionOrder::findOrFail($fx['productionOrderId']),
+        100,
+        null,
+        100,
+        0,
+        [[
+            'material_id' => $fx['materialId'],
+            'actual_quantity' => 100,
+            'wastage_quantity' => 0,
+            'unit' => 'kg',
+            'use_reel_selection' => true,
+            'reels' => [[
+                'reel_id' => $secondReel->id,
+                'consumed_kg' => 100,
+                'final_remaining_kg' => 390,
+            ]],
+        ]]
+    );
+
+    $batch = $fx['batch']->fresh();
+    $reel = $secondReel->fresh();
+    $lineage = ProductionReelConsumption::firstOrFail();
+    $measurement = $reel->measurements()->firstOrFail();
+
+    expect($batch->availableKg())->toBe(900.0)
+        ->and((float) $reel->system_remaining_weight_kg)->toBe(400.0)
+        ->and((float) $reel->last_measured_weight_kg)->toBe(390.0)
+        ->and((float) $reel->measurement_variance_kg)->toBe(-10.0)
+        ->and((float) $measurement->system_weight_snapshot_kg)->toBe(400.0)
+        ->and((float) $measurement->measured_weight_kg)->toBe(390.0)
+        ->and((float) $lineage->declared_final_weight_kg)->toBe(390.0)
+        ->and((float) ($batch->qty_kg_adjusted ?? 0))->toBe(0.0);
+});
+
+it('infers selected reel consumption from an end of run remainder when consumed kg is omitted', function () {
+    $fx = reelTrackingFixture();
+    $reelService = app(ReelInventoryService::class);
+    $stock = app(StockDeductionService::class);
+
+    $reelService->initializeBatch($fx['batch']);
+    $stock->deductMaterials(
+        $fx['productionOrderId'],
+        null,
+        [[
+            'material_id' => $fx['materialId'],
+            'quantity' => 100,
+            'planned_quantity' => 100,
+            'wastage_quantity' => 0,
+            'unit' => 'kg',
+        ]]
+    );
+
+    $secondReel = $fx['batch']->fresh()->reels()
+        ->orderBy('sequence_no')
+        ->skip(1)
+        ->firstOrFail();
+
+    app(ProductionQuantityService::class)->complete(
+        ProductionOrder::findOrFail($fx['productionOrderId']),
+        100,
+        null,
+        100,
+        0,
+        [[
+            'material_id' => $fx['materialId'],
+            'actual_quantity' => 100,
+            'wastage_quantity' => 0,
+            'unit' => 'kg',
+            'use_reel_selection' => true,
+            'reels' => [[
+                'reel_id' => $secondReel->id,
+                'final_remaining_kg' => 400,
+            ]],
+        ]]
+    );
+
+    $reel = $secondReel->fresh();
+    $lineage = ProductionReelConsumption::firstOrFail();
+
+    expect((float) $lineage->quantity_kg)->toBe(100.0)
+        ->and((float) $reel->system_remaining_weight_kg)->toBe(400.0)
+        ->and((float) $reel->last_measured_weight_kg)->toBe(400.0)
+        ->and((float) $reel->measurement_variance_kg)->toBe(0.0)
+        ->and($fx['batch']->fresh()->availableKg())->toBe(900.0);
+});
+
+it('rolls back the reel replay when an operator selects a blocked reel', function () {
+    $fx = reelTrackingFixture();
+    $reelService = app(ReelInventoryService::class);
+    $stock = app(StockDeductionService::class);
+
+    $reelService->initializeBatch($fx['batch']);
+    $stock->deductMaterials(
+        $fx['productionOrderId'],
+        null,
+        [[
+            'material_id' => $fx['materialId'],
+            'quantity' => 100,
+            'planned_quantity' => 100,
+            'wastage_quantity' => 0,
+            'unit' => 'kg',
+        ]]
+    );
+
+    $reels = $fx['batch']->fresh()->reels()
+        ->orderBy('sequence_no')
+        ->get();
+
+    $reelService->changeControlStatus(
+        $reels[1],
+        'quarantined',
+        'Hold before completion'
+    );
+
+    $beforeConsumption = ProductionMaterialConsumption::firstOrFail();
+    $beforeConsumptionId = $beforeConsumption->id;
+    $beforeCost = (float) $beforeConsumption->total_cost_usd;
+
+    expect(fn () => $stock->replaceProductionMaterialWithReelSelections(
+        $fx['productionOrderId'],
+        null,
+        null,
+        $fx['materialId'],
+        100,
+        100,
+        [[
+            'reel_id' => $reels[1]->id,
+            'consumed_kg' => 100,
+        ]]
+    ))->toThrow(\RuntimeException::class, 'not production eligible');
+
+    $batch = $fx['batch']->fresh();
+    $reels = $batch->reels()->orderBy('sequence_no')->get();
+    $consumption = ProductionMaterialConsumption::firstOrFail();
+    $lineage = ProductionReelConsumption::firstOrFail();
+
+    expect($batch->availableKg())->toBe(900.0)
+        ->and((float) $reels[0]->system_remaining_weight_kg)->toBe(400.0)
+        ->and((float) $reels[1]->system_remaining_weight_kg)->toBe(500.0)
+        ->and($reels[1]->status)->toBe(PurchaseItemReel::STATUS_QUARANTINED)
+        ->and((int) $consumption->id)->toBe((int) $beforeConsumptionId)
+        ->and((float) $consumption->total_cost_usd)->toBe($beforeCost)
+        ->and((int) $lineage->purchase_item_reel_id)->toBe((int) $reels[0]->id)
+        ->and($lineage->allocation_method)->toBe('fifo');
+});
+
+it('uses the selected source batch landed cost when the operator overrides FIFO', function () {
+    $fx = reelTrackingFixture();
+    $reelService = app(ReelInventoryService::class);
+    $stock = app(StockDeductionService::class);
+
+    $reelService->initializeBatch($fx['batch']);
+
+    $secondBatch = PurchaseItem::create([
+        'purchase_id' => $fx['batch']->purchase_id,
+        'product_id' => $fx['materialId'],
+        'purchase_currency_id' => $fx['currencyId'],
+        'qty' => 1,
+        'unit' => 'roll',
+        'kg_per_roll' => 500,
+        'unit_price' => 375,
+        'usd_unit_price' => 375,
+        'usd_total' => 375,
+        'usd_expense_per_item' => 0,
+        'landed_cost_per_kg' => 0.75,
+        'batch_no' => 'REEL-BATCH-002',
+    ]);
+    $reelService->initializeBatch($secondBatch);
+
+    $stock->deductMaterials(
+        $fx['productionOrderId'],
+        null,
+        [[
+            'material_id' => $fx['materialId'],
+            'quantity' => 100,
+            'planned_quantity' => 100,
+            'wastage_quantity' => 0,
+            'unit' => 'kg',
+        ]]
+    );
+
+    $selectedReel = $secondBatch->fresh()->reels()->firstOrFail();
+
+    $records = $stock->replaceProductionMaterialWithReelSelections(
+        $fx['productionOrderId'],
+        null,
+        null,
+        $fx['materialId'],
+        100,
+        100,
+        [[
+            'reel_id' => $selectedReel->id,
+            'consumed_kg' => 100,
+            'note' => 'Older FIFO batch was not physically used',
+        ]]
+    );
+
+    $record = $records->firstOrFail();
+    $lineage = $record->reelConsumptions()->firstOrFail();
+
+    expect($fx['batch']->fresh()->availableKg())->toBe(1000.0)
+        ->and($secondBatch->fresh()->availableKg())->toBe(400.0)
+        ->and((int) $record->purchase_item_id)->toBe((int) $secondBatch->id)
+        ->and((float) $record->cost_per_unit_usd)->toBe(0.75)
+        ->and((float) $record->total_cost_usd)->toBe(75.0)
+        ->and((int) $lineage->purchase_item_reel_id)->toBe((int) $selectedReel->id)
+        ->and($lineage->allocation_method)->toBe('operator_selected');
 });
 
