@@ -17,6 +17,7 @@ class FinishedGoodSpecification extends Model
         'source_customer_label',
         'source_size_raw',
         'source_unit',
+        'source_layer_raw',
         'length',
         'width',
         'height',
