@@ -2,6 +2,7 @@
 @extends('layouts.admin.base')
 
 @section('title', 'Sale Order #' . $sale->sale_no)
+@section('page_title', 'Sale Order')
 
 @section('css')
     <link href="{{ asset('vendor/select2/select2.min.css') }}" rel="stylesheet">
