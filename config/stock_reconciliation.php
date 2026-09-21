@@ -82,4 +82,10 @@ return [
         'weekly_review_schedule_time' => '08:30',
         'daily_sync_time' => '08:15',
     ],
+
+    'notifications' => [
+        'event_lookback_days' => 7,
+        'review_due_soon_days' => 1,
+        'sync_every_minutes' => 15,
+    ],
 ];
