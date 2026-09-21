@@ -94,7 +94,7 @@
                         <th class="text-end">Batch Available</th>
                         <th class="text-end">Tracked Reels</th>
                         <th class="text-end">Tracked System Kg</th>
-                        <th class="text-end">Latest Measured Kg</th>
+                        <th class="text-end">Measurement Readiness</th>
                         <th>Status</th>
                         <th class="text-end"></th>
                     </tr>
