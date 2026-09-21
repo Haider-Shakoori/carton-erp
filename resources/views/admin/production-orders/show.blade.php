@@ -583,6 +583,194 @@
             gap: 0.3rem;
         }
 
+        /* ─── Production Completion Workspace ─── */
+        #completeProductionModal .modal-dialog {
+            max-width: min(1480px, 96vw);
+        }
+        .completion-modal-content {
+            background: #f8fafc;
+        }
+        .completion-modal-header {
+            background: #fff;
+            border-bottom: 1px solid #e2e8f0 !important;
+            padding: 1.15rem 1.35rem;
+        }
+        .completion-context-grid {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: .75rem;
+            margin-bottom: 1rem;
+        }
+        .completion-context-card {
+            background: #fff;
+            border: 1px solid #e2e8f0;
+            border-radius: 12px;
+            padding: .85rem 1rem;
+            min-width: 0;
+        }
+        .completion-context-card .label {
+            color: #64748b;
+            font-size: .68rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: .06em;
+        }
+        .completion-context-card .value {
+            color: #0f172a;
+            font-size: 1.05rem;
+            font-weight: 800;
+            margin-top: .15rem;
+        }
+        .completion-section {
+            background: #fff;
+            border: 1px solid #e2e8f0;
+            border-radius: 14px;
+            padding: 1rem;
+            margin-bottom: 1rem;
+        }
+        .completion-section-title {
+            display: flex;
+            align-items: center;
+            gap: .55rem;
+            font-weight: 800;
+            color: #0f172a;
+            margin-bottom: .85rem;
+        }
+        .completion-step {
+            width: 28px;
+            height: 28px;
+            border-radius: 9px;
+            background: #eef2ff;
+            color: #4f46e5;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: .78rem;
+            font-weight: 800;
+            flex: 0 0 auto;
+        }
+        .completion-output-check {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 1rem;
+            border-radius: 10px;
+            padding: .7rem .85rem;
+            margin-top: .75rem;
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            font-size: .8rem;
+        }
+        .completion-output-check.is-valid {
+            background: #ecfdf5;
+            border-color: #a7f3d0;
+            color: #065f46;
+        }
+        .completion-output-check.is-invalid {
+            background: #fef2f2;
+            border-color: #fecaca;
+            color: #991b1b;
+        }
+        .completion-material-grid {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) 290px;
+            gap: .85rem;
+            align-items: start;
+        }
+        .completion-material-table {
+            border: 1px solid #e2e8f0;
+            border-radius: 12px;
+            overflow: hidden;
+            background: #fff;
+        }
+        .completion-material-row {
+            transition: background .2s ease, box-shadow .2s ease;
+        }
+        .completion-material-row.is-over-plan {
+            background: #fff7ed;
+        }
+        .completion-material-row.is-below-plan {
+            background: #f0fdf4;
+        }
+        .completion-material-row.is-on-plan {
+            background: #fff;
+        }
+        .completion-actual-input {
+            min-width: 145px;
+            font-weight: 700;
+        }
+        .completion-quick-action {
+            font-size: .68rem;
+            padding: .22rem .5rem;
+            white-space: nowrap;
+        }
+        .completion-summary-panel {
+            position: sticky;
+            top: 1rem;
+            background: #fff;
+            border: 1px solid #e2e8f0;
+            border-radius: 12px;
+            overflow: hidden;
+        }
+        .completion-summary-panel .summary-head {
+            padding: .85rem 1rem;
+            background: linear-gradient(135deg, #eef2ff, #f5f3ff);
+            border-bottom: 1px solid #e0e7ff;
+        }
+        .completion-summary-panel .summary-body {
+            padding: .9rem 1rem;
+        }
+        .completion-summary-stat {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: .75rem;
+            padding: .48rem 0;
+            border-bottom: 1px solid #f1f5f9;
+            font-size: .78rem;
+        }
+        .completion-summary-stat:last-child {
+            border-bottom: 0;
+        }
+        .completion-inventory-note {
+            margin-top: .85rem;
+            padding: .75rem;
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 10px;
+            color: #475569;
+            font-size: .73rem;
+            line-height: 1.45;
+        }
+        .completion-modal-footer {
+            background: #fff;
+            border-top: 1px solid #e2e8f0 !important;
+            padding: .9rem 1.25rem;
+        }
+        @media (max-width: 1199.98px) {
+            .completion-context-grid {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+            .completion-material-grid {
+                grid-template-columns: 1fr;
+            }
+            .completion-summary-panel {
+                position: static;
+            }
+        }
+        @media (max-width: 767.98px) {
+            .completion-context-grid {
+                grid-template-columns: 1fr;
+            }
+            #completeProductionModal .modal-dialog {
+                max-width: none;
+                margin: .5rem;
+            }
+            .completion-section {
+                padding: .8rem;
+            }
+        }
+
         /* ─── Alerts ─── */
         .alert-modern {
             border-radius: var(--border-radius-md);
@@ -793,37 +981,44 @@
         @if($productionOrder->status === 'in_progress')
             <div class="modal fade" id="completeProductionModal" tabindex="-1" aria-labelledby="completeProductionModalLabel" aria-hidden="true">
                 <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
-                    <div class="modal-content border-0 shadow-lg">
-                        <form action="{{ route('production-orders.complete', $productionOrder) }}" method="POST">
+                    <div class="modal-content border-0 shadow-lg completion-modal-content">
+                        <form action="{{ route('production-orders.complete', $productionOrder) }}" method="POST" id="productionCompletionForm">
+
                             @csrf
-                            <div class="modal-header border-0 pb-0">
+                            <div class="modal-header completion-modal-header">
                                 <div>
                                     <h5 class="modal-title fw-bold" id="completeProductionModalLabel">Complete Production — Actual Results</h5>
-                                    <div class="text-muted small">Record the real output and raw material used on the shop floor.</div>
+                                    <div class="text-muted small">Enter shop-floor actuals. Saving reconciles inventory to the quantities below using FIFO landed costs.</div>
                                 </div>
                                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="{{ __('ui.close') }}"></button>
                             </div>
 
-                            <div class="modal-body pt-3">
-                                <div class="rounded-3 p-3 mb-4" style="background:#eff6ff;border:1px solid #bfdbfe;">
-                                    <div class="row g-3">
-                                        <div class="col-md-4">
-                                            <div class="text-muted small">Customer Ordered</div>
-                                            <strong>{{ number_format((float) $productionOrder->quantity_ordered, 2) }}</strong>
-                                        </div>
-                                        <div class="col-md-4">
-                                            <div class="text-muted small">Planned for This Run</div>
-                                            <strong>{{ number_format((float) ($productionOrder->quantity_planned ?: $productionOrder->quantity_ordered), 2) }}</strong>
-                                        </div>
-                                        <div class="col-md-4">
-                                            <div class="text-muted small">Completion Rule</div>
-                                            <strong>Manufactured = Good + Rejected</strong>
-                                        </div>
+                            <div class="modal-body">
+                                <div class="completion-context-grid">
+                                    <div class="completion-context-card">
+                                        <div class="label">Customer Ordered</div>
+                                        <div class="value">{{ number_format((float) $productionOrder->quantity_ordered, 2) }}</div>
+                                    </div>
+                                    <div class="completion-context-card">
+                                        <div class="label">Planned This Run</div>
+                                        <div class="value">{{ number_format((float) ($productionOrder->quantity_planned ?: $productionOrder->quantity_ordered), 2) }}</div>
+                                    </div>
+                                    <div class="completion-context-card">
+                                        <div class="label">Materials to Reconcile</div>
+                                        <div class="value">{{ count($completionMaterials) }}</div>
+                                    </div>
+                                    <div class="completion-context-card">
+                                        <div class="label">Inventory Method</div>
+                                        <div class="value">FIFO Actuals</div>
                                     </div>
                                 </div>
 
-                                <h6 class="fw-bold mb-3">1. Finished Output</h6>
-                                <div class="row g-3 mb-4">
+                                <div class="completion-section">
+                                    <div class="completion-section-title">
+                                        <span class="completion-step">1</span>
+                                        <span>Finished Output</span>
+                                    </div>
+                                    <div class="row g-3">
                                     <div class="col-md-4">
                                         <label for="quantity_manufactured" class="form-label fw-semibold">Manufactured Qty <span class="text-danger">*</span></label>
                                         <input type="number" class="form-control form-control-lg @error('quantity_manufactured') is-invalid @enderror"
@@ -851,15 +1046,22 @@
                                         @error('quantity_rejected')<div class="invalid-feedback">{{ $message }}</div>@enderror
                                         <div class="form-text">Defective or unusable cartons from this run.</div>
                                     </div>
+                                    </div>
+                                    <div class="completion-output-check" id="completionOutputCheck">
+                                        <span><i class="bi bi-calculator me-1"></i> Manufactured must equal Good + Rejected.</span>
+                                        <strong id="completionOutputCheckValue">Checking…</strong>
+                                    </div>
                                 </div>
 
-                                <div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-2 mb-2">
-                                    <div>
-                                        <h6 class="fw-bold mb-1">2. Actual Raw Material Consumption</h6>
-                                        <div class="text-muted small">BOM Planned is the production baseline. Actual Consumed is what physically left inventory.</div>
+                                <div class="completion-section">
+                                    <div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-2 mb-2">
+                                        <div class="completion-section-title mb-0">
+                                            <span class="completion-step">2</span>
+                                            <span>Actual Raw Material Consumption</span>
+                                        </div>
+                                        <span class="badge bg-light text-dark border">BOM stays as the planned baseline</span>
                                     </div>
-                                    <span class="badge bg-light text-dark border">BOM remains the planned baseline</span>
-                                </div>
+                                    <div class="text-muted small mb-2">Enter the quantity that physically left inventory for every material allocated to this work order.</div>
                                 <div class="alert alert-info py-2 px-3 mb-3 small">
                                     <strong>Difference = Actual Consumed − BOM Planned.</strong>
                                     Positive means over-consumption; negative means consumption below plan.
@@ -868,7 +1070,8 @@
 
                                 @error('materials')<div class="alert alert-danger py-2">{{ $message }}</div>@enderror
 
-                                <div class="table-responsive border rounded-3">
+                                <div class="completion-material-grid">
+                                    <div class="table-responsive completion-material-table">
                                     <table class="table align-middle mb-0">
                                         <thead class="table-light">
                                             <tr>
@@ -895,7 +1098,7 @@
                                                         ? ((float) $actualInputValue - (float) $material['planned_quantity'])
                                                         : null;
                                                 @endphp
-                                                <tr>
+                                                <tr class="completion-material-row" data-material-row>
                                                     <td>
                                                         <div class="fw-semibold">{{ $material['material_name'] }}</div>
                                                         <div class="small text-muted">Production material from BOM/planned snapshot</div>
@@ -907,19 +1110,27 @@
                                                         <div class="small text-muted">{{ $material['unit'] }}</div>
                                                     </td>
                                                     <td>
-                                                        <input type="number"
-                                                               class="form-control actual-consumption-input @error('materials.'.$index.'.actual_quantity') is-invalid @enderror"
-                                                               name="materials[{{ $index }}][actual_quantity]"
-                                                               value="{{ $actualInputValue }}"
-                                                               min="0"
-                                                               step="0.000001"
-                                                               data-planned="{{ (float) $material['planned_quantity'] }}"
-                                                               data-unit="{{ $material['unit'] }}"
-                                                               data-variance-target="materialVariance{{ $index }}"
-                                                               data-variance-status-target="materialVarianceStatus{{ $index }}"
-                                                               required>
+                                                        <div class="d-flex align-items-center gap-2">
+                                                            <input type="number"
+                                                                   class="form-control actual-consumption-input completion-actual-input @error('materials.'.$index.'.actual_quantity') is-invalid @enderror"
+                                                                   name="materials[{{ $index }}][actual_quantity]"
+                                                                   value="{{ $actualInputValue }}"
+                                                                   min="0"
+                                                                   step="0.000001"
+                                                                   data-planned="{{ (float) $material['planned_quantity'] }}"
+                                                                   data-current="{{ (float) $material['current_actual_quantity'] }}"
+                                                                   data-unit="{{ $material['unit'] }}"
+                                                                   data-variance-target="materialVariance{{ $index }}"
+                                                                   data-variance-status-target="materialVarianceStatus{{ $index }}"
+                                                                   required>
+                                                            <button type="button"
+                                                                    class="btn btn-outline-secondary completion-quick-action use-bom-plan"
+                                                                    title="Copy BOM planned quantity into Actual Consumed">
+                                                                Use Plan
+                                                            </button>
+                                                        </div>
                                                         @error('materials.'.$index.'.actual_quantity')<div class="invalid-feedback">{{ $message }}</div>@enderror
-                                                        <div class="form-text">Total quantity that left inventory.</div>
+                                                        <div class="form-text">Authoritative total that will remain deducted from inventory.</div>
                                                     </td>
                                                     <td>
                                                         <input type="number"
@@ -1100,17 +1311,52 @@
                                             @endforelse
                                         </tbody>
                                     </table>
+                                    </div>
+
+                                    <aside class="completion-summary-panel" id="completionSummaryPanel">
+                                        <div class="summary-head">
+                                            <div class="fw-bold"><i class="bi bi-clipboard-check me-1"></i> Completion Summary</div>
+                                            <div class="small text-muted mt-1">Live review before inventory reconciliation</div>
+                                        </div>
+                                        <div class="summary-body">
+                                            <div class="completion-summary-stat">
+                                                <span>Materials</span>
+                                                <strong id="completionMaterialCount">{{ count($completionMaterials) }}</strong>
+                                            </div>
+                                            <div class="completion-summary-stat">
+                                                <span class="text-danger">Over BOM plan</span>
+                                                <strong class="text-danger" id="completionOverCount">0</strong>
+                                            </div>
+                                            <div class="completion-summary-stat">
+                                                <span class="text-success">Below BOM plan</span>
+                                                <strong class="text-success" id="completionBelowCount">0</strong>
+                                            </div>
+                                            <div class="completion-summary-stat">
+                                                <span>On BOM plan</span>
+                                                <strong id="completionOnPlanCount">0</strong>
+                                            </div>
+                                            <div class="completion-inventory-note">
+                                                <div class="fw-bold text-dark mb-1"><i class="bi bi-box-arrow-down me-1"></i> Inventory impact</div>
+                                                Actual Consumed is authoritative. Higher actual usage deducts additional FIFO stock; lower actual usage restores the unused provisional allocation. Actual FIFO landed cost becomes the production material cost.
+                                            </div>
+                                        </div>
+                                    </aside>
                                 </div>
 
-                                <div class="alert alert-warning mt-4 mb-0 small">
+                                <div class="alert alert-warning mt-3 mb-0 small">
                                     <i class="bi bi-exclamation-triangle me-1"></i>
                                     Completion is atomic. Materials without a physical reel declaration keep FIFO. An explicit reel declaration replaces only that material's provisional allocation and preserves the landed cost of each selected source batch. Scale remainders are observational and never overwrite stock directly.
                                 </div>
+                                </div>
                             </div>
 
-                            <div class="modal-footer border-0 pt-0">
+                            <div class="modal-footer completion-modal-footer">
+                                <div class="me-auto small text-muted">
+                                    <i class="bi bi-shield-check me-1"></i>
+                                    BOM remains unchanged; only actual production consumption and inventory are reconciled.
+                                </div>
                                 <button type="button" class="btn btn-light" data-bs-dismiss="modal">{{ __('ui.cancel') }}</button>
-                                <button type="submit" class="btn btn-success" @disabled(empty($completionMaterials))>
+                                <button type="submit" class="btn btn-success px-4" id="completeProductionSubmit" @disabled(empty($completionMaterials))>
                                     <i class="bi bi-check-circle me-1"></i> Save Actuals & Complete Production
                                 </button>
                             </div>
@@ -1778,9 +2024,42 @@
             @endif
 
             // ─── LIVE BOM VS ACTUAL MATERIAL VARIANCE ───
+            const syncCompletionSummary = function() {
+                let over = 0;
+                let below = 0;
+                let onPlan = 0;
+                const epsilon = 0.000001;
+
+                document.querySelectorAll('.actual-consumption-input').forEach(function(input) {
+                    const planned = Number(input.dataset.planned || 0);
+                    const actual = Number(input.value);
+                    if (!Number.isFinite(actual)) {
+                        return;
+                    }
+
+                    const difference = actual - planned;
+                    if (difference > epsilon) {
+                        over++;
+                    } else if (difference < -epsilon) {
+                        below++;
+                    } else {
+                        onPlan++;
+                    }
+                });
+
+                const overTarget = document.getElementById('completionOverCount');
+                const belowTarget = document.getElementById('completionBelowCount');
+                const onPlanTarget = document.getElementById('completionOnPlanCount');
+
+                if (overTarget) overTarget.textContent = String(over);
+                if (belowTarget) belowTarget.textContent = String(below);
+                if (onPlanTarget) onPlanTarget.textContent = String(onPlan);
+            };
+
             const syncMaterialVariance = function(input) {
                 const target = document.getElementById(input.dataset.varianceTarget);
                 const status = document.getElementById(input.dataset.varianceStatusTarget);
+                const row = input.closest('[data-material-row]');
 
                 if (!target || !status) {
                     return;
@@ -1791,11 +2070,15 @@
                 const unit = input.dataset.unit || '';
 
                 target.classList.remove('text-danger', 'text-success', 'text-muted');
+                if (row) {
+                    row.classList.remove('is-over-plan', 'is-below-plan', 'is-on-plan');
+                }
 
                 if (!Number.isFinite(actual)) {
                     target.textContent = '—';
                     target.classList.add('text-muted');
                     status.textContent = 'Actual − planned';
+                    syncCompletionSummary();
                     return;
                 }
 
@@ -1808,13 +2091,18 @@
                 if (difference > epsilon) {
                     target.classList.add('text-danger');
                     status.textContent = 'Over BOM plan';
+                    if (row) row.classList.add('is-over-plan');
                 } else if (difference < -epsilon) {
                     target.classList.add('text-success');
                     status.textContent = 'Below BOM plan';
+                    if (row) row.classList.add('is-below-plan');
                 } else {
                     target.classList.add('text-muted');
                     status.textContent = 'On BOM plan';
+                    if (row) row.classList.add('is-on-plan');
                 }
+
+                syncCompletionSummary();
             };
 
             document.querySelectorAll('.actual-consumption-input').forEach(function(input) {
@@ -1823,6 +2111,61 @@
                 });
                 syncMaterialVariance(input);
             });
+
+            document.querySelectorAll('.use-bom-plan').forEach(function(button) {
+                button.addEventListener('click', function() {
+                    const row = button.closest('[data-material-row]');
+                    const input = row ? row.querySelector('.actual-consumption-input') : null;
+                    if (!input) return;
+
+                    input.value = input.dataset.planned || '0';
+                    input.dispatchEvent(new Event('input', { bubbles: true }));
+                    input.focus();
+                });
+            });
+
+            const syncOutputCheck = function() {
+                const manufacturedInput = document.getElementById('quantity_manufactured');
+                const goodInput = document.getElementById('quantity_produced');
+                const rejectedInput = document.getElementById('quantity_rejected');
+                const check = document.getElementById('completionOutputCheck');
+                const value = document.getElementById('completionOutputCheckValue');
+
+                if (!manufacturedInput || !goodInput || !rejectedInput || !check || !value) {
+                    return true;
+                }
+
+                const manufactured = Number(manufacturedInput.value);
+                const good = Number(goodInput.value);
+                const rejected = Number(rejectedInput.value);
+                const validNumbers = [manufactured, good, rejected].every(Number.isFinite);
+                const balanced = validNumbers && Math.abs(manufactured - (good + rejected)) <= 0.01;
+
+                check.classList.remove('is-valid', 'is-invalid');
+                check.classList.add(balanced ? 'is-valid' : 'is-invalid');
+                value.textContent = balanced
+                    ? 'Balanced'
+                    : 'Difference: ' + (validNumbers ? (manufactured - good - rejected).toFixed(2) : '—');
+
+                return balanced;
+            };
+
+            ['quantity_manufactured', 'quantity_produced', 'quantity_rejected'].forEach(function(id) {
+                const input = document.getElementById(id);
+                if (input) input.addEventListener('input', syncOutputCheck);
+            });
+            syncOutputCheck();
+
+            const productionCompletionForm = document.getElementById('productionCompletionForm');
+            if (productionCompletionForm) {
+                productionCompletionForm.addEventListener('submit', function(event) {
+                    if (!syncOutputCheck()) {
+                        event.preventDefault();
+                        const manufacturedInput = document.getElementById('quantity_manufactured');
+                        if (manufacturedInput) manufacturedInput.focus();
+                    }
+                });
+            }
 
             // ─── OPTIONAL PHYSICAL REEL DECLARATION ───
             document.querySelectorAll('.reel-selection-toggle').forEach(function(toggle) {
