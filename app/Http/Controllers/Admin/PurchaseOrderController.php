@@ -283,7 +283,8 @@ class PurchaseOrderController extends Controller
     public function updateStatus(Request $request, $id)
     {
         $request->validate([
-            'status' => 'required|in:draft,shipping,arrived'
+            'status' => 'required|in:draft,shipping,arrived',
+            'notes' => 'nullable|string|max:2000',
         ]);
 
         try {
@@ -293,20 +294,26 @@ class PurchaseOrderController extends Controller
             $oldStatus = $purchase->status;
             $newStatus = $request->status;
 
-            // If status is changing to 'shipping', create a transaction
-            if ($newStatus === 'shipping' && $oldStatus !== 'shipping') {
-                // Check if transaction already exists for this purchase
+            if ($newStatus === $oldStatus) {
+                DB::commit();
+
+                return redirect()->back()->with('success', 'Purchase order status is already '.$newStatus.'.');
+            }
+
+            if ($newStatus === 'draft') {
+                throw new \RuntimeException('An approved or progressed purchase order cannot be moved back to draft through the status control.');
+            }
+
+            if ($newStatus === 'shipping') {
+                app(\App\Services\PurchaseControlService::class)->assertCanShip($purchase);
+
                 $existingTransaction = Transaction::where('table_name', 'purchases')
                     ->where('table_row_id', $purchase->id)
                     ->where('type', 'purchase')
                     ->where('account_id', $purchase->supplier_id)
                     ->first();
 
-                if (!$existingTransaction) {
-                    // Generate description
-                    $description = $this->generateTransactionDescription($purchase);
-
-                    // Create transaction for supplier (CREDIT)
+                if (! $existingTransaction) {
                     Transaction::create([
                         'type' => 'purchase',
                         'table_name' => 'purchases',
@@ -314,31 +321,41 @@ class PurchaseOrderController extends Controller
                         'account_id' => $purchase->supplier_id,
                         'currency_id' => $purchase->currency_id,
                         'amount' => $purchase->subtotal ?? 0,
-                        'transaction_type' => 'credit', // Supplier account is credited
+                        'transaction_type' => 'credit',
                         'is_cash' => false,
-                        'description' => $description,
+                        'description' => $this->generateTransactionDescription($purchase),
                         'is_visible' => true,
                         'status' => 'active',
                         'created_by' => Auth::id(),
                     ]);
                 }
+
+                $purchase->status = 'shipping';
+                $purchase->save();
+            } elseif ($newStatus === 'arrived') {
+                if ($oldStatus !== 'shipping') {
+                    throw new \RuntimeException('Goods can only be received after the purchase order is marked as shipping.');
+                }
+
+                app(\App\Services\PurchaseControlService::class)->receive(
+                    $purchase,
+                    $request->user(),
+                    $request->input('notes')
+                );
             }
-
-            // Update status
-            $purchase->status = $newStatus;
-
-            if ($newStatus === 'arrived' && !$purchase->arrival_date) {
-                $purchase->arrival_date = now();
-            }
-
-            $purchase->save();
 
             DB::commit();
 
-            return redirect()->back()->with('success', "Purchase order status changed from {$oldStatus} to {$newStatus}");
-        } catch (\Exception $e) {
+            return redirect()->back()->with(
+                'success',
+                "Purchase order status changed from {$oldStatus} to {$newStatus}."
+            );
+        } catch (\Throwable $e) {
             DB::rollBack();
-            return redirect()->back()->with('error', 'Error updating status: ' . $e->getMessage());
+
+            return redirect()->back()
+                ->withInput()
+                ->with('error', 'Purchase control rejected the status change: '.$e->getMessage());
         }
     }
 
