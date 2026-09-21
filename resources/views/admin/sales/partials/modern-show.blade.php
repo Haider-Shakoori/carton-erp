@@ -93,9 +93,27 @@
             }
         }
 
+        $soxStandardPrice = (float) ($soxLine->base_price ?: $soxLine->original_unit_price ?: $soxLine->unit_price);
+        $soxEffectivePrice = (float) $soxLine->unit_price;
+        $soxEstimatedCostUnit = $soxIsUsd
+            ? (float) ($soxLine->cost_per_unit_usd ?? 0)
+            : (float) ($soxLine->cost_per_unit_usd ?? 0) * $soxExchangeRate;
+        $soxEstimatedProfitUnit = $soxEffectivePrice - $soxEstimatedCostUnit;
+        $soxItemMargin = $soxEffectivePrice > 0 ? ($soxEstimatedProfitUnit / $soxEffectivePrice) * 100 : 0;
+        $soxManualOverride = ($soxLine->price_adjustment_type ?? null) === 'manual';
+
         $soxBomBreakdowns[(string) $soxLine->id] = [
             'product' => $soxLine->product->name ?? 'Product',
             'bom' => $soxLine->bom->code ?? (count($soxSnapshot) > 0 ? 'Manual BOM Snapshot' : 'No BOM'),
+            'quantity' => (float) $soxLine->qty,
+            'unit' => $soxLine->product->unit ?? 'pcs',
+            'standard_price' => $soxStandardPrice,
+            'manual_override' => $soxManualOverride ? $soxEffectivePrice : null,
+            'effective_price' => $soxEffectivePrice,
+            'estimated_cost' => $soxEstimatedCostUnit,
+            'estimated_profit' => $soxEstimatedProfitUnit * (float) $soxLine->qty,
+            'margin' => $soxItemMargin,
+            'status' => ucfirst((string) $sale->status),
             'rows' => $soxRows,
             'total' => $soxTotalMaterialCost,
         ];
@@ -153,6 +171,24 @@
     .sox-summary-row strong { color:#1e2a44; text-align:right; }
     .sox-summary-row.profit strong,.sox-summary-row.margin strong { color:var(--sox-success); }
     .sox-summary-note { background:#f1f3ff; color:#5b65b6; border-radius:9px; padding:.75rem; font-size:.64rem; margin-top:.7rem; display:flex; gap:.5rem; }
+    .sox-lower-grid { display:grid; grid-template-columns:minmax(0,1fr) 320px; gap:.8rem; align-items:start; }
+    .sox-selected-card { background:#fff; border:1px solid var(--sox-border); border-radius:13px; overflow:hidden; box-shadow:0 4px 20px rgba(15,23,42,.025); position:sticky; top:1rem; }
+    .sox-selected-head { padding:.85rem 1rem; border-bottom:1px solid var(--sox-border); font-size:.82rem; font-weight:800; display:flex; align-items:center; gap:.5rem; }
+    .sox-selected-head i { color:var(--sox-primary); }
+    .sox-selected-body { padding:.85rem; }
+    .sox-selected-product { display:flex; align-items:center; gap:.7rem; padding:.7rem; border:1px solid var(--sox-border); border-radius:10px; background:#fbfcff; margin-bottom:.8rem; }
+    .sox-selected-icon { width:42px; height:42px; border-radius:9px; display:flex; align-items:center; justify-content:center; background:#fff7ed; color:#b45309; flex:0 0 auto; font-size:1.15rem; }
+    .sox-selected-name { font-size:.78rem; font-weight:850; color:#202b45; }
+    .sox-selected-bom { color:var(--sox-muted); font-size:.62rem; margin-top:.12rem; }
+    .sox-selected-status { margin-left:auto; background:var(--sox-success-soft); color:#047857; padding:.24rem .55rem; border-radius:999px; font-size:.58rem; font-weight:800; }
+    .sox-selected-grid { display:grid; grid-template-columns:1fr 1fr; gap:.48rem .7rem; font-size:.68rem; }
+    .sox-selected-grid .k { color:var(--sox-muted); }
+    .sox-selected-grid .v { text-align:right; color:#293650; font-weight:700; }
+    .sox-selected-grid .v.good { color:var(--sox-success); }
+    .sox-selected-actions { display:grid; grid-template-columns:1fr 1fr; gap:.45rem; margin-top:.9rem; }
+    .sox-selected-action { border:1px solid #e4e7ff; background:#f7f7ff; color:var(--sox-primary); border-radius:8px; padding:.55rem .5rem; font-size:.65rem; font-weight:750; text-align:center; }
+    .sox-selected-empty { padding:2rem 1rem; text-align:center; color:var(--sox-muted); font-size:.7rem; }
+    .sox-selected-empty i { display:block; font-size:1.5rem; color:#a5b4fc; margin-bottom:.5rem; }
     .sox-tabs-card { background:#fff; border:1px solid var(--sox-border); border-radius:13px; overflow:hidden; }
     .sox-tabs { display:flex; gap:.1rem; padding:0 .75rem; border-bottom:1px solid var(--sox-border); overflow-x:auto; }
     .sox-tab { border:0; background:transparent; color:#687791; padding:.8rem .85rem .7rem; font-size:.72rem; font-weight:720; white-space:nowrap; border-bottom:2px solid transparent; display:flex; align-items:center; gap:.42rem; }
@@ -192,7 +228,7 @@
     .sox-drawer-host .sale-section .section-body { padding:.5rem 0; }
     .sox-drawer-host .row > [class*="col-md-"] { margin-bottom:.45rem; }
     .sox-row-action { width:32px; height:32px; border:1px solid var(--sox-border); border-radius:8px; background:#fff; color:#586681; }
-    @media (max-width:1200px){ .sox-summary-grid{grid-template-columns:repeat(3,1fr)} .sox-main-grid{grid-template-columns:1fr} .sox-order-summary{display:grid;grid-template-columns:repeat(2,1fr);gap:0 1rem}.sox-summary-note{grid-column:1/-1} }
+    @media (max-width:1200px){ .sox-lower-grid{grid-template-columns:1fr}.sox-selected-card{position:static}.sox-summary-grid{grid-template-columns:repeat(3,1fr)} .sox-main-grid{grid-template-columns:1fr} .sox-order-summary{display:grid;grid-template-columns:repeat(2,1fr);gap:0 1rem}.sox-summary-note{grid-column:1/-1} }
     @media (max-width:768px){ .sox-header{flex-direction:column}.sox-actions{justify-content:flex-start}.sox-summary-grid{grid-template-columns:1fr 1fr}.sox-search{max-width:none;width:100%}.sox-toolbar{width:100%;flex-wrap:wrap}.sox-card-head{align-items:flex-start;flex-direction:column}.sox-overview-grid,.sox-cost-grid{grid-template-columns:1fr}.sox-title{font-size:1.4rem} }
 </style>
 
@@ -397,6 +433,7 @@
         </aside>
     </div>
 
+    <div class="sox-lower-grid">
     <section class="sox-tabs-card">
         <div class="sox-tabs" role="tablist">
             <button class="sox-tab active" type="button" data-sox-tab="overview"><i class="bi bi-file-earmark-text"></i>Overview</button>
@@ -481,6 +518,43 @@
             </div>
         </div>
     </section>
+
+    <aside class="sox-selected-card" id="soxSelectedItemCard">
+        <div class="sox-selected-head"><i class="bi bi-cursor"></i>Selected Item Details</div>
+        <div class="sox-selected-empty" id="soxSelectedEmpty">
+            <i class="bi bi-box-seam"></i>
+            <strong>Select an item above</strong>
+            <div class="mt-1">Its BOM and pricing details will appear here.</div>
+        </div>
+        <div class="sox-selected-body" id="soxSelectedBody" style="display:none">
+            <div class="sox-selected-product">
+                <div class="sox-selected-icon"><i class="bi bi-box-seam"></i></div>
+                <div class="flex-grow-1">
+                    <div class="sox-selected-name" id="soxSelectedName">—</div>
+                    <div class="sox-selected-bom" id="soxSelectedBom">—</div>
+                </div>
+                <span class="sox-selected-status" id="soxSelectedStatus">Draft</span>
+            </div>
+            <div class="sox-selected-grid">
+                <div class="k">Quantity</div><div class="v" id="soxSelectedQty">—</div>
+                <div class="k">Standard Price</div><div class="v" id="soxSelectedStandard">—</div>
+                <div class="k">Manual Override Price</div><div class="v" id="soxSelectedOverride">—</div>
+                <div class="k">Effective Selling Price</div><div class="v good" id="soxSelectedEffective">—</div>
+                <div class="k">Estimated Cost / Unit</div><div class="v" id="soxSelectedCost">—</div>
+                <div class="k">Estimated Profit</div><div class="v good" id="soxSelectedProfit">—</div>
+                <div class="k">Margin</div><div class="v good" id="soxSelectedMargin">—</div>
+            </div>
+            <div class="sox-selected-actions">
+                <button type="button" class="sox-selected-action" id="soxSelectedViewBom"><i class="bi bi-boxes me-1"></i>View Full BOM</button>
+                @if($sale->status === 'draft')
+                    <button type="button" class="sox-selected-action" id="soxSelectedEditPrice"><i class="bi bi-pencil me-1"></i>Edit Price</button>
+                @else
+                    <button type="button" class="sox-selected-action" disabled><i class="bi bi-lock me-1"></i>Price Locked</button>
+                @endif
+            </div>
+        </div>
+    </aside>
+    </div>
 </div>
 
 @if($sale->status === 'draft')
@@ -527,6 +601,31 @@
                     row.style.display = !q || (row.dataset.soxSearch || '').includes(q) ? '' : 'none';
                 });
             });
+        }
+
+        function renderSelectedItem(itemId) {
+            const data = window.soxBomBreakdowns[String(itemId)];
+            const empty = document.getElementById('soxSelectedEmpty');
+            const body = document.getElementById('soxSelectedBody');
+            if (!data || !empty || !body) return;
+
+            document.getElementById('soxSelectedName').textContent = data.product || 'Product';
+            document.getElementById('soxSelectedBom').textContent = data.bom || 'No BOM';
+            document.getElementById('soxSelectedStatus').textContent = data.status || 'Draft';
+            document.getElementById('soxSelectedQty').textContent = Number(data.quantity || 0).toLocaleString(undefined, {maximumFractionDigits:4}) + ' ' + (data.unit || 'pcs');
+            document.getElementById('soxSelectedStandard').textContent = @json($soxCurrencyCode) + ' ' + number4(data.standard_price);
+            document.getElementById('soxSelectedOverride').textContent = data.manual_override === null ? '— (Using system price)' : @json($soxCurrencyCode) + ' ' + number4(data.manual_override);
+            document.getElementById('soxSelectedEffective').textContent = @json($soxCurrencyCode) + ' ' + number4(data.effective_price);
+            document.getElementById('soxSelectedCost').textContent = @json($soxCurrencyCode) + ' ' + number4(data.estimated_cost);
+            document.getElementById('soxSelectedProfit').textContent = @json($soxCurrencyCode) + ' ' + Number(data.estimated_profit || 0).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2});
+            document.getElementById('soxSelectedMargin').textContent = Number(data.margin || 0).toFixed(1) + '%';
+            empty.style.display = 'none';
+            body.style.display = '';
+
+            const viewBom = document.getElementById('soxSelectedViewBom');
+            if (viewBom) viewBom.dataset.itemId = String(itemId);
+            const editPrice = document.getElementById('soxSelectedEditPrice');
+            if (editPrice) editPrice.dataset.itemId = String(itemId);
         }
 
         function renderBom(itemId) {
@@ -586,6 +685,7 @@
                 if (this.checked) {
                     const row = document.querySelector('[data-sox-item-row="' + this.value + '"]');
                     if (row) row.classList.add('sox-selected');
+                    renderSelectedItem(this.value);
                     renderBom(this.value);
                 }
             });
@@ -619,6 +719,20 @@
                 if (productionEmpty) productionEmpty.style.display = 'none';
             }
         }
+
+        document.getElementById('soxSelectedViewBom')?.addEventListener('click', function () {
+            const id = this.dataset.itemId;
+            if (id) renderBom(id);
+        });
+
+        document.getElementById('soxSelectedEditPrice')?.addEventListener('click', function () {
+            const id = this.dataset.itemId;
+            const input = id ? document.querySelector('.sox-manual-price[data-id="' + id + '"]') : null;
+            if (input) {
+                input.scrollIntoView({behavior:'smooth', block:'center'});
+                setTimeout(() => input.focus(), 350);
+            }
+        });
 
         document.querySelectorAll('[data-sox-add-mode]').forEach(button => {
             button.addEventListener('click', function () {
