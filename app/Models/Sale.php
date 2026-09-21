@@ -183,7 +183,12 @@ class Sale extends Model
 
     public function recalculateTotals()
     {
-        $items = $this->items;
+        // Always read the persisted rows. Several controller flows create/update
+        // sale items after the Sale model has already eager-loaded its items
+        // relation; using the cached relation here can silently calculate a
+        // zero/stale sale total.
+        $items = $this->items()->get();
+        $this->setRelation('items', $items);
 
         $this->subtotal = $items->sum('total');
         $this->discount_total = $items->sum('discount');
