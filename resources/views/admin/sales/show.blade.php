@@ -2,6 +2,7 @@
 @extends('layouts.admin.base')
 
 @section('title', 'Sale Order #' . $sale->sale_no)
+@section('page_title', 'Sale Order')
 
 @section('css')
     <link href="{{ asset('vendor/select2/select2.min.css') }}" rel="stylesheet">
@@ -1526,7 +1527,9 @@
 
 @section('content')
     <div class="container-fluid px-3 px-md-4">
+        @include('admin.sales.partials.modern-show')
 
+        <div id="legacySaleOrderUi" class="d-none" aria-hidden="true">
         {{-- ─── PAGE HEADER ─── --}}
         <div class="sale-header">
             <div>
@@ -2547,6 +2550,7 @@
             </div>
         @endif
 
+        </div>{{-- /legacySaleOrderUi --}}
     </div>
 
     {{-- ─── CONFIRMATION MODAL ─── --}}

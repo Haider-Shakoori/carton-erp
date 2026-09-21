@@ -9,6 +9,7 @@ on:
       - test/real-client-cnp-uat
       - feat/all-finished-goods-boms-clean-currencies
       - feat/seed-opening-stock-and-bom-usage
+      - feat/sale-order-modern-ui
   workflow_dispatch:
 
 permissions:
@@ -118,6 +119,7 @@ jobs:
           php artisan test tests/Feature/GoldenPath/RealWorldCartonWorkflowRemediationTest.php
           php artisan test tests/Feature/Uat/RealClientCnpWorkflowTest.php
           php artisan test tests/Feature/ClientMaster/CustomerCartonMasterSeederTest.php
+          php artisan test tests/Feature/ClientRequirements/SaleOrderModernUiContractTest.php
 
       - name: Complete PHP test suite
         run: php artisan test
