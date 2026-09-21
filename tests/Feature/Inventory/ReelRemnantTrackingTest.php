@@ -2,6 +2,8 @@
 
 use App\Models\PurchaseItem;
 use App\Models\PurchaseItemReel;
+use App\Models\ProductionMaterialConsumption;
+use App\Models\ProductionOrder;
 use App\Models\ProductionReelConsumption;
 use App\Models\User;
 use App\Services\ProductionQuantityService;
@@ -11,7 +13,6 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
-use RuntimeException;
 
 uses(RefreshDatabase::class);
 
@@ -278,7 +279,7 @@ it('blocks production when tracked reel totals drift from the authoritative batc
             'wastage_quantity' => 0,
             'unit' => 'kg',
         ]]
-    ))->toThrow(RuntimeException::class, 'out of sync');
+    ))->toThrow(\RuntimeException::class, 'out of sync');
 
     expect($batch->fresh()->availableKg())->toBe(950.0)
         ->and((float) $batch->fresh()->reels()->sum('system_remaining_weight_kg'))->toBe(1000.0)
@@ -388,7 +389,7 @@ it('keeps damaged and quarantined kilograms in inventory but blocks them from pr
             'wastage_quantity' => 0,
             'unit' => 'kg',
         ]]
-    ))->toThrow(RuntimeException::class, 'Production-eligible reels contain only');
+    ))->toThrow(\RuntimeException::class, 'Production-eligible reels contain only');
 
     $batch = $fx['batch']->fresh();
     $reels = $batch->reels()->orderBy('sequence_no')->get();
@@ -516,7 +517,7 @@ it('prevents negative reel balances and rolls back the whole stock deduction', f
             'wastage_quantity' => 0,
             'unit' => 'kg',
         ]]
-    ))->toThrow(RuntimeException::class);
+    ))->toThrow(\RuntimeException::class);
 
     $batch = $fx['batch']->fresh();
 
@@ -573,7 +574,7 @@ it('rejects repeated production completion without consuming any additional reel
         100,
         0,
         $actuals
-    ))->toThrow(RuntimeException::class, 'Only in-progress production orders can be completed');
+    ))->toThrow(\RuntimeException::class, 'Only in-progress production orders can be completed');
 
     expect($fx['batch']->fresh()->availableKg())->toBe($afterFirst)
         ->and((float) $fx['batch']->fresh()->reels()->sum('system_remaining_weight_kg'))->toBe($reelAfterFirst)
