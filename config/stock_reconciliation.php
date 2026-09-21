@@ -70,4 +70,16 @@ return [
         'effectiveness_pre_days' => 30,
         'effectiveness_post_days' => 30,
     ],
+
+    'management_control' => [
+        'level_due_days' => [
+            1 => 7,
+            2 => 3,
+            3 => 1,
+        ],
+        'weekly_review_due_weekday' => 5,
+        'weekly_review_schedule_day' => 1,
+        'weekly_review_schedule_time' => '08:30',
+        'daily_sync_time' => '08:15',
+    ],
 ];
