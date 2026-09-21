@@ -3,11 +3,14 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToBusinessUnit;
+
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
 
 class Purchase extends Model
 {
+    use BelongsToBusinessUnit;
     protected $table = 'purchases';
 
     protected $fillable = [
