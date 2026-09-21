@@ -111,6 +111,8 @@ Route::middleware(['auth'])->prefix('admin')->group(function () {
             ->name('read-all')->middleware('permission.feedback:view stock reconciliations');
         Route::patch('/settings', [StockNotificationController::class, 'updateSettings'])
             ->name('settings')->middleware('permission.feedback:view stock reconciliations');
+        Route::post('/deliveries/{delivery}/retry', [StockNotificationController::class, 'retryDelivery'])
+            ->name('deliveries.retry')->middleware('permission.feedback:view stock reconciliations');
     });
 
     // Stock
