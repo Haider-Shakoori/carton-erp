@@ -193,11 +193,11 @@
             $.get("{{ route('admin.exchange-purchase.totals') }}", function (res) {
                 const flagMap = {
                     'USD': '/assets/flags/us.svg',
-                    'CNY': '/assets/flags/cn.svg'
+                    'AFN': '/assets/flags/af.svg'
                 };
                 const symbolMap = {
                     'USD': '$',
-                    'CNY': '¥'
+                    'AFN': '؋'
                 };
 
                 let html = `<div class="row g-3">`; // Reduced gutter spacing
@@ -526,9 +526,9 @@
 
                 let converted = 0;
                 if (amount > 0 && rate > 0) {
-                    if (baseCurrency === 'USD' && targetCurrency === 'CNY') {
+                    if (baseCurrency === 'USD' && targetCurrency === 'AFN') {
                         converted = amount * rate;
-                    } else if (baseCurrency === 'CNY' && targetCurrency === 'USD') {
+                    } else if (baseCurrency === 'AFN' && targetCurrency === 'USD') {
                         converted = amount / rate;
                     } else {
                         converted = amount / rate; // default case
@@ -793,11 +793,11 @@
             $.get("{{ route('admin.exchange-purchase.totals') }}", function (res) {
                 const flagMap = {
                     'USD': '/assets/flags/us.svg',
-                    'CNY': '/assets/flags/cn.svg'
+                    'AFN': '/assets/flags/af.svg'
                 };
                 const symbolMap = {
                     'USD': '$',
-                    'CNY': '¥'
+                    'AFN': '؋'
                 };
 
                 let html = `<div class="row g-3">`; // Reduced gutter spacing
@@ -1126,9 +1126,9 @@
 
                 let converted = 0;
                 if (amount > 0 && rate > 0) {
-                    if (baseCurrency === 'USD' && targetCurrency === 'CNY') {
+                    if (baseCurrency === 'USD' && targetCurrency === 'AFN') {
                         converted = amount * rate;
-                    } else if (baseCurrency === 'CNY' && targetCurrency === 'USD') {
+                    } else if (baseCurrency === 'AFN' && targetCurrency === 'USD') {
                         converted = amount / rate;
                     } else {
                         converted = amount / rate; // default case
