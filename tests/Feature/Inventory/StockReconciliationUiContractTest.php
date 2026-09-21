@@ -11,6 +11,8 @@ it('exposes weekly cycle count reporting, blind print, approval and audit contro
     $planning = file_get_contents(resource_path('views/admin/stock-reconciliations/planning.blade.php'));
     $trends = file_get_contents(resource_path('views/admin/stock-reconciliations/trends.blade.php'));
     $controlAnalysis = file_get_contents(resource_path('views/admin/stock-reconciliations/control-analysis.blade.php'));
+    $investigationIndex = file_get_contents(resource_path('views/admin/stock-reconciliations/investigations/index.blade.php'));
+    $investigationShow = file_get_contents(resource_path('views/admin/stock-reconciliations/investigations/show.blade.php'));
 
     expect($index)
         ->toContain('New Cycle Count')
@@ -21,7 +23,8 @@ it('exposes weekly cycle count reporting, blind print, approval and audit contro
         ->toContain('Unresolved Investigations')
         ->toContain('ABC Planner')
         ->toContain('Variance Trends')
-        ->toContain('Production → Physical');
+        ->toContain('Production → Physical')
+        ->toContain('Investigations');
 
     expect($show)
         ->toContain('Blind Count Sheet')
@@ -75,4 +78,18 @@ it('exposes weekly cycle count reporting, blind print, approval and audit contro
         ->toContain('Reconciliation Difference')
         ->toContain('System @ Count')
         ->toContain('Inventory variance');
+
+    expect($investigationIndex)
+        ->toContain('Variance Investigations')
+        ->toContain('Overdue')
+        ->toContain('Unassigned')
+        ->toContain('Active Variance Value');
+
+    expect($investigationShow)
+        ->toContain('Investigation Work')
+        ->toContain('Root Cause Details')
+        ->toContain('Corrective Action')
+        ->toContain('Resolution Notes')
+        ->toContain('Audit Timeline')
+        ->toContain('Mark Resolved');
 });
