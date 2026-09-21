@@ -49,5 +49,5 @@ it('locks the client-required production, quotation and invoice UI contracts', f
         ->toContain('Good / Actual Finished Qty')
         ->toContain('Rejected / Scrap Qty')
         ->toContain('Actual Raw Material Consumption')
-        ->toContain('Planned for This Run');
+        ->toContain('Planned This Run');
 });
