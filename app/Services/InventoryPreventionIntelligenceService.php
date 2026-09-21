@@ -2,7 +2,6 @@
 
 namespace App\Services;
 
-use App\Models\Product;
 use App\Models\StockAdjustmentItem;
 use App\Models\StockVarianceInvestigation;
 use Carbon\CarbonImmutable;
