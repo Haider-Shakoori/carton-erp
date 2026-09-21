@@ -194,8 +194,12 @@ it('creates one new Level 3 alert and suppresses same-day reminder spam', functi
     expect($second['created'])->toBe(0)
         ->and($admin->fresh()->notifications()->count())->toBe(1);
 
+    // Move to the next day and simulate the daily management sync having
+    // refreshed last_detected_at today. The reminder must still be created.
+    $this->travel(1)->day();
+
     $escalation->update([
-        'last_detected_at' => now()->subDay(),
+        'last_detected_at' => now(),
     ]);
 
     $third = $service->sync();
