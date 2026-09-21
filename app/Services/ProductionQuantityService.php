@@ -175,7 +175,10 @@ class ProductionQuantityService
             $rejectedQuantity,
             $actualMaterials
         ): array {
-            $order->refresh()->load(['materials.product', 'bom.items.material', 'product']);
+            $order = ProductionOrder::query()
+                ->lockForUpdate()
+                ->findOrFail($order->id);
+            $order->load(['materials.product', 'bom.items.material', 'product']);
 
             if ($order->status !== ProductionOrder::STATUS_IN_PROGRESS) {
                 throw new RuntimeException('Only in-progress production orders can be completed.');
