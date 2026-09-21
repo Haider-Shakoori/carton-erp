@@ -6,6 +6,7 @@ on:
       - feat/actual-production-quantity-20260920
       - feat/production-completion-actuals-v2
       - feat/production-completion-consumption-ux
+      - test/real-client-cnp-uat
   workflow_dispatch:
 
 permissions:
@@ -104,6 +105,7 @@ jobs:
           php artisan test tests/Feature/Production/ActualProductionQuantityUiContractTest.php
           php artisan test tests/Feature/Production/ProductionOrderStartProductionFkCostRegressionTest.php
           php artisan test tests/Feature/GoldenPath/RealWorldCartonWorkflowRemediationTest.php
+          php artisan test tests/Feature/Uat/RealClientCnpWorkflowTest.php
 
       - name: Complete PHP test suite
         run: php artisan test
