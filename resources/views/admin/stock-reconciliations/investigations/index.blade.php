@@ -12,9 +12,14 @@
             <h1 class="h3 mt-2 mb-1">Variance Investigations</h1>
             <p class="text-muted mb-0">Assign, investigate, correct and close posted inventory discrepancies without changing their original audit record.</p>
         </div>
-        <a href="{{ route('admin.stock-reconciliations.report', ['unresolved' => 1]) }}" class="btn btn-outline-warning">
-            <i class="bi bi-exclamation-diamond me-1"></i> Variance Report
-        </a>
+        <div class="d-flex gap-2 flex-wrap">
+            <a href="{{ route('admin.stock-reconciliations.investigations.intelligence') }}" class="btn btn-primary">
+                <i class="bi bi-shield-check me-1"></i> Prevention Intelligence
+            </a>
+            <a href="{{ route('admin.stock-reconciliations.report', ['unresolved' => 1]) }}" class="btn btn-outline-warning">
+                <i class="bi bi-exclamation-diamond me-1"></i> Variance Report
+            </a>
+        </div>
     </div>
 
     @if(session('success'))<div class="alert alert-success">{{ session('success') }}</div>@endif
