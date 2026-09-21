@@ -166,12 +166,11 @@
 
     <main class="labels">
         @foreach($labels as $label)
-            @php $reel = $label['reel']; @endphp
             <section class="label">
                 <div class="header">
                     <div>
                         <div class="title">{{ $label['material_name'] }}</div>
-                        <div class="reel-code">{{ $reel->reel_code }}</div>
+                        <div class="reel-code">{{ $label['reel_code'] }}</div>
                     </div>
                     <div class="status">{{ $label['status'] }}</div>
                 </div>
@@ -200,7 +199,7 @@
 
                 <div class="footer">
                     <span>Scanner key: {{ $label['scan_key'] }}</span>
-                    <span>ERP reel ID {{ $reel->id }}</span>
+                    <span>ERP reel ID {{ $label['reel_id'] }}</span>
                 </div>
             </section>
         @endforeach
