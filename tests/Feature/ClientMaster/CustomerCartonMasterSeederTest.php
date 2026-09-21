@@ -326,15 +326,23 @@ it('consumes seeded opening stock through the production FIFO landed-cost flow',
         $batch = PurchaseItem::query()->findOrFail($consumption->purchase_item_id);
         $beforeRow = $before->get($batch->id);
 
+        $persistedUnitCost = (float) $consumption->cost_per_unit_usd;
+        $persistedActual = (float) $consumption->actual_quantity;
+        $persistedTotal = (float) $consumption->total_cost_usd;
+
+        // PMC quantity/total are DECIMAL(18,4), while unit cost is DECIMAL(18,6).
+        // Allow only the maximum rounding introduced by those persisted scales.
+        $storageTolerance = 0.00005 + (0.00005 * abs($persistedUnitCost)) + 0.000001;
+
         expect($beforeRow)->not->toBeNull()
             ->and(abs(
-                (float) $consumption->cost_per_unit_usd
+                $persistedUnitCost
                 - (float) $beforeRow['landed_cost_usd']
             ))->toBeLessThan(0.000001)
             ->and(abs(
-                (float) $consumption->total_cost_usd
-                - ((float) $consumption->actual_quantity * (float) $consumption->cost_per_unit_usd)
-            ))->toBeLessThan(0.000001)
+                $persistedTotal
+                - ($persistedActual * $persistedUnitCost)
+            ))->toBeLessThan($storageTolerance)
             ->and($batch->availableInventoryQuantity())
             ->toBeLessThan((float) $beforeRow['available']);
     }
