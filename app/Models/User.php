@@ -84,6 +84,64 @@ class User extends Authenticatable
         return $this->hasOne(Account::class, 'user_id');
     }
 
+    public function employeeProfile()
+    {
+        return $this->hasOne(Employee::class, 'user_id');
+    }
+
+    public function notificationEmail(): ?string
+    {
+        $email = trim((string) (
+            $this->email
+            ?: $this->account()->value('email')
+        ));
+
+        return filter_var($email, FILTER_VALIDATE_EMAIL) ? $email : null;
+    }
+
+    public function notificationPhone(): ?string
+    {
+        $phone = $this->employeeProfile()->value('phone');
+
+        if (! $phone) {
+            $account = $this->account()->first();
+            $phone = $account?->whatsapp ?: $account?->contact;
+        }
+
+        $normalized = preg_replace(
+            '/[^0-9+]/',
+            '',
+            trim((string) $phone)
+        );
+
+        return $normalized !== '' ? $normalized : null;
+    }
+
+    public function maskedNotificationEmail(): ?string
+    {
+        $email = $this->notificationEmail();
+        if (! $email || ! str_contains($email, '@')) {
+            return null;
+        }
+
+        [$local, $domain] = explode('@', $email, 2);
+
+        return substr($local, 0, 1)
+            .str_repeat('*', max(strlen($local) - 1, 3))
+            .'@'.$domain;
+    }
+
+    public function maskedNotificationPhone(): ?string
+    {
+        $phone = $this->notificationPhone();
+        if (! $phone) {
+            return null;
+        }
+
+        return str_repeat('*', max(strlen($phone) - 4, 4))
+            .substr($phone, -4);
+    }
+
     public function isOnline(): bool
     {
         $lastSeen = Cache::get('user-last-seen-' . $this->id);
