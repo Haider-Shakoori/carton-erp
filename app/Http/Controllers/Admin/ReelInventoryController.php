@@ -92,6 +92,17 @@ class ReelInventoryController extends Controller
                 ->flatMap->reels
                 ->where('status', PurchaseItemReel::STATUS_OPEN)
                 ->count(),
+            'blocked_reels' => $allRollBatches
+                ->flatMap->reels
+                ->whereIn('status', [
+                    PurchaseItemReel::STATUS_DAMAGED,
+                    PurchaseItemReel::STATUS_QUARANTINED,
+                ])
+                ->count(),
+            'inventory_value_usd' => (float) $allRollBatches->sum(
+                fn ($batch) => $batch->availableKg()
+                    * $batch->landedCostPerKg()
+            ),
         ];
 
         return view(
@@ -109,6 +120,8 @@ class ReelInventoryController extends Controller
             'purchase',
             'reels.measuredBy',
             'reels.measurements.measurer',
+            'reels.statusChangedBy',
+            'reels.statusEvents.changedBy',
         ]);
 
         $summary = $this->service->summary($purchaseItem);
@@ -200,6 +213,41 @@ class ReelInventoryController extends Controller
             return back()->with(
                 'success',
                 'Reel remnant measurement recorded. Inventory quantity was not changed.'
+            );
+        } catch (RuntimeException $e) {
+            return back()
+                ->withInput()
+                ->with('error', $e->getMessage());
+        }
+    }
+
+    public function status(
+        Request $request,
+        PurchaseItemReel $reel
+    ) {
+        $validated = $request->validate([
+            'action' => [
+                'required',
+                'string',
+                'in:damaged,quarantined,release',
+            ],
+            'reason' => ['required', 'string', 'max:5000'],
+        ]);
+
+        try {
+            $updated = $this->service->changeControlStatus(
+                $reel,
+                $validated['action'],
+                $validated['reason']
+            );
+
+            return back()->with(
+                'success',
+                sprintf(
+                    'Reel %s status changed to %s. Inventory quantity was not changed.',
+                    $updated->reel_code,
+                    $updated->status
+                )
             );
         } catch (RuntimeException $e) {
             return back()
