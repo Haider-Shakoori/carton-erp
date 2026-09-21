@@ -114,17 +114,39 @@ it('prints single and batch labels without changing authoritative inventory', fu
     $beforeBatchKg = $batch->availableKg();
     $beforeReelKg = (float) $reel->system_remaining_weight_kg;
 
-    $this->get(route('admin.stock-reels.label', $reel))
-        ->assertOk()
-        ->assertSee($reel->reel_code)
-        ->assertSee(app(ReelBarcodeService::class)->scanKey($reel))
-        ->assertSee('Code 39 labels');
+    $barcode = app(ReelBarcodeService::class);
+    $singleData = $barcode->labelData($reel);
 
-    $this->get(route('admin.stock-reels.batch-labels', $batch))
+    expect($singleData['reel_code'])->toBe($reel->reel_code)
+        ->and($singleData['scan_key'])->toBe($barcode->scanKey($reel));
+
+    $singleResponse = $this->get(route('admin.stock-reels.label', $reel));
+
+    $singleResponse
         ->assertOk()
+        ->assertViewHas('labels', function ($labels) use ($reel): bool {
+            return $labels->count() === 1
+                && $labels->first()['reel_code'] === $reel->reel_code;
+        })
+        ->assertSee('Code 39 labels')
+        ->assertSee($barcode->scanKey($reel))
+        ->assertSee($reel->reel_code);
+
+    $batchResponse = $this->get(
+        route('admin.stock-reels.batch-labels', $batch)
+    );
+
+    $batchResponse
+        ->assertOk()
+        ->assertViewHas('labels', function ($labels) use ($fx): bool {
+            return $labels->pluck('reel_code')->values()->all() === [
+                $fx['reels'][0]->reel_code,
+                $fx['reels'][1]->reel_code,
+            ];
+        })
+        ->assertSee('2 reel(s)')
         ->assertSee($fx['reels'][0]->reel_code)
-        ->assertSee($fx['reels'][1]->reel_code)
-        ->assertSee('2 reel(s)');
+        ->assertSee($fx['reels'][1]->reel_code);
 
     expect($batch->fresh()->availableKg())->toBe($beforeBatchKg)
         ->and((float) $reel->fresh()->system_remaining_weight_kg)
