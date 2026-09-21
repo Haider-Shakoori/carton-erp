@@ -209,8 +209,12 @@ it('creates one new Level 3 alert and suppresses same-day reminder spam', functi
     expect($third['created'])->toBe(1)
         ->and($admin->fresh()->notifications()->count())->toBe(2)
         ->and(
-            $admin->fresh()->notifications()
-                ->where('data->event_type', 'level_3_reminder')
+            $admin->fresh()->notifications()->get()
+                ->filter(
+                    fn ($notification) =>
+                        data_get($notification->data, 'event_type')
+                        === 'level_3_reminder'
+                )
                 ->count()
         )->toBe(1);
 });
