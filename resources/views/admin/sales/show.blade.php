@@ -1576,9 +1576,9 @@
                         <span class="so2-status {{ $productionUi['class'] }}"><i class="bi bi-gear"></i>{{ __('ui.production') }}: {{ $productionUi['label'] }}</span>
                     </div>
                     <div class="so2-subtitle">
-                        {{ __('ui.created_at') ?? 'Created' }} {{ optional($sale->created_at)->format('M d, Y') }}
+                        Created {{ optional($sale->created_at)->format('M d, Y') }}
                         <span class="mx-2">·</span>
-                        {{ __('ui.last_updated') ?? 'Last updated' }} {{ optional($sale->updated_at)->diffForHumans() }}
+                        Last updated {{ optional($sale->updated_at)->diffForHumans() }}
                     </div>
                 </div>
                 <div class="so2-header-actions">
@@ -1625,7 +1625,7 @@
 
             <div class="so2-top-grid">
                 <div class="so2-stat"><div class="so2-stat-icon"><i class="bi bi-person"></i></div><div><div class="so2-stat-label">{{ __('ui.customer') }}</div><div class="so2-stat-value">{{ $sale->customer->name ?? 'No Customer' }}</div><div class="so2-stat-help">{{ $sale->customer->account_no ?? '' }}</div></div></div>
-                <div class="so2-stat"><div class="so2-stat-icon blue"><i class="bi bi-calendar3"></i></div><div><div class="so2-stat-label">{{ __('ui.order_date') ?? 'Order Date' }}</div><div class="so2-stat-value">{{ $sale->sale_date ? date('M d, Y', strtotime($sale->sale_date)) : '-' }}</div></div></div>
+                <div class="so2-stat"><div class="so2-stat-icon blue"><i class="bi bi-calendar3"></i></div><div><div class="so2-stat-label">Order Date</div><div class="so2-stat-value">{{ $sale->sale_date ? date('M d, Y', strtotime($sale->sale_date)) : '-' }}</div></div></div>
                 <div class="so2-stat"><div class="so2-stat-icon"><i class="bi bi-currency-exchange"></i></div><div><div class="so2-stat-label">{{ __('ui.currency') }} / {{ __('ui.exchange_rate') }}</div><div class="so2-stat-value">{{ $currencyCode }}</div><div class="so2-stat-help">1 USD = {{ number_format($exchangeRate, 4) }} AFN</div></div></div>
                 <div class="so2-stat"><div class="so2-stat-icon green"><i class="bi bi-box-seam"></i></div><div><div class="so2-stat-label">{{ __('ui.total_items') }}</div><div class="so2-stat-value">{{ $sale->items->count() }} {{ __('ui.products') }}</div></div></div>
                 <div class="so2-stat"><div class="so2-stat-icon green"><i class="bi bi-coin"></i></div><div><div class="so2-stat-label">{{ __('ui.grand_total') }}</div><div class="so2-stat-value text-success">{{ $saleCurrencySymbol }} {{ number_format($grossSales, 2) }}</div></div></div>
