@@ -3,6 +3,7 @@
 use App\Http\Controllers\Admin\StockNotificationController;
 use App\Jobs\DeliverStockControlNotification;
 use App\Models\StockControlEscalation;
+use App\Models\StockControlEscalationEvent;
 use App\Models\StockControlReview;
 use App\Models\StockNotificationDelivery;
 use App\Models\StockNotificationPreference;
@@ -275,4 +276,131 @@ it('marks database notifications read and registers the notification sync comman
 
     expect($exitCode)->toBe(0)
         ->and(Artisan::output())->toContain('Stock notifications synchronized');
+});
+
+
+it('sends the daily Level 3 reminder even when management sync refreshed last_detected_at today', function () {
+    $admin = User::factory()->create([
+        'is_active' => true,
+        'account_type' => 'admin',
+    ]);
+
+    $escalation = StockControlEscalation::create([
+        'source_key' => 'test:level3:reliable-reminder',
+        'source_type' => 'recurring_root_cause',
+        'severity' => 'critical',
+        'level' => 3,
+        'status' => StockControlEscalation::STATUS_OPEN,
+        'title' => 'Critical recurring stock variance',
+        'message' => 'A critical stock-control issue remains active.',
+        'occurrences' => 4,
+        'absolute_value_usd' => 120,
+        'review_due_date' => today()->toDateString(),
+        'opened_at' => now()->subDays(2),
+        'last_detected_at' => now(),
+    ]);
+
+    $service = app(StockControlNotificationService::class);
+
+    // Simulate the original opening alert having already been delivered.
+    $service->dispatchEvent(
+        eventKey: 'stock-control:escalation:'.$escalation->id.':opened',
+        eventType: 'management_escalation',
+        title: 'Level 3 Stock Control Escalation',
+        message: $escalation->message,
+        url: '/admin/stock-reconciliations/management-control/escalations/'.$escalation->id,
+        severity: 'critical',
+        recipients: collect([$admin]),
+        minimumLevel: 3,
+        category: 'escalation'
+    );
+
+    $result = $service->sync();
+
+    expect($result['created'])->toBeGreaterThanOrEqual(1)
+        ->and(
+            $admin->fresh()->notifications()->get()
+                ->filter(
+                    fn ($notification) =>
+                        data_get($notification->data, 'event_type')
+                        === 'level_3_reminder'
+                )
+                ->count()
+        )->toBe(1);
+});
+
+it('notifies management when a closed escalation genuinely reopens without duplicating a same-day Level 3 reminder', function () {
+    $admin = User::factory()->create([
+        'is_active' => true,
+        'account_type' => 'admin',
+    ]);
+
+    $escalation = StockControlEscalation::create([
+        'source_key' => 'test:reopened:lifecycle',
+        'source_type' => 'post_corrective_recurrence',
+        'severity' => 'critical',
+        'level' => 3,
+        'status' => StockControlEscalation::STATUS_OPEN,
+        'title' => 'Recurrence after corrective action',
+        'message' => 'The same stock-control issue has returned.',
+        'occurrences' => 3,
+        'absolute_value_usd' => 90,
+        'review_due_date' => now()->addDay()->toDateString(),
+        'opened_at' => now()->subDays(30),
+        'last_detected_at' => now(),
+    ]);
+
+    StockControlEscalationEvent::create([
+        'stock_control_escalation_id' => $escalation->id,
+        'event_type' => 'reopened',
+        'from_status' => StockControlEscalation::STATUS_CLOSED,
+        'to_status' => StockControlEscalation::STATUS_OPEN,
+        'notes' => 'Signal advanced and reopened the escalation.',
+        'metadata' => ['new_occurrences' => 3],
+        'created_at' => now(),
+    ]);
+
+    $service = app(StockControlNotificationService::class);
+
+    // Preserve the historical opening notification so only the lifecycle event
+    // should create a fresh alert today.
+    $service->dispatchEvent(
+        eventKey: 'stock-control:escalation:'.$escalation->id.':opened',
+        eventType: 'recurrence_after_corrective_action',
+        title: 'Level 3 Stock Control Escalation',
+        message: $escalation->message,
+        url: '/admin/stock-reconciliations/management-control/escalations/'.$escalation->id,
+        severity: 'critical',
+        recipients: collect([$admin]),
+        minimumLevel: 3,
+        category: 'recurrence'
+    );
+
+    $service->sync();
+
+    $notifications = $admin->fresh()->notifications()->get();
+
+    expect(
+        $notifications->filter(
+            fn ($notification) =>
+                data_get($notification->data, 'event_type')
+                === 'management_escalation_reopened'
+        )->count()
+    )->toBe(1)
+        ->and(
+            $notifications->filter(
+                fn ($notification) =>
+                    data_get($notification->data, 'event_type')
+                    === 'level_3_reminder'
+            )->count()
+        )->toBe(0);
+});
+
+it('registers a scheduler-friendly command that drains queued external notification jobs', function () {
+    expect(array_key_exists('stock-notifications:drain', Artisan::all()))
+        ->toBeTrue();
+
+    $exitCode = Artisan::call('stock-notifications:drain');
+
+    expect($exitCode)->toBe(0);
 });
