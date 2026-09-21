@@ -25,10 +25,15 @@ class DeliverStockControlNotification implements ShouldQueue
     {
     }
 
+    public function backoff(): array
+    {
+        return [60, 300, 900];
+    }
+
     public function handle(): void
     {
         $delivery = StockNotificationDelivery::query()
-            ->with('user.account')
+            ->with('user')
             ->findOrFail($this->deliveryId);
 
         if ($delivery->status === StockNotificationDelivery::STATUS_SENT) {
@@ -50,9 +55,16 @@ class DeliverStockControlNotification implements ShouldQueue
             throw new RuntimeException('Notification message is empty.');
         }
 
+        $user = $delivery->user;
+        if (! $user || ! $user->is_active) {
+            throw new RuntimeException('Notification recipient is unavailable.');
+        }
+
         if ($delivery->channel === 'email') {
-            if (! $delivery->recipient) {
-                throw new RuntimeException('Email recipient is missing.');
+            $recipient = $user->notificationEmail();
+
+            if (! $recipient) {
+                throw new RuntimeException('Email recipient is not configured.');
             }
 
             $body = $message;
@@ -60,12 +72,14 @@ class DeliverStockControlNotification implements ShouldQueue
                 $body .= "\n\nOpen in ERP: ".$url;
             }
 
-            Mail::raw($body, function ($mail) use ($delivery, $title): void {
-                $mail->to($delivery->recipient)->subject($title);
+            Mail::raw($body, function ($mail) use ($recipient, $title): void {
+                $mail->to($recipient)->subject($title);
             });
         } elseif ($delivery->channel === 'whatsapp') {
-            if (! $delivery->recipient) {
-                throw new RuntimeException('WhatsApp recipient is missing.');
+            $recipient = $user->notificationPhone();
+
+            if (! $recipient) {
+                throw new RuntimeException('WhatsApp recipient is not configured.');
             }
 
             $body = '*'.$title.'*'."\n".$message;
@@ -73,14 +87,18 @@ class DeliverStockControlNotification implements ShouldQueue
                 $body .= "\n\n".$url;
             }
 
-            if (! WhatsAppHelper::sendMessage($delivery->recipient, $body)) {
+            if (! WhatsAppHelper::sendMessage($recipient, $body)) {
                 throw new RuntimeException('WhatsApp provider rejected the message.');
             }
         } else {
-            throw new RuntimeException('Unsupported notification channel: '.$delivery->channel);
+            throw new RuntimeException('Unsupported notification channel.');
         }
 
         $delivery->update([
+            'recipient' => StockNotificationDelivery::maskRecipient(
+                $recipient,
+                $delivery->channel
+            ),
             'status' => StockNotificationDelivery::STATUS_SENT,
             'sent_at' => now(),
             'failed_at' => null,
@@ -99,11 +117,9 @@ class DeliverStockControlNotification implements ShouldQueue
         $delivery->update([
             'status' => StockNotificationDelivery::STATUS_FAILED,
             'failed_at' => now(),
-            'last_error' => mb_substr(
-                $exception?->getMessage() ?: 'Notification delivery failed.',
-                0,
-                2000
-            ),
+            'last_error' => $exception
+                ? 'Delivery failed after retries ('.class_basename($exception).').'
+                : 'Notification delivery failed after retries.',
         ]);
     }
 }
