@@ -17,5 +17,17 @@ class Setting extends Model
         'note_ps',
         'default_language',
         'currency',
+        'separate_business_units_enabled',
+        'default_business_unit_id',
     ];
+
+    protected $casts = [
+        'separate_business_units_enabled' => 'boolean',
+        'default_business_unit_id' => 'integer',
+    ];
+
+    public function defaultBusinessUnit()
+    {
+        return $this->belongsTo(BusinessUnit::class, 'default_business_unit_id');
+    }
 }
