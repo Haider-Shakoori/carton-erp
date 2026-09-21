@@ -16,6 +16,7 @@ on:
       - feat/stock-control-notifications-hardening
       - feat/reel-remnant-tracking
       - feat/reel-remnant-controls-reporting
+      - feat/reel-production-selection
   workflow_dispatch:
 
 permissions:
@@ -117,6 +118,8 @@ jobs:
           php -l app/Services/StockControlManagementService.php
           php -l app/Services/StockControlNotificationService.php
           php -l app/Services/ReelInventoryService.php
+          php -l app/Services/StockDeductionService.php
+          php -l app/Services/ProductionQuantityService.php
           php -l app/Jobs/DeliverStockControlNotification.php
           php -l app/Helpers/WhatsAppHelper.php
           php -l routes/console.php
@@ -125,6 +128,7 @@ jobs:
           php -l app/Http/Controllers/Admin/StockControlManagementController.php
           php -l app/Http/Controllers/Admin/StockNotificationController.php
           php -l app/Http/Controllers/Admin/ReelInventoryController.php
+          php -l app/Http/Controllers/Admin/ProductionOrderController.php
           php -l database/migrations/2026_09_21_010000_create_stock_reconciliations_table.php
           php -l database/migrations/2026_09_21_010100_create_stock_reconciliation_items_table.php
           php -l database/migrations/2026_09_21_020000_add_reconciliation_adjustments_to_purchase_items.php
@@ -134,6 +138,7 @@ jobs:
           php -l database/migrations/2026_09_21_050000_create_stock_control_notifications.php
           php -l database/migrations/2026_09_21_060000_create_physical_reel_tracking.php
           php -l database/migrations/2026_09_21_061000_add_reel_control_status_and_history.php
+          php -l database/migrations/2026_09_21_062000_add_production_reel_selection_metadata.php
 
       - name: Fresh MySQL install
         run: php artisan migrate:fresh --seed --force
@@ -151,6 +156,7 @@ jobs:
           php artisan test tests/Feature/Inventory/StockControlNotificationTest.php
           php artisan test tests/Feature/Inventory/ReelRemnantTrackingTest.php
           php artisan test tests/Feature/Inventory/StockReconciliationUiContractTest.php
+          php artisan test tests/Feature/Production/ActualProductionQuantityUiContractTest.php
 
       - name: Complete PHP test suite
         run: php artisan test
