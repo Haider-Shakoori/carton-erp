@@ -93,6 +93,11 @@ class Product extends Model
         return $this->hasMany(BOM::class, 'product_id');
     }
 
+    public function finishedGoodSpecifications()
+    {
+        return $this->hasMany(FinishedGoodSpecification::class, 'product_id');
+    }
+
     // ============================================================
     // STOCK & COST CALCULATIONS
     // ============================================================
