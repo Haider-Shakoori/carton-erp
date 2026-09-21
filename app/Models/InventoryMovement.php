@@ -19,6 +19,7 @@ class InventoryMovement extends Model
         'unit_cost_usd',
         'reference_type',
         'reference_id',
+        'reversal_of_id',
         'actor_id',
         'occurred_at',
         'metadata',
