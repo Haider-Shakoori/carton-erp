@@ -8,6 +8,9 @@ it('exposes weekly cycle count reporting, blind print, approval and audit contro
     $stockIndex = file_get_contents(resource_path('views/admin/stock/index.blade.php'));
     $productHistory = file_get_contents(resource_path('views/admin/products/show.blade.php'));
     $menu = file_get_contents(resource_path('views/layouts/admin/menu.blade.php'));
+    $planning = file_get_contents(resource_path('views/admin/stock-reconciliations/planning.blade.php'));
+    $trends = file_get_contents(resource_path('views/admin/stock-reconciliations/trends.blade.php'));
+    $controlAnalysis = file_get_contents(resource_path('views/admin/stock-reconciliations/control-analysis.blade.php'));
 
     expect($index)
         ->toContain('New Cycle Count')
@@ -15,7 +18,10 @@ it('exposes weekly cycle count reporting, blind print, approval and audit contro
         ->toContain('Awaiting Approval')
         ->toContain('30-Day Negative Variance')
         ->toContain('Unresolved Variances')
-        ->toContain('Unresolved Investigations');
+        ->toContain('Unresolved Investigations')
+        ->toContain('ABC Planner')
+        ->toContain('Variance Trends')
+        ->toContain('Production → Physical');
 
     expect($show)
         ->toContain('Blind Count Sheet')
@@ -53,4 +59,20 @@ it('exposes weekly cycle count reporting, blind print, approval and audit contro
         ->toContain("admin.stock-reconciliations.*")
         ->toContain("route('admin.stock-reconciliations.index')")
         ->toContain('Stock Reconciliation');
+
+    expect($planning)
+        ->toContain('ABC Cycle Count Planner')
+        ->toContain('Start Selected Count')
+        ->toContain('Class A covers the highest-value ~80%');
+
+    expect($trends)
+        ->toContain('Variance Trends')
+        ->toContain('Top Variance Reasons')
+        ->toContain('Production → Physical Analysis');
+
+    expect($controlAnalysis)
+        ->toContain('Production → Physical Inventory Analysis')
+        ->toContain('Reconciliation Difference')
+        ->toContain('System @ Count')
+        ->toContain('Inventory variance');
 });
