@@ -25,6 +25,16 @@
                     'cancelled' => 'secondary',
                     default => 'info',
                 };
+                $approvalBlockedForCurrentUser = ($requiresIndependentApproval ?? false)
+                    && auth()->id() !== null
+                    && in_array(
+                        (int) auth()->id(),
+                        array_filter([
+                            (int) $stockReconciliation->created_by,
+                            (int) $stockReconciliation->submitted_by,
+                        ]),
+                        true
+                    );
             @endphp
             <span class="badge fs-6 bg-{{ $statusBadge }}">{{ ucfirst($stockReconciliation->status) }}</span>
             <a href="{{ route('admin.stock-reconciliations.print', $stockReconciliation) }}" target="_blank" class="btn btn-outline-secondary">
@@ -56,7 +66,12 @@
                     <form method="POST" action="{{ route('admin.stock-reconciliations.approve', $stockReconciliation) }}"
                           onsubmit="return confirm('Approve this reconciliation? Stock will still not change until it is posted.');">
                         @csrf
-                        <button class="btn btn-primary"><i class="bi bi-check2-circle me-1"></i> Approve</button>
+                        <button class="btn btn-primary"
+                                @disabled($approvalBlockedForCurrentUser)
+                                title="{{ $approvalBlockedForCurrentUser ? 'Independent approver required for this variance value.' : 'Approve reconciliation' }}">
+                            <i class="bi bi-check2-circle me-1"></i>
+                            {{ $approvalBlockedForCurrentUser ? 'Independent Approver Required' : 'Approve' }}
+                        </button>
                     </form>
                     <button type="button" class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#rejectReconciliationModal">
                         <i class="bi bi-x-circle me-1"></i> Reject
@@ -102,6 +117,16 @@
         <strong>Snapshot rule:</strong> System Qty is frozen and never recalculated on this document.
         Saving counts and submitting for approval do not change purchase batches or FIFO stock.
     </div>
+
+    @if($requiresIndependentApproval ?? false)
+        <div class="alert alert-info small">
+            <i class="bi bi-person-check me-1"></i>
+            <strong>Independent approval required:</strong>
+            the sum of absolute variance values exceeds
+            ${{ number_format($independentApprovalThresholdUsd, 2) }}.
+            The user who created or submitted this count cannot approve it.
+        </div>
+    @endif
 
     @if($stockReconciliation->status === 'approved')
         <div class="alert alert-warning small">
