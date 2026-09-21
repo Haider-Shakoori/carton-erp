@@ -248,6 +248,7 @@
                             <th class="text-end">After</th>
                             <th class="text-end">Value USD</th>
                             <th>Reason</th>
+                            <th>Investigation</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -266,9 +267,36 @@
                                     {{ (float) $line->adjustment_value_usd >= 0 ? '+' : '-' }}${{ number_format(abs((float) $line->adjustment_value_usd), 2) }}
                                 </td>
                                 <td>{{ $reasonCodes[$line->reason_code] ?? ($line->reason_code ?: '—') }}</td>
+                                <td>
+                                    @if($line->investigation)
+                                        @php
+                                            $caseBadge = match($line->investigation->status) {
+                                                'resolved' => 'success',
+                                                'investigating' => 'primary',
+                                                default => 'warning',
+                                            };
+                                        @endphp
+                                        <a href="{{ route('admin.stock-reconciliations.investigations.show', $line->investigation) }}"
+                                           class="badge bg-{{ $caseBadge }} text-decoration-none">
+                                            {{ ucfirst($line->investigation->status) }}
+                                        </a>
+                                        @if($line->investigation->assignee)
+                                            <div class="small text-muted mt-1">{{ $line->investigation->assignee->name }}</div>
+                                        @endif
+                                    @else
+                                        @can('investigate stock reconciliations')
+                                            <form method="POST" action="{{ route('admin.stock-reconciliations.investigations.store', $line) }}">
+                                                @csrf
+                                                <button class="btn btn-sm btn-outline-warning">Open Case</button>
+                                            </form>
+                                        @else
+                                            <span class="text-muted">No case</span>
+                                        @endcan
+                                    @endif
+                                </td>
                             </tr>
                         @empty
-                            <tr><td colspan="6" class="text-center py-4 text-muted">No quantity adjustment was necessary; physical stock matched the snapshot.</td></tr>
+                            <tr><td colspan="7" class="text-center py-4 text-muted">No quantity adjustment was necessary; physical stock matched the snapshot.</td></tr>
                         @endforelse
                     </tbody>
                 </table>

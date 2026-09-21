@@ -43,4 +43,9 @@ class StockAdjustmentItem extends Model
     {
         return $this->belongsTo(PurchaseItem::class);
     }
+
+    public function investigation()
+    {
+        return $this->hasOne(StockVarianceInvestigation::class);
+    }
 }

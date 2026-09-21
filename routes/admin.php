@@ -30,6 +30,7 @@ use App\Http\Controllers\Admin\SarafController;
 use App\Http\Controllers\Admin\SettingsController;
 use App\Http\Controllers\Admin\StockController;
 use App\Http\Controllers\Admin\StockReconciliationController;
+use App\Http\Controllers\Admin\StockVarianceInvestigationController;
 use App\Http\Controllers\Admin\SupplierController;
 use App\Http\Controllers\Admin\HR\DepartmentController;
 use App\Http\Controllers\Admin\HR\HRDashboardController;
@@ -120,6 +121,16 @@ Route::middleware(['auth'])->prefix('admin')->group(function () {
             ->name('trends')->middleware('permission.feedback:view stock reconciliations');
         Route::get('/control-analysis', [StockReconciliationController::class, 'controlAnalysis'])
             ->name('control-analysis')->middleware('permission.feedback:view stock reconciliations');
+        Route::get('/investigations', [StockVarianceInvestigationController::class, 'index'])
+            ->name('investigations.index')->middleware('permission.feedback:view stock reconciliations');
+        Route::get('/investigations/{investigation}', [StockVarianceInvestigationController::class, 'show'])
+            ->name('investigations.show')->middleware('permission.feedback:view stock reconciliations');
+        Route::post('/adjustment-items/{stockAdjustmentItem}/investigation', [StockVarianceInvestigationController::class, 'store'])
+            ->name('investigations.store')->middleware('permission.feedback:investigate stock reconciliations');
+        Route::patch('/investigations/{investigation}', [StockVarianceInvestigationController::class, 'update'])
+            ->name('investigations.update')->middleware('permission.feedback:investigate stock reconciliations');
+        Route::post('/investigations/{investigation}/resolve', [StockVarianceInvestigationController::class, 'resolve'])
+            ->name('investigations.resolve')->middleware('permission.feedback:resolve stock reconciliations');
         Route::get('/report', [StockReconciliationController::class, 'report'])
             ->name('report')->middleware('permission.feedback:view stock reconciliations');
         Route::get('/report/export-csv', [StockReconciliationController::class, 'exportCsv'])
