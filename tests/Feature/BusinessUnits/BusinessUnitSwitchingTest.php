@@ -2,6 +2,7 @@
 
 use App\Models\BusinessUnit;
 use App\Models\Setting;
+use App\Models\Purchase;
 use App\Models\User;
 use App\Support\Business\BusinessUnitContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -44,6 +45,41 @@ it('switches the active business only when separate business mode is enabled', f
 
     expect(app(BusinessUnitContext::class)->current())->toBeNull()
         ->and(session()->has(BusinessUnitContext::SESSION_KEY))->toBeFalse();
+});
+
+it('automatically tags and scopes new operational records to the active business', function () {
+    $carton = BusinessUnit::query()->where('code', '3d_carton')->firstOrFail();
+    $syrup = BusinessUnit::query()->where('code', 'syrup_pack')->firstOrFail();
+
+    Setting::firstOrCreate([])->update([
+        'separate_business_units_enabled' => true,
+        'default_business_unit_id' => $carton->id,
+    ]);
+
+    $context = app(BusinessUnitContext::class);
+    $context->switchTo($carton);
+
+    $cartonPurchase = Purchase::create([
+        'purchase_no' => 'BU-CARTON-001',
+        'status' => 'draft',
+    ]);
+
+    expect((int) $cartonPurchase->business_unit_id)->toBe($carton->id);
+
+    $context->switchTo($syrup);
+
+    $syrupPurchase = Purchase::create([
+        'purchase_no' => 'BU-SYRUP-001',
+        'status' => 'draft',
+    ]);
+
+    expect((int) $syrupPurchase->business_unit_id)->toBe($syrup->id)
+        ->and(Purchase::query()->pluck('purchase_no')->all())->toBe(['BU-SYRUP-001'])
+        ->and(Purchase::query()->withoutGlobalScope('business_unit')->count())->toBe(2);
+
+    $context->switchTo($carton);
+
+    expect(Purchase::query()->pluck('purchase_no')->all())->toBe(['BU-CARTON-001']);
 });
 
 it('exposes the setting toggle and top navigation business switcher contract', function () {
