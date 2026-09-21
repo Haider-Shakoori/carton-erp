@@ -15,6 +15,7 @@ on:
       - feat/stock-control-notifications
       - feat/stock-control-notifications-hardening
       - feat/reel-remnant-tracking
+      - feat/reel-remnant-controls-reporting
   workflow_dispatch:
 
 permissions:
@@ -107,6 +108,7 @@ jobs:
           php -l app/Models/PurchaseItemReel.php
           php -l app/Models/PurchaseItemReelMeasurement.php
           php -l app/Models/ProductionReelConsumption.php
+          php -l app/Models/PurchaseItemReelStatusEvent.php
           php -l app/Services/StockReconciliationService.php
           php -l app/Services/StockCycleCountPlanningService.php
           php -l app/Services/InventoryControlAnalysisService.php
@@ -131,6 +133,7 @@ jobs:
           php -l database/migrations/2026_09_21_040000_create_stock_control_escalations_and_reviews.php
           php -l database/migrations/2026_09_21_050000_create_stock_control_notifications.php
           php -l database/migrations/2026_09_21_060000_create_physical_reel_tracking.php
+          php -l database/migrations/2026_09_21_061000_add_reel_control_status_and_history.php
 
       - name: Fresh MySQL install
         run: php artisan migrate:fresh --seed --force
