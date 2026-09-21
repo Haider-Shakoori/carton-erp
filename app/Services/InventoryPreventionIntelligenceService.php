@@ -439,6 +439,9 @@ class InventoryPreventionIntelligenceService
                     ),
                     'product_id' => $pattern['product_id'],
                     'root_cause_code' => $pattern['root_cause_code'],
+                    'investigation_id' => null,
+                    'occurrences' => $pattern['occurrences'],
+                    'absolute_value_usd' => $pattern['absolute_value_usd'],
                 ]);
             }
         }
@@ -458,6 +461,9 @@ class InventoryPreventionIntelligenceService
                     ),
                     'product_id' => $row['product_id'],
                     'root_cause_code' => $row['root_cause_code'],
+                    'investigation_id' => $row['investigation_id'],
+                    'occurrences' => $row['confirmed_recurrences'] + 1,
+                    'absolute_value_usd' => $row['post_absolute_value_usd'],
                 ]);
             } elseif ($row['signal'] === 'needs_review') {
                 $flags->push([
@@ -472,6 +478,9 @@ class InventoryPreventionIntelligenceService
                     ),
                     'product_id' => $row['product_id'],
                     'root_cause_code' => $row['root_cause_code'],
+                    'investigation_id' => $row['investigation_id'],
+                    'occurrences' => max($row['post_lines'], 1),
+                    'absolute_value_usd' => $row['post_absolute_value_usd'],
                 ]);
             }
         }
@@ -494,6 +503,11 @@ class InventoryPreventionIntelligenceService
                 ),
                 'product_id' => (int) $case->adjustmentItem->product_id,
                 'root_cause_code' => $case->root_cause_code,
+                'investigation_id' => $case->id,
+                'occurrences' => 1,
+                'absolute_value_usd' => abs(
+                    (float) $case->adjustmentItem->adjustment_value_usd
+                ),
             ]);
         }
 
