@@ -58,6 +58,19 @@ class CustomerCartonSizeSeeder extends Seeder
                     );
                 }
 
+                $sourceKey = $this->sourceKey($row, $customerName);
+
+                // Source identity wins over mutable display names. Once a row
+                // has been imported, rerunning the seeder must not recreate or
+                // overwrite an operator-renamed customer/product/specification.
+                if (
+                    FinishedGoodSpecification::query()
+                        ->where('source_key', $sourceKey)
+                        ->exists()
+                ) {
+                    continue;
+                }
+
                 $customerCacheKey = mb_strtolower($customerName);
 
                 if (! isset($customerCache[$customerCacheKey])) {
@@ -83,8 +96,6 @@ class CustomerCartonSizeSeeder extends Seeder
                 if ($productWasCreated) {
                     $createdProducts++;
                 }
-
-                $sourceKey = $this->sourceKey($row, $customerName);
 
                 $specification = FinishedGoodSpecification::firstOrCreate(
                     ['source_key' => $sourceKey],
