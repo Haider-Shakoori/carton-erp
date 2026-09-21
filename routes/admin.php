@@ -123,6 +123,8 @@ Route::middleware(['auth'])->prefix('admin')->group(function () {
             ->name('control-analysis')->middleware('permission.feedback:view stock reconciliations');
         Route::get('/investigations', [StockVarianceInvestigationController::class, 'index'])
             ->name('investigations.index')->middleware('permission.feedback:view stock reconciliations');
+        Route::get('/investigations/intelligence', [StockVarianceInvestigationController::class, 'intelligence'])
+            ->name('investigations.intelligence')->middleware('permission.feedback:view stock reconciliations');
         Route::get('/investigations/{investigation}', [StockVarianceInvestigationController::class, 'show'])
             ->name('investigations.show')->middleware('permission.feedback:view stock reconciliations');
         Route::post('/adjustment-items/{stockAdjustmentItem}/investigation', [StockVarianceInvestigationController::class, 'store'])
