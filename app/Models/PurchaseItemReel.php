@@ -83,6 +83,11 @@ class PurchaseItemReel extends Model
         return $this->belongsTo(User::class, 'last_measured_by');
     }
 
+    public function scannerKey(): string
+    {
+        return 'REEL-'.str_pad((string) $this->getKey(), 8, '0', STR_PAD_LEFT);
+    }
+
     public function isProductionEligible(): bool
     {
         return in_array(
