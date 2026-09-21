@@ -33,6 +33,7 @@ use App\Http\Controllers\Admin\StockReconciliationController;
 use App\Http\Controllers\Admin\StockVarianceInvestigationController;
 use App\Http\Controllers\Admin\StockControlManagementController;
 use App\Http\Controllers\Admin\StockNotificationController;
+use App\Http\Controllers\Admin\ReelInventoryController;
 use App\Http\Controllers\Admin\SupplierController;
 use App\Http\Controllers\Admin\HR\DepartmentController;
 use App\Http\Controllers\Admin\HR\HRDashboardController;
@@ -111,6 +112,20 @@ Route::middleware(['auth'])->prefix('admin')->group(function () {
             ->name('read-all')->middleware('permission.feedback:view stock reconciliations');
         Route::patch('/settings', [StockNotificationController::class, 'updateSettings'])
             ->name('settings')->middleware('permission.feedback:view stock reconciliations');
+    });
+
+    // Physical Reel / Remnant Tracking
+    Route::prefix('stock-reels')->name('admin.stock-reels.')->group(function () {
+        Route::get('/', [ReelInventoryController::class, 'index'])
+            ->name('index')->middleware('permission.feedback:view stock');
+        Route::get('/batches/{purchaseItem}', [ReelInventoryController::class, 'show'])
+            ->name('show')->middleware('permission.feedback:view stock');
+        Route::post('/batches/{purchaseItem}/initialize', [ReelInventoryController::class, 'initialize'])
+            ->name('initialize')->middleware('permission.feedback:update stock');
+        Route::post('/reels/{reel}/measure', [ReelInventoryController::class, 'measure'])
+            ->name('measure')->middleware('permission.feedback:update stock');
+        Route::post('/batches/{purchaseItem}/rebaseline', [ReelInventoryController::class, 'rebaseline'])
+            ->name('rebaseline')->middleware('permission.feedback:update stock');
     });
 
     // Stock
