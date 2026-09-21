@@ -11,6 +11,7 @@ on:
       - feat/seed-opening-stock-and-bom-usage
       - feat/sale-order-modern-ui
       - feat/sale-order-selected-item-panel
+      - feat/production-completion-workspace
   workflow_dispatch:
 
 permissions:
