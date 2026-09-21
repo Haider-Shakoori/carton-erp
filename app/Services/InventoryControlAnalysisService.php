@@ -167,7 +167,10 @@ class InventoryControlAnalysisService
             });
 
         $countItems = StockReconciliationItem::query()
-            ->select('stock_reconciliation_items.*')
+            ->select(
+                'stock_reconciliation_items.*',
+                'stock_reconciliations.count_date as reconciliation_count_date'
+            )
             ->join(
                 'stock_reconciliations',
                 'stock_reconciliations.id',
@@ -193,9 +196,7 @@ class InventoryControlAnalysisService
 
                 return [
                     'stock_reconciliation_id' => $latestReconciliationId,
-                    'count_date' => StockReconciliation::query()
-                        ->whereKey($latestReconciliationId)
-                        ->value('count_date'),
+                    'count_date' => $latestRows->first()?->reconciliation_count_date,
                     'system_quantity' => (float) $latestRows->sum('system_quantity'),
                     'physical_quantity' => (float) $latestRows->sum('physical_quantity'),
                     'variance_quantity' => (float) $latestRows->sum('variance_quantity'),
