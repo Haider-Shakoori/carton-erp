@@ -124,6 +124,8 @@ Route::middleware(['auth'])->prefix('admin')->group(function () {
             ->name('initialize')->middleware('permission.feedback:update stock');
         Route::post('/reels/{reel}/measure', [ReelInventoryController::class, 'measure'])
             ->name('measure')->middleware('permission.feedback:update stock');
+        Route::patch('/reels/{reel}/status', [ReelInventoryController::class, 'status'])
+            ->name('status')->middleware('permission.feedback:update stock');
         Route::post('/batches/{purchaseItem}/rebaseline', [ReelInventoryController::class, 'rebaseline'])
             ->name('rebaseline')->middleware('permission.feedback:update stock');
     });

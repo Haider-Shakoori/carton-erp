@@ -174,6 +174,97 @@ class ReelInventoryService
         });
     }
 
+    /**
+     * Change only the physical reel control state. This is intentionally
+     * separate from stock reconciliation: it never changes batch or reel kg.
+     */
+    public function changeControlStatus(
+        PurchaseItemReel $reel,
+        string $action,
+        string $reason
+    ): PurchaseItemReel {
+        $action = strtolower(trim($action));
+        $reason = $this->cleanText($reason);
+
+        if (! in_array($action, ['damaged', 'quarantined', 'release'], true)) {
+            throw new RuntimeException('Unsupported reel control action.');
+        }
+
+        if ($reason === null) {
+            throw new RuntimeException('A reason is required for every reel status change.');
+        }
+
+        return DB::transaction(function () use ($reel, $action, $reason): PurchaseItemReel {
+            $locked = PurchaseItemReel::query()
+                ->lockForUpdate()
+                ->findOrFail($reel->id);
+
+            $fromStatus = (string) $locked->status;
+            $weight = max((float) $locked->system_remaining_weight_kg, 0);
+
+            if ($action === 'release') {
+                if (! $locked->isBlockedFromProduction()) {
+                    throw new RuntimeException(
+                        'Only a damaged or quarantined reel can be released.'
+                    );
+                }
+
+                $toStatus = $weight <= self::EPSILON
+                    ? PurchaseItemReel::STATUS_CONSUMED
+                    : (
+                        abs($weight - (float) $locked->registered_weight_kg)
+                            <= self::ALIGNMENT_TOLERANCE_KG
+                        ? PurchaseItemReel::STATUS_SEALED
+                        : PurchaseItemReel::STATUS_OPEN
+                    );
+            } else {
+                if ($weight <= self::EPSILON) {
+                    throw new RuntimeException(
+                        'A consumed reel cannot be marked damaged or quarantined.'
+                    );
+                }
+
+                $toStatus = $action === 'damaged'
+                    ? PurchaseItemReel::STATUS_DAMAGED
+                    : PurchaseItemReel::STATUS_QUARANTINED;
+            }
+
+            if ($fromStatus === $toStatus) {
+                throw new RuntimeException('The reel is already in the requested status.');
+            }
+
+            $changedAt = now();
+            $changedBy = Auth::id();
+
+            $locked->statusEvents()->create([
+                'from_status' => $fromStatus,
+                'to_status' => $toStatus,
+                'reason' => $reason,
+                'changed_by' => $changedBy,
+                'changed_at' => $changedAt,
+                'created_at' => $changedAt,
+            ]);
+
+            $locked->update([
+                'status' => $toStatus,
+                'status_reason' => $action === 'release' ? null : $reason,
+                'status_changed_at' => $changedAt,
+                'status_changed_by' => $changedBy,
+                'opened_at' => $toStatus === PurchaseItemReel::STATUS_OPEN
+                    ? ($locked->opened_at ?: $changedAt)
+                    : $locked->opened_at,
+                'depleted_at' => $toStatus === PurchaseItemReel::STATUS_CONSUMED
+                    ? ($locked->depleted_at ?: $changedAt)
+                    : null,
+            ]);
+
+            return $locked->fresh([
+                'statusEvents.changedBy',
+                'statusChangedBy',
+            ]);
+        });
+    }
+
     public function rebaselineFromLatestMeasurements(
         PurchaseItem $batch
     ): Collection {
@@ -258,15 +349,22 @@ class ReelInventoryService
                     0
                 );
 
-                $status = $weight <= self::EPSILON
-                    ? PurchaseItemReel::STATUS_CONSUMED
+                // A warehouse control hold is independent of physical weight.
+                // Re-baselining may align kg after an approved reconciliation,
+                // but it must not silently release damaged/quarantined material.
+                $status = $reel->isBlockedFromProduction()
+                    ? $reel->status
                     : (
-                        abs(
-                            $weight
-                            - (float) $reel->registered_weight_kg
-                        ) <= self::ALIGNMENT_TOLERANCE_KG
-                            ? PurchaseItemReel::STATUS_SEALED
-                            : PurchaseItemReel::STATUS_OPEN
+                        $weight <= self::EPSILON
+                            ? PurchaseItemReel::STATUS_CONSUMED
+                            : (
+                                abs(
+                                    $weight
+                                    - (float) $reel->registered_weight_kg
+                                ) <= self::ALIGNMENT_TOLERANCE_KG
+                                    ? PurchaseItemReel::STATUS_SEALED
+                                    : PurchaseItemReel::STATUS_OPEN
+                            )
                     );
 
                 $reel->update([
@@ -311,14 +409,17 @@ class ReelInventoryService
                 return collect();
             }
 
+            // Lock every reel so the alignment check includes stock that is
+            // physically present but blocked from production.
             $reels = PurchaseItemReel::query()
                 ->where('purchase_item_id', $batch->id)
-                ->where('system_remaining_weight_kg', '>', self::EPSILON)
                 ->orderByRaw(
                     "CASE
                         WHEN status = 'open' THEN 0
                         WHEN status = 'sealed' THEN 1
-                        ELSE 2
+                        WHEN status = 'quarantined' THEN 2
+                        WHEN status = 'damaged' THEN 3
+                        ELSE 4
                     END"
                 )
                 ->orderBy('sequence_no')
@@ -350,10 +451,27 @@ class ReelInventoryService
                 );
             }
 
+            $eligibleReels = $reels->filter(
+                fn (PurchaseItemReel $reel) => $reel->isProductionEligible()
+            );
+            $eligibleKg = (float) $eligibleReels->sum(
+                'system_remaining_weight_kg'
+            );
+
+            if ($eligibleKg + self::EPSILON < $quantityKg) {
+                $blockedKg = max($trackedBefore - $eligibleKg, 0);
+
+                throw new RuntimeException(sprintf(
+                    'Production-eligible reels contain only %.4f kg; %.4f kg is blocked as damaged/quarantined. Release or replace the blocked reel before production.',
+                    $eligibleKg,
+                    $blockedKg
+                ));
+            }
+
             $remaining = $quantityKg;
             $allocations = collect();
 
-            foreach ($reels as $reel) {
+            foreach ($eligibleReels as $reel) {
                 if ($remaining <= self::EPSILON) {
                     break;
                 }
@@ -453,15 +571,21 @@ class ReelInventoryService
                 $current = (float) $reel->system_remaining_weight_kg;
                 $newWeight = $current + $toRestore;
 
-                $status = $newWeight <= self::EPSILON
-                    ? PurchaseItemReel::STATUS_CONSUMED
+                // Restoring an accounting/production allocation must not
+                // silently clear an independent warehouse control hold.
+                $status = $reel->isBlockedFromProduction()
+                    ? $reel->status
                     : (
-                        abs(
-                            $newWeight
-                            - (float) $reel->registered_weight_kg
-                        ) <= self::ALIGNMENT_TOLERANCE_KG
-                            ? PurchaseItemReel::STATUS_SEALED
-                            : PurchaseItemReel::STATUS_OPEN
+                        $newWeight <= self::EPSILON
+                            ? PurchaseItemReel::STATUS_CONSUMED
+                            : (
+                                abs(
+                                    $newWeight
+                                    - (float) $reel->registered_weight_kg
+                                ) <= self::ALIGNMENT_TOLERANCE_KG
+                                    ? PurchaseItemReel::STATUS_SEALED
+                                    : PurchaseItemReel::STATUS_OPEN
+                            )
                     );
 
                 $reel->update([
@@ -507,8 +631,10 @@ class ReelInventoryService
 
     public function summary(PurchaseItem $batch): array
     {
+        $batch->loadMissing('purchase');
+
         $reels = $batch->reels()
-            ->with('measuredBy')
+            ->with(['measuredBy', 'statusChangedBy'])
             ->orderBy('sequence_no')
             ->get();
 
@@ -522,6 +648,24 @@ class ReelInventoryService
                 (float) $reel->last_measured_weight_kg
         );
         $batchKg = $batch->availableKg();
+        $eligibleReels = $reels->filter(
+            fn (PurchaseItemReel $reel) => $reel->isProductionEligible()
+        );
+        $blockedReels = $reels->filter(
+            fn (PurchaseItemReel $reel) => $reel->isBlockedFromProduction()
+        );
+        $eligibleKg = (float) $eligibleReels->sum('system_remaining_weight_kg');
+        $blockedKg = (float) $blockedReels->sum('system_remaining_weight_kg');
+
+        $ageAnchor = $batch->purchase?->purchase_date ?: $batch->created_at;
+        $ageDays = $ageAnchor
+            ? max(
+                (int) \Illuminate\Support\Carbon::parse($ageAnchor)
+                    ->startOfDay()
+                    ->diffInDays(now()->startOfDay()),
+                0
+            )
+            : null;
 
         return [
             'tracked' => $reels->isNotEmpty(),
@@ -544,6 +688,19 @@ class ReelInventoryService
                 'status',
                 PurchaseItemReel::STATUS_CONSUMED
             )->count(),
+            'damaged_count' => $reels->where(
+                'status',
+                PurchaseItemReel::STATUS_DAMAGED
+            )->count(),
+            'quarantined_count' => $reels->where(
+                'status',
+                PurchaseItemReel::STATUS_QUARANTINED
+            )->count(),
+            'blocked_count' => $blockedReels->count(),
+            'eligible_kg' => $eligibleKg,
+            'blocked_kg' => $blockedKg,
+            'inventory_value_usd' => $batchKg * $batch->landedCostPerKg(),
+            'age_days' => $ageDays,
             'measured_count' => $measuredReels->count(),
             'unmeasured_count' => $reels->count()
                 - $measuredReels->count(),
