@@ -12,6 +12,7 @@ on:
       - feat/sale-order-modern-ui
       - feat/sale-order-selected-item-panel
       - feat/production-completion-workspace
+      - feat/business-unit-switching
   workflow_dispatch:
 
 permissions:
@@ -122,6 +123,7 @@ jobs:
           php artisan test tests/Feature/Uat/RealClientCnpWorkflowTest.php
           php artisan test tests/Feature/ClientMaster/CustomerCartonMasterSeederTest.php
           php artisan test tests/Feature/ClientRequirements/SaleOrderModernUiContractTest.php
+          php artisan test tests/Feature/BusinessUnits/BusinessUnitSwitchingTest.php
 
       - name: Complete PHP test suite
         run: php artisan test
