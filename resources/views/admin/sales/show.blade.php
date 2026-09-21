@@ -5080,13 +5080,15 @@
             $(document).on('change', '.manual-line-price', function() {
                 var $field = $(this);
                 var itemId = $field.data('id');
-                var unitPrice = parseFloat($field.val()) || 0;
+                var rawValue = String($field.val() ?? '').trim();
+                var isReset = rawValue === '';
+                var unitPrice = isReset ? null : parseFloat(rawValue);
 
-                if (unitPrice <= 0) {
+                if (!isReset && (!unitPrice || unitPrice <= 0)) {
                     Swal.fire({
                         icon: 'warning',
                         title: @json(__('ui.invalid_price')),
-                        text: 'Manual unit price must be greater than zero.'
+                        text: 'Manual unit price must be greater than zero, or leave it empty to use the system/BOM price.'
                     });
                     return;
                 }
@@ -5094,12 +5096,13 @@
                 $field.prop('disabled', true);
 
                 $.ajax({
-                    url: '{{ url('admin/sales/item') }}/' + itemId + '/manual-price',
-                    method: 'PATCH',
-                    data: {
-                        _token: '{{ csrf_token() }}',
-                        unit_price: unitPrice
-                    },
+                    url: isReset
+                        ? '{{ url('admin/sales/item') }}/' + itemId + '/reset-price'
+                        : '{{ url('admin/sales/item') }}/' + itemId + '/manual-price',
+                    method: isReset ? 'POST' : 'PATCH',
+                    data: isReset
+                        ? { _token: '{{ csrf_token() }}' }
+                        : { _token: '{{ csrf_token() }}', unit_price: unitPrice },
                     success: function(response) {
                         if (response.success) {
                             location.reload();
@@ -5110,7 +5113,9 @@
                         Swal.fire({
                             icon: 'error',
                             title: @json(__('ui.error')),
-                            text: xhr.responseJSON?.message || 'Could not update manual unit price.'
+                            text: xhr.responseJSON?.message || (isReset
+                                ? 'Could not restore the system/BOM price.'
+                                : 'Could not update manual unit price.')
                         });
                     }
                 });
