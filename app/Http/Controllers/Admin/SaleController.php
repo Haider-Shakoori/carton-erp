@@ -231,7 +231,7 @@ class SaleController extends Controller
             'customer',
             'currency',
             'items.product',
-            'items.bom',
+            'items.bom.items.material',
             'items.purchaseItem.purchase',
             'items.purchaseItem.purchase.currency',
             'productionOrder',
@@ -2635,10 +2635,10 @@ class SaleController extends Controller
     public function updateManualPrice(Request $request, SaleItem $item)
     {
         $validated = $request->validate([
-            'unit_price' => 'required|numeric|min:0.0001',
+            'unit_price' => 'nullable|numeric|min:0.0001',
         ]);
 
-        $item->loadMissing(['sale.currency']);
+        $item->loadMissing(['sale.currency', 'bom.items.material']);
         $sale = $item->sale;
 
         if (! $sale || $sale->status !== 'draft') {
@@ -2649,31 +2649,74 @@ class SaleController extends Controller
         }
 
         return DB::transaction(function () use ($item, $sale, $validated) {
-            $newPrice = (float) $validated['unit_price'];
             $rate = max((float) ($item->rate ?: $sale->exchange_rate ?: 1), 0.000001);
             $isUsd = $sale->currency?->code === 'USD';
+            $requestedPrice = array_key_exists('unit_price', $validated)
+                ? $validated['unit_price']
+                : null;
 
-            if ((float) ($item->base_price ?? 0) <= 0) {
-                $item->base_price = (float) $item->unit_price;
-            }
-            if ((float) ($item->original_unit_price ?? 0) <= 0) {
-                $item->original_unit_price = (float) $item->unit_price;
+            if ($requestedPrice === null || $requestedPrice === '') {
+                // Clearing the field means "use BOM/system price" again.
+                // Reconstruct it from the frozen manual quotation snapshot when one
+                // exists; otherwise use the linked BOM's authoritative selling rate.
+                $snapshot = is_array($item->manual_bom_snapshot ?? null)
+                    ? $item->manual_bom_snapshot
+                    : [];
+
+                $systemPriceAfn = 0.0;
+                if (count($snapshot) > 0) {
+                    foreach ($snapshot as $row) {
+                        $systemPriceAfn += (float) ($row['row_net_rate'] ?? $row['final_rate_afn'] ?? 0);
+                    }
+                } elseif ($item->bom) {
+                    $summary = app(\App\Services\BOMCostingService::class)->summarize($item->bom);
+                    $systemPriceAfn = (float) ($summary['selling_price_afn'] ?? $item->bom->selling_price_afn ?? 0);
+                }
+
+                $systemPrice = $systemPriceAfn > 0
+                    ? ($isUsd ? $systemPriceAfn / $rate : $systemPriceAfn)
+                    : (float) ($item->base_price ?: $item->original_unit_price ?: $item->unit_price);
+
+                if ($systemPrice <= 0) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Could not restore the BOM/system price for this item.',
+                    ], 422);
+                }
+
+                $item->final_price = $systemPrice;
+                $item->unit_price = $systemPrice;
+                $item->price_adjustment_type = 'none';
+                $item->discount_amount = 0;
+                $item->discount_percentage = 0;
+                $message = 'Manual override cleared. BOM/system price restored.';
+            } else {
+                $newPrice = (float) $requestedPrice;
+
+                if ((float) ($item->base_price ?? 0) <= 0) {
+                    $item->base_price = (float) $item->unit_price;
+                }
+                if ((float) ($item->original_unit_price ?? 0) <= 0) {
+                    $item->original_unit_price = (float) $item->unit_price;
+                }
+
+                $item->final_price = $newPrice;
+                $item->unit_price = $newPrice;
+                $item->price_adjustment_type = 'manual';
+
+                $basePrice = (float) ($item->base_price ?: $item->original_unit_price ?: $newPrice);
+                $discountDifference = max($basePrice - $newPrice, 0);
+                $item->discount_amount = $discountDifference;
+                $item->discount_percentage = $basePrice > 0 && $discountDifference > 0
+                    ? ($discountDifference / $basePrice) * 100
+                    : 0;
+
+                $message = 'Manual unit price updated.';
             }
 
-            $item->final_price = $newPrice;
-            $item->unit_price = $newPrice;
-            $item->price_adjustment_type = 'manual';
-            $item->total = $newPrice * (float) $item->qty;
-            $item->usd_unit_price = $isUsd ? $newPrice : $newPrice / $rate;
+            $item->total = (float) $item->unit_price * (float) $item->qty;
+            $item->usd_unit_price = $isUsd ? (float) $item->unit_price : (float) $item->unit_price / $rate;
             $item->usd_total = (float) $item->usd_unit_price * (float) $item->qty;
-
-            $basePrice = (float) ($item->base_price ?: $item->original_unit_price ?: $newPrice);
-            $discountDifference = max($basePrice - $newPrice, 0);
-            $item->discount_amount = $discountDifference;
-            $item->discount_percentage = $basePrice > 0 && $discountDifference > 0
-                ? ($discountDifference / $basePrice) * 100
-                : 0;
-
             $item->calculateProfitUsd();
             $item->save();
 
@@ -2683,9 +2726,9 @@ class SaleController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Manual unit price updated.',
+                'message' => $message,
                 'item' => $item->fresh(),
-                'sale_total' => (float) $sale->fresh()->grand_total,
+                'sale_total' => $sale->fresh()->grand_total,
             ]);
         });
     }
