@@ -18,4 +18,15 @@ return [
     // in the approval batch rather than hard-coded into stock mutation logic.
     'reason_required_absolute_tolerance' => 0.01,
     'reason_required_percentage_tolerance' => 0.10,
+
+    // Large discrepancies require an independent approver. The threshold is
+    // based on the sum of absolute variance values so shortages and surpluses
+    // cannot cancel each other out.
+    'independent_approval_required_above_usd' => 100.00,
+
+    // Reasons that remain operationally unresolved even after stock is posted.
+    // Posting corrects stock for operations; investigation remains visible.
+    'unresolved_reason_codes' => [
+        'unknown',
+    ],
 ];

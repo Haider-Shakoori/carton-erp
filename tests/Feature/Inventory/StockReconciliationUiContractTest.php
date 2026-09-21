@@ -7,16 +7,21 @@ it('exposes weekly cycle count reporting, blind print, approval and audit contro
     $print = file_get_contents(resource_path('views/admin/stock-reconciliations/print.blade.php'));
     $stockIndex = file_get_contents(resource_path('views/admin/stock/index.blade.php'));
     $productHistory = file_get_contents(resource_path('views/admin/products/show.blade.php'));
+    $menu = file_get_contents(resource_path('views/layouts/admin/menu.blade.php'));
 
     expect($index)
         ->toContain('New Cycle Count')
         ->toContain('Variance Report')
         ->toContain('Awaiting Approval')
-        ->toContain('30-Day Negative Variance');
+        ->toContain('30-Day Negative Variance')
+        ->toContain('Unresolved Variances')
+        ->toContain('Unresolved Investigations');
 
     expect($show)
         ->toContain('Blind Count Sheet')
         ->toContain('Submit for Approval')
+        ->toContain('Independent approval required')
+        ->toContain('Independent Approver Required')
         ->toContain('Approve')
         ->toContain('Post Stock Adjustment')
         ->toContain('Posted Adjustment Ledger')
@@ -26,7 +31,9 @@ it('exposes weekly cycle count reporting, blind print, approval and audit contro
         ->toContain('Variance Report')
         ->toContain('Export CSV')
         ->toContain('Most Repeated / Highest-Value Variances')
-        ->toContain('Shortage Value');
+        ->toContain('Shortage Value')
+        ->toContain('Unresolved investigations only')
+        ->toContain('Unresolved variance queue');
 
     expect($print)
         ->toContain('Blind Physical Count Sheet')
@@ -41,4 +48,9 @@ it('exposes weekly cycle count reporting, blind print, approval and audit contro
         ->toContain('Reconciliation Adjustment History')
         ->toContain('Full Variance Report')
         ->toContain('$reconciliationAdjustments');
+
+    expect($menu)
+        ->toContain("admin.stock-reconciliations.*")
+        ->toContain("route('admin.stock-reconciliations.index')")
+        ->toContain('Stock Reconciliation');
 });

@@ -181,6 +181,16 @@
             </li>
         @endcan
 
+        {{-- Stock Reconciliation / Cycle Counts --}}
+        @can('view stock reconciliations')
+            <li class="menu-item {{ request()->routeIs('admin.stock-reconciliations.*') ? 'active' : '' }}">
+                <a href="{{ route('admin.stock-reconciliations.index') }}" class="menu-link">
+                    <i class="menu-icon icon-base bi bi-clipboard-check"></i>
+                    <div>Stock Reconciliation</div>
+                </a>
+            </li>
+        @endcan
+
         {{-- Products --}}
         @can('view products')
             <li class="menu-item {{ request()->routeIs('admin.products.*') ? 'active' : '' }}">
