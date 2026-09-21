@@ -659,6 +659,64 @@
             gap: 0.5rem;
         }
 
+        .business-unit-switcher .dropdown-toggle {
+            display: inline-flex;
+            align-items: center;
+            gap: .55rem;
+            min-height: 40px;
+            padding: .4rem .8rem;
+            border-radius: 10px;
+            border: 1px solid var(--gray-200);
+            background: white;
+            color: var(--gray-700);
+            font-size: .78rem;
+            font-weight: 700;
+            transition: var(--transition);
+        }
+
+        .business-unit-switcher .dropdown-toggle:hover {
+            border-color: var(--primary-light);
+            color: var(--primary);
+            box-shadow: var(--shadow-sm);
+        }
+
+        .business-unit-switcher .business-unit-label {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            line-height: 1.1;
+        }
+
+        .business-unit-switcher .business-unit-label small {
+            color: var(--gray-400);
+            font-size: .56rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: .05em;
+        }
+
+        .business-unit-switcher .business-unit-option {
+            width: 100%;
+            border: 0;
+            background: transparent;
+            text-align: left;
+        }
+
+        .business-unit-switcher .business-unit-option.active {
+            background: var(--primary-bg);
+            color: var(--primary);
+        }
+
+        @media (max-width: 768px) {
+            .business-unit-switcher .business-unit-label small {
+                display: none;
+            }
+
+            .business-unit-switcher .dropdown-toggle {
+                padding: .4rem .6rem;
+            }
+        }
+
         .nav-icon-btn {
             width: 40px;
             height: 40px;
@@ -2005,6 +2063,48 @@ MAIN CONTENT AREA
             </div>
 
             <div class="navbar-right">
+                @if(($businessUnitModeEnabled ?? false) && ($businessUnits ?? collect())->isNotEmpty())
+                    <div class="dropdown business-unit-switcher">
+                        <button class="dropdown-toggle"
+                                type="button"
+                                data-bs-toggle="dropdown"
+                                aria-expanded="false"
+                                id="businessUnitSwitcher">
+                            <i class="bi {{ $activeBusinessUnit?->icon ?: 'bi-buildings' }}"></i>
+                            <span class="business-unit-label">
+                                <small>Business</small>
+                                <span>{{ $activeBusinessUnit?->name ?? 'Select Business' }}</span>
+                            </span>
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-custom dropdown-menu-end">
+                            <li class="px-2 py-1">
+                                <div class="small text-muted fw-semibold">Switch business workspace</div>
+                            </li>
+                            @foreach($businessUnits as $businessUnit)
+                                <li>
+                                    <form action="{{ route('admin.business-units.switch', $businessUnit) }}" method="POST">
+                                        @csrf
+                                        <button type="submit"
+                                                class="dropdown-item business-unit-option {{ (int) ($activeBusinessUnit?->id ?? 0) === (int) $businessUnit->id ? 'active' : '' }}">
+                                            <i class="bi {{ $businessUnit->icon ?: 'bi-building' }}"></i>
+                                            <span class="flex-grow-1">{{ $businessUnit->name }}</span>
+                                            @if((int) ($activeBusinessUnit?->id ?? 0) === (int) $businessUnit->id)
+                                                <i class="bi bi-check2 ms-auto"></i>
+                                            @endif
+                                        </button>
+                                    </form>
+                                </li>
+                            @endforeach
+                            <li><hr class="dropdown-divider"></li>
+                            <li>
+                                <a class="dropdown-item" href="{{ route('admin.settings.index') }}">
+                                    <i class="bi bi-gear"></i> Business unit settings
+                                </a>
+                            </li>
+                        </ul>
+                    </div>
+                @endif
+
                 <!-- Language Dropdown -->
                 <div class="dropdown">
                     <button class="nav-icon-btn dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
