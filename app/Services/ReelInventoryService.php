@@ -503,6 +503,7 @@ class ReelInventoryService
                     'quantity_kg' => $used,
                     'before_weight_kg' => $before,
                     'after_weight_kg' => $after,
+                    'allocation_method' => 'fifo',
                     'consumed_at' => $consumption->consumed_at ?: now(),
                     'created_at' => now(),
                 ]));
@@ -520,6 +521,168 @@ class ReelInventoryService
             $this->assertAligned($batch->fresh());
 
             return $allocations;
+        });
+    }
+
+    /**
+     * Allocate one already-posted production material consumption to an exact
+     * physical reel selected by the operator at completion.
+     *
+     * The purchase batch remains the accounting source of truth. This method
+     * updates only the reel-level physical lineage and optional observed final
+     * weight; it never posts a stock adjustment from a scale reading.
+     */
+    public function consumeSelectedReelForConsumption(
+        ProductionMaterialConsumption $consumption,
+        PurchaseItemReel $reel,
+        float $quantityKg,
+        ?float $declaredFinalWeightKg = null,
+        ?string $selectionNote = null
+    ): ProductionReelConsumption {
+        if ($quantityKg <= self::EPSILON) {
+            throw new RuntimeException(
+                'Selected reel consumption must be greater than zero.'
+            );
+        }
+
+        if (
+            $declaredFinalWeightKg !== null
+            && $declaredFinalWeightKg < -self::EPSILON
+        ) {
+            throw new RuntimeException(
+                'Declared final reel weight cannot be negative.'
+            );
+        }
+
+        return DB::transaction(function () use (
+            $consumption,
+            $reel,
+            $quantityKg,
+            $declaredFinalWeightKg,
+            $selectionNote
+        ): ProductionReelConsumption {
+            $batch = PurchaseItem::query()
+                ->lockForUpdate()
+                ->findOrFail($consumption->purchase_item_id);
+
+            if (! $batch->isRollBatch()) {
+                throw new RuntimeException(
+                    'Exact reel selection is only available for roll-based inventory.'
+                );
+            }
+
+            $reels = PurchaseItemReel::query()
+                ->where('purchase_item_id', $batch->id)
+                ->orderBy('sequence_no')
+                ->lockForUpdate()
+                ->get();
+
+            if ($reels->isEmpty()) {
+                throw new RuntimeException(
+                    'This purchase batch does not have physical reel tracking enabled.'
+                );
+            }
+
+            $selected = $reels->firstWhere('id', $reel->id);
+            if (! $selected) {
+                throw new RuntimeException(
+                    'The selected reel does not belong to the production consumption batch.'
+                );
+            }
+
+            $trackedBefore = (float) $reels->sum(
+                'system_remaining_weight_kg'
+            );
+            $expectedBefore = $batch->availableKg() + $quantityKg;
+
+            if (
+                abs($trackedBefore - $expectedBefore)
+                > self::ALIGNMENT_TOLERANCE_KG
+            ) {
+                throw new RuntimeException(sprintf(
+                    'Physical reel tracking is out of sync for batch %s. '
+                    .'Tracked before-consumption weight %.4f kg; expected %.4f kg.',
+                    $batch->batch_no ?: $batch->id,
+                    $trackedBefore,
+                    $expectedBefore
+                ));
+            }
+
+            if (! $selected->isProductionEligible()) {
+                throw new RuntimeException(sprintf(
+                    'Reel %s is not eligible for production because its status is %s.',
+                    $selected->reel_code,
+                    $selected->status
+                ));
+            }
+
+            $before = (float) $selected->system_remaining_weight_kg;
+            if ($quantityKg > $before + self::EPSILON) {
+                throw new RuntimeException(sprintf(
+                    'Reel %s contains only %.4f kg but %.4f kg was declared consumed.',
+                    $selected->reel_code,
+                    $before,
+                    $quantityKg
+                ));
+            }
+
+            $after = max($before - $quantityKg, 0);
+            $status = $after <= self::EPSILON
+                ? PurchaseItemReel::STATUS_CONSUMED
+                : PurchaseItemReel::STATUS_OPEN;
+
+            $selected->update([
+                'system_remaining_weight_kg' => $after,
+                'status' => $status,
+                'opened_at' => $selected->opened_at ?: now(),
+                'depleted_at' => $status === PurchaseItemReel::STATUS_CONSUMED
+                    ? now()
+                    : null,
+            ]);
+
+            $note = $this->cleanText($selectionNote);
+            $allocation = ProductionReelConsumption::create([
+                'production_material_consumption_id' => $consumption->id,
+                'purchase_item_reel_id' => $selected->id,
+                'quantity_kg' => $quantityKg,
+                'before_weight_kg' => $before,
+                'after_weight_kg' => $after,
+                'allocation_method' => 'operator_selected',
+                'selected_by' => Auth::id(),
+                'declared_final_weight_kg' => $declaredFinalWeightKg,
+                'selection_note' => $note,
+                'consumed_at' => $consumption->consumed_at ?: now(),
+                'created_at' => now(),
+            ]);
+
+            if ($declaredFinalWeightKg !== null) {
+                $measured = max($declaredFinalWeightKg, 0);
+                $variance = $measured - $after;
+                $measuredAt = now();
+
+                $selected->measurements()->create([
+                    'system_weight_snapshot_kg' => $after,
+                    'measured_weight_kg' => $measured,
+                    'variance_kg' => $variance,
+                    'measured_by' => Auth::id(),
+                    'measured_at' => $measuredAt,
+                    'notes' => $note
+                        ? 'Production completion · '.$note
+                        : 'Production completion reel measurement',
+                    'created_at' => $measuredAt,
+                ]);
+
+                $selected->update([
+                    'last_measured_weight_kg' => $measured,
+                    'measurement_variance_kg' => $variance,
+                    'last_measured_at' => $measuredAt,
+                    'last_measured_by' => Auth::id(),
+                ]);
+            }
+
+            $this->assertAligned($batch->fresh());
+
+            return $allocation;
         });
     }
 
