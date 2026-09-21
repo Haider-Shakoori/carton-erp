@@ -19,8 +19,8 @@
             <a href="{{ route('admin.stock-reconciliations.control-analysis') }}" class="btn btn-outline-secondary">
                 <i class="bi bi-diagram-3 me-1"></i> Production → Physical
             </a>
-            <a href="{{ route('admin.stock-reconciliations.report', ['unresolved' => 1]) }}" class="btn btn-outline-warning">
-                <i class="bi bi-exclamation-diamond me-1"></i> Unresolved Variances
+            <a href="{{ route('admin.stock-reconciliations.investigations.index') }}" class="btn btn-outline-warning">
+                <i class="bi bi-search me-1"></i> Investigations
             </a>
             <a href="{{ route('admin.stock-reconciliations.report') }}" class="btn btn-outline-primary">
                 <i class="bi bi-bar-chart me-1"></i> Variance Report
