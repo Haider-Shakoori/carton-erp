@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - feat/client-requirements-20260920
+      - feat/customer-carton-master-seeder
   workflow_dispatch:
 
 permissions:
@@ -92,7 +93,11 @@ jobs:
           php -l app/Http/Controllers/Admin/ProductionOrderController.php
           php -l app/Http/Controllers/Admin/BOMController.php
           php -l database/seeders/CategorySeeder.php
+          php -l app/Models/FinishedGoodSpecification.php
           php -l database/seeders/ProductSeeder.php
+          php -l database/seeders/CustomerCartonSizeSeeder.php
+          php -l database/seeders/CustomerCartonBomSeeder.php
+          php -l database/migrations/2026_09_21_063000_promote_finished_good_specifications_to_customer_carton_master.php
           php -l database/migrations/2026_09_20_140000_add_client_requirement_fields.php
           php -l database/migrations/2026_09_20_140100_create_gate_passes_tables.php
           php -l database/migrations/2026_09_20_140200_add_client_3d_carton_material_master_data.php
@@ -104,7 +109,11 @@ jobs:
         run: php artisan view:cache
 
       - name: Focused client requirements tests
-        run: php artisan test tests/Feature/GoldenPath/RealWorldCartonWorkflowRemediationTest.php tests/Feature/ClientRequirements/ClientRequirementsUiContractTest.php tests/Feature/Production/ActualProductionQuantityUiContractTest.php
+        run: |
+          php artisan test tests/Feature/ClientMaster/CustomerCartonMasterSeederTest.php
+          php artisan test tests/Feature/AdhesiveMix/ClientCartonRawMaterialSeederTest.php
+          php artisan test tests/Feature/CartonSpecification/BoardProfileTest.php
+          php artisan test tests/Feature/GoldenPath/RealWorldCartonWorkflowRemediationTest.php tests/Feature/ClientRequirements/ClientRequirementsUiContractTest.php tests/Feature/Production/ActualProductionQuantityUiContractTest.php
 
       - name: Complete PHP test suite
         run: php artisan test
