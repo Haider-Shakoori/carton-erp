@@ -112,6 +112,14 @@ Route::middleware(['auth'])->prefix('admin')->group(function () {
             ->name('create')->middleware('permission.feedback:create stock reconciliations');
         Route::post('/', [StockReconciliationController::class, 'store'])
             ->name('store')->middleware('permission.feedback:create stock reconciliations');
+        Route::get('/planning', [StockReconciliationController::class, 'planning'])
+            ->name('planning')->middleware('permission.feedback:view stock reconciliations');
+        Route::post('/planning/start', [StockReconciliationController::class, 'startPlannedCount'])
+            ->name('planning.start')->middleware('permission.feedback:create stock reconciliations');
+        Route::get('/trends', [StockReconciliationController::class, 'trends'])
+            ->name('trends')->middleware('permission.feedback:view stock reconciliations');
+        Route::get('/control-analysis', [StockReconciliationController::class, 'controlAnalysis'])
+            ->name('control-analysis')->middleware('permission.feedback:view stock reconciliations');
         Route::get('/report', [StockReconciliationController::class, 'report'])
             ->name('report')->middleware('permission.feedback:view stock reconciliations');
         Route::get('/report/export-csv', [StockReconciliationController::class, 'exportCsv'])
