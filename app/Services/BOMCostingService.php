@@ -138,9 +138,14 @@ class BOMCostingService
             }
 
             $costAfn = $costUsd * $exchangeRate;
+            $baseUsagePerFinishedUnit = $item->calculateStockRequirement(1, false);
             $physicalQtyWithWaste = $item->calculateStockRequirement(1, true);
 
             $update = [
+                // Keep the persisted BOM row readable: quantity represents
+                // base material usage for one finished unit. Formula execution
+                // still uses the technical fields, so costing remains dynamic.
+                'quantity' => $baseUsagePerFinishedUnit,
                 'cost_per_unit_usd' => $costUsd,
                 'cost_per_unit_afn' => $costAfn,
                 'total_cost_usd' => $physicalQtyWithWaste * $costUsd,
