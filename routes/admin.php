@@ -613,7 +613,11 @@ Route::middleware(['auth'])->prefix('admin')->group(function () {
     Route::get('production-orders/{productionOrder}/edit', [ProductionOrderController::class, 'edit'])->name('production-orders.edit')->middleware('permission.feedback:update production orders');
     Route::put('production-orders/{productionOrder}', [ProductionOrderController::class, 'update'])->name('production-orders.update')->middleware('permission.feedback:update production orders');
     Route::post('production-orders/{productionOrder}/start', [ProductionOrderController::class, 'startProduction'])->name('production-orders.start')->middleware('permission.feedback:update production orders');
+    Route::post('production-orders/{productionOrder}/approve', [ProductionOrderController::class, 'approveProduction'])->name('production-orders.approve')->middleware('permission.feedback:approve production orders');
     Route::post('production-orders/{productionOrder}/complete', [ProductionOrderController::class, 'completeProduction'])->name('production-orders.complete')->middleware('permission.feedback:update production orders');
+    Route::post('production-orders/{productionOrder}/close', [ProductionOrderController::class, 'closeProduction'])->name('production-orders.close')->middleware('permission.feedback:close production orders');
+    Route::post('production-orders/{productionOrder}/reopen', [ProductionOrderController::class, 'reopenProduction'])->name('production-orders.reopen')->middleware('permission.feedback:reopen production orders');
+    Route::post('production-orders/{productionOrder}/reverse-completion', [ProductionOrderController::class, 'reverseCompletion'])->name('production-orders.reverse-completion')->middleware('permission.feedback:reverse production orders');
     Route::post('production-orders/{productionOrder}/cancel', [ProductionOrderController::class, 'cancelProduction'])->name('production-orders.cancel')->middleware('permission.feedback:update production orders');
     Route::get('production-orders/data', [ProductionOrderController::class, 'data'])->name('production-orders.data')->middleware('permission.feedback:view production orders');
     Route::get('sales/{sale}/details', [SaleController::class, 'getSaleDetails'])->name('admin.sales.details')->middleware('permission.feedback:view sales');
