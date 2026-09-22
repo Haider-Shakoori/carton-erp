@@ -84,6 +84,29 @@ class User extends Authenticatable
         return $this->hasOne(Account::class, 'user_id');
     }
 
+    public function businessUnits()
+    {
+        return $this->belongsToMany(BusinessUnit::class)
+            ->withPivot('is_default')
+            ->withTimestamps();
+    }
+
+    public function hasExplicitBusinessUnitAccess(): bool
+    {
+        return $this->businessUnits()->exists();
+    }
+
+    public function canAccessBusinessUnit(BusinessUnit|int $businessUnit): bool
+    {
+        $id = $businessUnit instanceof BusinessUnit ? $businessUnit->id : $businessUnit;
+
+        if (! $this->hasExplicitBusinessUnitAccess()) {
+            return true;
+        }
+
+        return $this->businessUnits()->whereKey($id)->exists();
+    }
+
     public function isOnline(): bool
     {
         $lastSeen = Cache::get('user-last-seen-' . $this->id);
