@@ -130,6 +130,9 @@ jobs:
       - name: Compile views
         run: php artisan view:cache
 
+      - name: Enterprise readiness gate
+        run: php artisan erp:readiness
+
       - name: Focused actual production quantity tests
         run: |
           php artisan test tests/Feature/Production/ActualProductionQuantityUiContractTest.php
@@ -145,7 +148,6 @@ jobs:
           php artisan test tests/Feature/Enterprise/ProductionCostVarianceTest.php
           php artisan test tests/Feature/Enterprise/EnterpriseControlUiContractTest.php
           php artisan test tests/Feature/Enterprise/EnterpriseReadinessTest.php
-          php artisan erp:readiness
 
       - name: Complete PHP test suite
         run: php artisan test
