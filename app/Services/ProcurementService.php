@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\GoodsReceipt;
 use App\Models\Purchase;
 use App\Models\PurchaseRequest;
+use App\Models\PurchaseItem;
 use App\Models\RequestForQuotation;
 use App\Models\RfqQuote;
 use App\Models\SupplierInvoice;
@@ -122,6 +123,71 @@ class ProcurementService
             $quote->rfq->update(['status' => 'awarded']);
 
             return $quote->fresh();
+        });
+    }
+
+    public function convertSelectedQuoteToPurchase(RfqQuote $quote): Purchase
+    {
+        return DB::transaction(function () use ($quote) {
+            $quote = RfqQuote::query()
+                ->with(['rfq.request', 'items', 'currency'])
+                ->lockForUpdate()
+                ->findOrFail($quote->id);
+
+            if ($quote->status !== 'selected') {
+                throw new RuntimeException('Only the selected supplier quote can be converted to a purchase order.');
+            }
+
+            $existing = Purchase::query()
+                ->where('rfq_quote_id', $quote->id)
+                ->first();
+
+            if ($existing) {
+                return $existing;
+            }
+
+            if ($quote->items->isEmpty()) {
+                throw new RuntimeException('The selected quote has no line items.');
+            }
+
+            $rate = max((float) $quote->exchange_rate, self::EPSILON);
+
+            $purchase = Purchase::query()->create([
+                'purchase_no' => Purchase::generateNumber(),
+                'supplier_id' => $quote->supplier_id,
+                'currency_id' => $quote->currency_id,
+                'exchange_rate' => $rate,
+                'purchase_date' => now()->toDateString(),
+                'status' => 'draft',
+                'approval_status' => 'pending',
+                'purchase_request_id' => $quote->rfq?->purchase_request_id,
+                'rfq_quote_id' => $quote->id,
+            ]);
+
+            foreach ($quote->items as $line) {
+                $quantity = (float) $line->quantity;
+                $unitPrice = (float) $line->unit_price;
+
+                $purchase->items()->create([
+                    'product_id' => $line->product_id,
+                    'purchase_currency_id' => $quote->currency_id,
+                    'qty' => $quantity,
+                    'unit_price' => $unitPrice,
+                    'total' => $quantity * $unitPrice,
+                    'rate' => $rate,
+                    'usd_unit_price' => $unitPrice / $rate,
+                    'usd_total' => ($quantity * $unitPrice) / $rate,
+                    'unit' => $line->product?->unit ?? 'unit',
+                ]);
+            }
+
+            $purchase->recalculateTotals();
+
+            if ($quote->rfq?->request) {
+                $quote->rfq->request->update(['status' => 'converted']);
+            }
+
+            return $purchase->fresh(['items']);
         });
     }
 
