@@ -49,17 +49,23 @@ class AppServiceProvider extends ServiceProvider
             $rtlLanguages = ['fa', 'ps'];
             $locale = app()->getLocale();
             $view->with('isRtl', in_array($locale, $rtlLanguages));
-            $view->with('setting', app('view.setting'));
+
+            $setting = app('view.setting');
+            $view->with('setting', $setting);
 
             try {
-                $businessContext = app(BusinessUnitContext::class);
-                $businessUnitModeEnabled = $businessContext->enabled();
-                $businessUnits = $businessUnitModeEnabled
-                    ? $businessContext->available()
-                    : collect();
-                $activeBusinessUnit = $businessUnitModeEnabled
-                    ? $businessContext->current()
-                    : null;
+                // Reuse the already-loaded setting so unified mode preserves the
+                // one-query view-setting performance contract.
+                $businessUnitModeEnabled = (bool) ($setting->separate_business_units_enabled ?? false);
+
+                if ($businessUnitModeEnabled) {
+                    $businessContext = app(BusinessUnitContext::class);
+                    $businessUnits = $businessContext->available();
+                    $activeBusinessUnit = $businessContext->current();
+                } else {
+                    $businessUnits = collect();
+                    $activeBusinessUnit = null;
+                }
             } catch (\Throwable $e) {
                 $businessUnitModeEnabled = false;
                 $businessUnits = collect();
