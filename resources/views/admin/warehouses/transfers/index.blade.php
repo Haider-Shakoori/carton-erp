@@ -11,7 +11,7 @@
         </div>
         <div class="d-flex gap-2">
             <a href="{{ route('admin.warehouses.index') }}" class="btn btn-light">Warehouses</a>
-            @can('transfer stock')
+            @can('create stock transfers')
                 <a href="{{ route('admin.warehouses.transfers.create') }}" class="btn btn-primary"><i class="bi bi-plus-lg me-1"></i>New Transfer</a>
             @endcan
         </div>
@@ -54,7 +54,7 @@
                                     </form>
                                 @endcan
                             @elseif($transfer->status === 'approved')
-                                @can('transfer stock')
+                                @can('create stock transfers')
                                     <form action="{{ route('admin.warehouses.transfers.complete', $transfer) }}" method="POST" class="d-inline">
                                         @csrf
                                         <button class="btn btn-sm btn-success" onclick="return confirm('Post this transfer?')">Complete</button>
