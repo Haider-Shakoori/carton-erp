@@ -28,6 +28,7 @@ Before enabling traffic, verify:
 - `APP_DEBUG=false`
 - `APP_URL` is the real HTTPS production URL
 - `APP_KEY` is stable and already provisioned
+- for a brand-new seeded installation, `INITIAL_ADMIN_PASSWORD` is set to a strong one-time value
 - production database credentials are correct
 - `QUEUE_CONNECTION` is a persistent production-capable driver (the supplied example uses `database`)
 - session/cache configuration is appropriate for the host
