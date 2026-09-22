@@ -181,8 +181,7 @@ class PermissionsSeeder extends Seeder
         }
 
         $admin->assignRole($adminRole);
-        $user = User::find(1);
-        $user->syncPermissions(Permission::all());
+        $admin->syncPermissions(Permission::all());
 
         // Create default settings
         Setting::create([
