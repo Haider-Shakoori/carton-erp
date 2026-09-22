@@ -84,6 +84,65 @@ class User extends Authenticatable
         return $this->hasOne(Account::class, 'user_id');
     }
 
+    public function employeeProfile()
+    {
+        return $this->hasOne(Employee::class, 'user_id');
+    }
+
+    public function notificationEmail(): ?string
+    {
+        $accountEmail = $this->account()->value('email');
+
+        if (! $accountEmail && $this->account_id) {
+            $accountEmail = Account::query()
+                ->whereKey($this->account_id)
+                ->value('email');
+        }
+
+        $email = trim((string) ($this->email ?: $accountEmail));
+
+        return filter_var($email, FILTER_VALIDATE_EMAIL) ? $email : null;
+    }
+
+    public function notificationPhone(): ?string
+    {
+        $phone = $this->employeeProfile()->value('phone');
+
+        if (! $phone) {
+            $account = $this->account()->first();
+
+            if (! $account && $this->account_id) {
+                $account = Account::query()->find($this->account_id);
+            }
+
+            $phone = $account?->whatsapp ?: $account?->contact;
+        }
+
+        $normalized = preg_replace(
+            '/[^0-9+]/',
+            '',
+            trim((string) $phone)
+        );
+
+        return $normalized !== '' ? $normalized : null;
+    }
+
+    public function maskedNotificationEmail(): ?string
+    {
+        return StockNotificationDelivery::maskRecipient(
+            $this->notificationEmail(),
+            'email'
+        );
+    }
+
+    public function maskedNotificationPhone(): ?string
+    {
+        return StockNotificationDelivery::maskRecipient(
+            $this->notificationPhone(),
+            'whatsapp'
+        );
+    }
+
     public function businessUnits()
     {
         return $this->belongsToMany(BusinessUnit::class)
