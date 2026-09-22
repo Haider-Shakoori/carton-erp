@@ -137,6 +137,9 @@ jobs:
         run: |
           php artisan test tests/Feature/Production/ActualProductionQuantityUiContractTest.php
           php artisan test tests/Feature/Production/ProductionOrderStartProductionFkCostRegressionTest.php
+          php artisan test tests/Feature/CartonSpecification/CartonSpecificationServiceTest.php
+          php artisan test tests/Feature/CartonSpecification/CartonQuotationTest.php
+          php artisan test tests/Feature/Inventory/ReelRemnantTrackingTest.php
           php artisan test tests/Feature/GoldenPath/RealWorldCartonWorkflowRemediationTest.php
           php artisan test tests/Feature/Uat/RealClientCnpWorkflowTest.php
           php artisan test tests/Feature/ClientMaster/CustomerCartonMasterSeederTest.php
