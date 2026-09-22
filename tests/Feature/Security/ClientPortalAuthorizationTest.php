@@ -59,3 +59,32 @@ it('blocks authenticated non-client users from the client portal', function () {
         ->get('/client/dashboard')
         ->assertForbidden();
 });
+
+
+it('allows legacy client users identified by account type without requiring a migrated role', function () {
+    $account = Account::query()->create([
+        'name' => 'Legacy Client',
+        'code' => 'CLIENT-LEGACY',
+        'account_type' => Account::TYPE_CUSTOMER,
+        'is_active' => true,
+    ]);
+
+    $user = User::factory()->create([
+        'account_id' => $account->id,
+        'account_type' => 'client',
+        'is_active' => true,
+    ]);
+
+    $this->actingAs($user)
+        ->get("/client/{$account->id}/journal")
+        ->assertOk();
+});
+
+it('blocks inactive client users from the client portal', function () {
+    [$user] = createClientPortalUser('INACTIVE');
+    $user->update(['is_active' => false]);
+
+    $this->actingAs($user)
+        ->get('/client/dashboard')
+        ->assertForbidden();
+});
