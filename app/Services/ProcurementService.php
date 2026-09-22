@@ -283,6 +283,11 @@ class ProcurementService
                 'received_at' => now(),
             ]);
 
+            $receipt->loadMissing('purchase');
+            if ($receipt->purchase) {
+                app(AccountingService::class)->postPurchaseReceipt($receipt->purchase);
+            }
+
             return $receipt->fresh();
         });
     }
@@ -341,17 +346,25 @@ class ProcurementService
 
     public function approveInvoice(SupplierInvoice $invoice, User $user): SupplierInvoice
     {
-        if ($invoice->three_way_match_status !== 'matched') {
-            throw new RuntimeException('Supplier invoice must pass three-way matching before approval.');
-        }
+        return DB::transaction(function () use ($invoice, $user) {
+            $invoice = SupplierInvoice::query()
+                ->lockForUpdate()
+                ->findOrFail($invoice->id);
 
-        $invoice->update([
-            'status' => 'approved',
-            'approved_by' => $user->id,
-            'approved_at' => now(),
-        ]);
+            if ($invoice->three_way_match_status !== 'matched') {
+                throw new RuntimeException('Supplier invoice must pass three-way matching before approval.');
+            }
 
-        return $invoice->fresh();
+            $invoice->update([
+                'status' => 'approved',
+                'approved_by' => $user->id,
+                'approved_at' => now(),
+            ]);
+
+            app(AccountingService::class)->postSupplierInvoice($invoice);
+
+            return $invoice->fresh();
+        });
     }
 
     public function markInvoicePaid(
@@ -359,17 +372,25 @@ class ProcurementService
         User $user,
         string $reference
     ): SupplierInvoice {
-        if ($invoice->status !== 'approved') {
-            throw new RuntimeException('Only approved supplier invoices can be marked paid.');
-        }
+        return DB::transaction(function () use ($invoice, $user, $reference) {
+            $invoice = SupplierInvoice::query()
+                ->lockForUpdate()
+                ->findOrFail($invoice->id);
 
-        $invoice->update([
-            'status' => 'paid',
-            'paid_by' => $user->id,
-            'paid_at' => now(),
-            'payment_reference' => $reference,
-        ]);
+            if ($invoice->status !== 'approved') {
+                throw new RuntimeException('Only approved supplier invoices can be marked paid.');
+            }
 
-        return $invoice->fresh();
+            $invoice->update([
+                'status' => 'paid',
+                'paid_by' => $user->id,
+                'paid_at' => now(),
+                'payment_reference' => $reference,
+            ]);
+
+            app(AccountingService::class)->postSupplierPayment($invoice);
+
+            return $invoice->fresh();
+        });
     }
 }
