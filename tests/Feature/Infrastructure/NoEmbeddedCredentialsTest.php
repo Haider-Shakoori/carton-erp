@@ -25,3 +25,19 @@ it('does not embed long literal API keys in release PHP source', function () {
         }
     }
 });
+
+
+it('does not seed fixed literal passwords', function () {
+    $pattern = "/Hash::make\(\s*['\"][^'\"]+['\"]\s*\)/";
+
+    foreach (File::allFiles(database_path('seeders')) as $file) {
+        if ($file->getExtension() !== 'php') {
+            continue;
+        }
+
+        expect(
+            File::get($file->getPathname()),
+            'Fixed password found in ' . $file->getRelativePathname()
+        )->not->toMatch($pattern);
+    }
+});
