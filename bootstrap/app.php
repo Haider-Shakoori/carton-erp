@@ -18,6 +18,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'role_or_permission' => \Spatie\Permission\Middleware\RoleOrPermissionMiddleware::class,
             'set_locale' => \App\Http\Middleware\SetLocale::class,
             'permission.feedback' => \App\Http\Middleware\CheckPermissionWithFeedback::class,
+            'client.portal' => \App\Http\Middleware\EnsureClientPortalAccess::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {
