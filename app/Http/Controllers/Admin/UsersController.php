@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\BusinessUnit;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -23,8 +24,9 @@ class UsersController extends Controller
             return trim(Str::after($perm->name, explode(' ', $perm->name, 2)[0]));
         });
         $roles = Role::orderBy('name')->get();
+        $businessUnits = BusinessUnit::query()->active()->get();
 
-        return view('admin.users.index', compact('permissions', 'roles'));
+        return view('admin.users.index', compact('permissions', 'roles', 'businessUnits'));
     }
 
 
@@ -47,7 +49,10 @@ class UsersController extends Controller
             'password' => 'required|string|min:6',
             'repeat_password' => 'required|same:password',
             'role_id' => 'required|exists:roles,id',
-            'permissions' => 'array'
+            'permissions' => 'array',
+            'business_units' => 'nullable|array',
+            'business_units.*' => 'integer|exists:business_units,id',
+            'default_business_unit_id' => 'nullable|integer|exists:business_units,id',
         ]);
 
         $user = new User();
@@ -70,6 +75,25 @@ class UsersController extends Controller
             }
         }
 
+        $businessUnitIds = collect($request->input('business_units', []))
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values();
+
+        if ($businessUnitIds->isNotEmpty()) {
+            $defaultId = (int) $request->input('default_business_unit_id', $businessUnitIds->first());
+
+            if (! $businessUnitIds->contains($defaultId)) {
+                $defaultId = (int) $businessUnitIds->first();
+            }
+
+            $user->businessUnits()->sync(
+                $businessUnitIds->mapWithKeys(
+                    fn ($id) => [$id => ['is_default' => $id === $defaultId]]
+                )->all()
+            );
+        }
+
         return redirect()->back()->with('success', 'User created successfully!');
     }
 
@@ -79,9 +103,11 @@ class UsersController extends Controller
      */
     public function show(string $id)
     {
-        $user = User::with('permissions')->findOrFail($id);
-        $allPermissions = Permission::all(); // Make sure this is included
-        return view('admin.users.show', compact('user', 'allPermissions'));
+        $user = User::with(['permissions', 'businessUnits'])->findOrFail($id);
+        $allPermissions = Permission::all();
+        $businessUnits = BusinessUnit::query()->active()->get();
+
+        return view('admin.users.show', compact('user', 'allPermissions', 'businessUnits'));
     }
 
     /**
@@ -203,6 +229,54 @@ class UsersController extends Controller
     }
 
 
+
+
+    public function updateBusinessUnits(Request $request, string $id)
+    {
+        $user = User::findOrFail($id);
+
+        $validated = $request->validate([
+            'business_units' => ['nullable', 'array'],
+            'business_units.*' => ['integer', 'exists:business_units,id'],
+            'default_business_unit_id' => ['nullable', 'integer', 'exists:business_units,id'],
+        ]);
+
+        $ids = collect($validated['business_units'] ?? [])
+            ->map(fn ($businessUnitId) => (int) $businessUnitId)
+            ->unique()
+            ->values();
+
+        if ($ids->isEmpty()) {
+            $user->businessUnits()->detach();
+
+            return back()->with(
+                'success',
+                'Business access reset to legacy all-business access for this user.'
+            );
+        }
+
+        $defaultId = (int) ($validated['default_business_unit_id'] ?? $ids->first());
+
+        if (! $ids->contains($defaultId)) {
+            return back()->withErrors([
+                'default_business_unit_id' => 'The default business must be one of the assigned businesses.',
+            ]);
+        }
+
+        $user->businessUnits()->sync(
+            $ids->mapWithKeys(
+                fn ($businessUnitId) => [
+                    $businessUnitId => ['is_default' => $businessUnitId === $defaultId],
+                ]
+            )->all()
+        );
+
+        if ((int) auth()->id() === (int) $user->id) {
+            app(\App\Support\Business\BusinessUnitContext::class)->reset();
+        }
+
+        return back()->with('success', 'Business unit access updated successfully.');
+    }
 
 
     public function fetchUsers(Request $request)
