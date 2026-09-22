@@ -4,6 +4,7 @@ namespace App\Support\Business;
 
 use App\Models\BusinessUnit;
 use App\Models\Setting;
+use App\Services\BusinessUnitProvisioningService;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Schema;
 
@@ -37,6 +38,8 @@ class BusinessUnitContext
         if (! Schema::hasTable('business_units')) {
             return $this->availableCache = collect();
         }
+
+        app(BusinessUnitProvisioningService::class)->ensureRequiredUnits();
 
         $query = BusinessUnit::query()->active();
 
