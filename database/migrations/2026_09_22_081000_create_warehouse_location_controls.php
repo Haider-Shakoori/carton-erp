@@ -51,7 +51,10 @@ return new class extends Migration
                 ['purchase_item_id', 'warehouse_location_id', 'condition_status'],
                 'inventory_location_balance_unique'
             );
-            $table->index(['warehouse_location_id', 'condition_status']);
+            $table->index(
+                ['warehouse_location_id', 'condition_status'],
+                'inv_loc_balance_location_condition_idx'
+            );
         });
 
         Schema::create('inventory_transfers', function (Blueprint $table) {
