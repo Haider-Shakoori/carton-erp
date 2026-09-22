@@ -414,14 +414,21 @@ class AccountingService
         });
     }
 
-    public function trialBalance(?Carbon $asOf = null): array
-    {
+    public function trialBalance(
+        ?Carbon $asOf = null,
+        bool $consolidated = false,
+        array $allowedBusinessUnitIds = []
+    ): array {
         $asOf ??= now();
 
-        $rows = DB::table('journal_lines')
+        $query = DB::table('journal_lines')
             ->join('journal_entries', 'journal_entries.id', '=', 'journal_lines.journal_entry_id')
             ->join('gl_accounts', 'gl_accounts.id', '=', 'journal_lines.gl_account_id')
-            ->whereDate('journal_entries.entry_date', '<=', $asOf->toDateString())
+            ->whereDate('journal_entries.entry_date', '<=', $asOf->toDateString());
+
+        $this->applyJournalBusinessScope($query, $consolidated, $allowedBusinessUnitIds);
+
+        $rows = $query
             ->select(
                 'gl_accounts.id',
                 'gl_accounts.code',
@@ -450,6 +457,177 @@ class AccountingService
             'debit_usd' => array_sum(array_column($rows, 'debit_usd')),
             'credit_usd' => array_sum(array_column($rows, 'credit_usd')),
         ];
+    }
+
+    public function profitAndLoss(
+        Carbon $from,
+        Carbon $to,
+        bool $consolidated = false,
+        array $allowedBusinessUnitIds = []
+    ): array {
+        $query = DB::table('journal_lines')
+            ->join('journal_entries', 'journal_entries.id', '=', 'journal_lines.journal_entry_id')
+            ->join('gl_accounts', 'gl_accounts.id', '=', 'journal_lines.gl_account_id')
+            ->whereBetween('journal_entries.entry_date', [$from->toDateString(), $to->toDateString()])
+            ->whereIn('gl_accounts.type', ['revenue', 'expense']);
+
+        $this->applyJournalBusinessScope($query, $consolidated, $allowedBusinessUnitIds);
+
+        $rows = $query
+            ->select(
+                'gl_accounts.code',
+                'gl_accounts.name',
+                'gl_accounts.type',
+                DB::raw('SUM(journal_lines.debit_usd) AS debit_usd'),
+                DB::raw('SUM(journal_lines.credit_usd) AS credit_usd')
+            )
+            ->groupBy('gl_accounts.id', 'gl_accounts.code', 'gl_accounts.name', 'gl_accounts.type')
+            ->orderBy('gl_accounts.code')
+            ->get()
+            ->map(function ($row) {
+                $amount = $row->type === 'revenue'
+                    ? (float) $row->credit_usd - (float) $row->debit_usd
+                    : (float) $row->debit_usd - (float) $row->credit_usd;
+
+                return [
+                    'code' => $row->code,
+                    'name' => $row->name,
+                    'type' => $row->type,
+                    'amount_usd' => round($amount, 6),
+                ];
+            });
+
+        $revenue = (float) $rows->where('type', 'revenue')->sum('amount_usd');
+        $expenses = (float) $rows->where('type', 'expense')->sum('amount_usd');
+
+        return [
+            'from' => $from->toDateString(),
+            'to' => $to->toDateString(),
+            'rows' => $rows->all(),
+            'revenue_usd' => round($revenue, 6),
+            'expenses_usd' => round($expenses, 6),
+            'net_profit_usd' => round($revenue - $expenses, 6),
+        ];
+    }
+
+    public function balanceSheet(
+        ?Carbon $asOf = null,
+        bool $consolidated = false,
+        array $allowedBusinessUnitIds = []
+    ): array {
+        $asOf ??= now();
+
+        $query = DB::table('journal_lines')
+            ->join('journal_entries', 'journal_entries.id', '=', 'journal_lines.journal_entry_id')
+            ->join('gl_accounts', 'gl_accounts.id', '=', 'journal_lines.gl_account_id')
+            ->whereDate('journal_entries.entry_date', '<=', $asOf->toDateString())
+            ->whereIn('gl_accounts.type', ['asset', 'liability', 'equity']);
+
+        $this->applyJournalBusinessScope($query, $consolidated, $allowedBusinessUnitIds);
+
+        $rows = $query
+            ->select(
+                'gl_accounts.code',
+                'gl_accounts.name',
+                'gl_accounts.type',
+                DB::raw('SUM(journal_lines.debit_usd) AS debit_usd'),
+                DB::raw('SUM(journal_lines.credit_usd) AS credit_usd')
+            )
+            ->groupBy('gl_accounts.id', 'gl_accounts.code', 'gl_accounts.name', 'gl_accounts.type')
+            ->orderBy('gl_accounts.code')
+            ->get()
+            ->map(function ($row) {
+                $amount = $row->type === 'asset'
+                    ? (float) $row->debit_usd - (float) $row->credit_usd
+                    : (float) $row->credit_usd - (float) $row->debit_usd;
+
+                return [
+                    'code' => $row->code,
+                    'name' => $row->name,
+                    'type' => $row->type,
+                    'amount_usd' => round($amount, 6),
+                ];
+            });
+
+        return [
+            'as_of' => $asOf->toDateString(),
+            'rows' => $rows->all(),
+            'assets_usd' => round((float) $rows->where('type', 'asset')->sum('amount_usd'), 6),
+            'liabilities_usd' => round((float) $rows->where('type', 'liability')->sum('amount_usd'), 6),
+            'equity_usd' => round((float) $rows->where('type', 'equity')->sum('amount_usd'), 6),
+        ];
+    }
+
+    public function cashFlow(
+        Carbon $from,
+        Carbon $to,
+        bool $consolidated = false,
+        array $allowedBusinessUnitIds = []
+    ): array {
+        $cashAccountId = $this->map()->cash_account_id;
+
+        $query = DB::table('journal_lines')
+            ->join('journal_entries', 'journal_entries.id', '=', 'journal_lines.journal_entry_id')
+            ->where('journal_lines.gl_account_id', $cashAccountId)
+            ->whereBetween('journal_entries.entry_date', [$from->toDateString(), $to->toDateString()]);
+
+        $this->applyJournalBusinessScope($query, $consolidated, $allowedBusinessUnitIds);
+
+        $rows = $query
+            ->select(
+                'journal_entries.source_type',
+                DB::raw('SUM(journal_lines.debit_usd) AS cash_in_usd'),
+                DB::raw('SUM(journal_lines.credit_usd) AS cash_out_usd')
+            )
+            ->groupBy('journal_entries.source_type')
+            ->orderBy('journal_entries.source_type')
+            ->get()
+            ->map(fn ($row) => [
+                'source_type' => $row->source_type ?: 'manual',
+                'cash_in_usd' => round((float) $row->cash_in_usd, 6),
+                'cash_out_usd' => round((float) $row->cash_out_usd, 6),
+                'net_usd' => round((float) $row->cash_in_usd - (float) $row->cash_out_usd, 6),
+            ]);
+
+        return [
+            'from' => $from->toDateString(),
+            'to' => $to->toDateString(),
+            'rows' => $rows->all(),
+            'cash_in_usd' => round((float) $rows->sum('cash_in_usd'), 6),
+            'cash_out_usd' => round((float) $rows->sum('cash_out_usd'), 6),
+            'net_cash_flow_usd' => round((float) $rows->sum('net_usd'), 6),
+        ];
+    }
+
+    private function applyJournalBusinessScope(
+        $query,
+        bool $consolidated,
+        array $allowedBusinessUnitIds
+    ): void {
+        $context = app(\App\Support\Business\BusinessUnitContext::class);
+
+        if (! $context->enabled()) {
+            return;
+        }
+
+        if ($consolidated) {
+            if ($allowedBusinessUnitIds !== []) {
+                $query->where(function ($businessQuery) use ($allowedBusinessUnitIds) {
+                    $businessQuery->whereIn('journal_entries.business_unit_id', $allowedBusinessUnitIds)
+                        ->orWhereNull('journal_entries.business_unit_id');
+                });
+            }
+
+            return;
+        }
+
+        $current = $context->current();
+        if ($current) {
+            $query->where(function ($businessQuery) use ($current) {
+                $businessQuery->where('journal_entries.business_unit_id', $current->id)
+                    ->orWhereNull('journal_entries.business_unit_id');
+            });
+        }
     }
 
     private function createEntry(
