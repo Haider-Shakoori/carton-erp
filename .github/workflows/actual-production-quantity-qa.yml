@@ -154,6 +154,7 @@ jobs:
           php artisan test tests/Feature/CartonSpecification/CartonSpecificationServiceTest.php
           php artisan test tests/Feature/CartonSpecification/CartonQuotationTest.php
           php artisan test tests/Feature/Inventory/ReelRemnantTrackingTest.php
+          php artisan test tests/Feature/Inventory/StockControlNotificationTest.php
           php artisan test tests/Feature/Inventory/StockNotificationHardeningTest.php
           php artisan test tests/Feature/GoldenPath/RealWorldCartonWorkflowRemediationTest.php
           php artisan test tests/Feature/Uat/RealClientCnpWorkflowTest.php
