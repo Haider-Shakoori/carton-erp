@@ -13,6 +13,7 @@ use App\Models\Transaction;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use App\Services\AccountingService;
 use App\Services\InventoryLocationService;
 use App\Services\ProcurementService;
 use App\Models\Setting;
@@ -354,6 +355,7 @@ class PurchaseOrderController extends Controller
                 }
 
                 app(ProcurementService::class)->ensureLegacyGoodsReceipt($purchase);
+                app(AccountingService::class)->postPurchaseReceipt($purchase);
             }
 
             DB::commit();
