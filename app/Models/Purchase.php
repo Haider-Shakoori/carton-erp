@@ -29,6 +29,11 @@ class Purchase extends Model
         'usd_subtotal',
         'usd_expense_total',
         'usd_grand_total',
+        'purchase_request_id',
+        'rfq_quote_id',
+        'approval_status',
+        'approved_by',
+        'approved_at',
     ];
 
     protected $casts = [
@@ -41,6 +46,7 @@ class Purchase extends Model
         'usd_grand_total' => 'decimal:2',
         'purchase_date' => 'date',
         'arrival_date' => 'date',
+        'approved_at' => 'datetime',
     ];
 
     // ============================================================
@@ -53,6 +59,31 @@ class Purchase extends Model
     public function supplier()
     {
         return $this->belongsTo(Account::class, 'supplier_id');
+    }
+
+    public function purchaseRequest()
+    {
+        return $this->belongsTo(PurchaseRequest::class);
+    }
+
+    public function rfqQuote()
+    {
+        return $this->belongsTo(RfqQuote::class);
+    }
+
+    public function approvedBy()
+    {
+        return $this->belongsTo(User::class, 'approved_by');
+    }
+
+    public function goodsReceipts()
+    {
+        return $this->hasMany(GoodsReceipt::class);
+    }
+
+    public function supplierInvoices()
+    {
+        return $this->hasMany(SupplierInvoice::class);
     }
 
     /**

@@ -64,11 +64,11 @@ class StockDeductionService
             return 0.0;
         }
 
-        $isRoll = $batches->contains(fn (PurchaseItem $batch) => $batch->isRollBatch());
+        $locationInventory = app(InventoryLocationService::class);
 
-        return $isRoll
-            ? (float) $batches->sum('qty_kg_available')
-            : (float) $batches->sum('qty_available');
+        return (float) $batches->sum(
+            fn (PurchaseItem $batch) => $locationInventory->availableForBatch($batch)
+        );
     }
 
     /**
@@ -124,28 +124,39 @@ class StockDeductionService
             })->toArray(),
         ]);
 
-        // ✅ FIX: SUM available quantity for each product_id, using the unit
-        // that inventory is actually tracked in (kg for roll batches).
+        // Warehouse condition is part of usable availability. Blocked and
+        // damaged stock remains physically on hand but is never production-eligible.
+        $locationInventory = app(InventoryLocationService::class);
+        $batchModels = PurchaseItem::query()
+            ->whereIn('id', $allBatches->pluck('id'))
+            ->get()
+            ->keyBy('id');
+
         $availableByMaterial = $allBatches
             ->groupBy('product_id')
-            ->map(function ($batches) {
+            ->map(function ($batches) use ($locationInventory, $batchModels) {
                 $first = $batches->first();
                 $isRoll = $first && strtolower((string) $first->unit) === 'roll';
 
+                $details = $batches->map(function ($batch) use ($locationInventory, $batchModels, $isRoll) {
+                    $model = $batchModels->get($batch->id);
+                    $available = $model
+                        ? $locationInventory->availableForBatch($model)
+                        : ($isRoll
+                            ? (float) $batch->qty_kg_available
+                            : (float) $batch->qty_available);
+
+                    return [
+                        'id' => $batch->id,
+                        'qty_available' => $available,
+                        'purchase_no' => $batch->purchase_no,
+                    ];
+                });
+
                 return [
                     'is_roll' => $isRoll,
-                    'total_available' => $isRoll
-                        ? (float) $batches->sum('qty_kg_available')
-                        : (float) $batches->sum('qty_available'),
-                    'batches' => $batches->map(function($batch) use ($isRoll) {
-                        return [
-                            'id' => $batch->id,
-                            'qty_available' => $isRoll
-                                ? (float) $batch->qty_kg_available
-                                : (float) $batch->qty_available,
-                            'purchase_no' => $batch->purchase_no,
-                        ];
-                    })->toArray(),
+                    'total_available' => (float) $details->sum('qty_available'),
+                    'batches' => $details->toArray(),
                 ];
             })
             ->toArray();
@@ -501,6 +512,7 @@ class StockDeductionService
 
             $records = collect();
             $plannedRemaining = max($plannedQuantity, 0);
+            $locationInventory = app(InventoryLocationService::class);
 
             foreach ($prepared as $selection) {
                 /** @var PurchaseItem $batch */
@@ -535,6 +547,7 @@ class StockDeductionService
                 $batch->qty_used = (float) ($batch->qty_used ?? 0)
                     + $consumedRolls;
                 $batch->save();
+                $locationInventory->syncAfterBatchChange($batch);
 
                 $usdUnitCost = $batch->landedCostPerKg();
                 $exchangeRate = $this->resolveConsumptionExchangeRate(
@@ -651,15 +664,13 @@ class StockDeductionService
             })->toArray(),
         ]);
 
-        // Availability must be judged in the same unit as the incoming requirement.
-        // Roll batches are consumed in kg; all other batches in their native quantity.
+        // Availability is the warehouse-eligible quantity: blocked/damaged
+        // balances remain physically on hand but cannot be consumed.
         $isRequirementRoll = $batches->contains(fn (PurchaseItem $b) => $b->isRollBatch());
-
-        if ($isRequirementRoll) {
-            $totalAvailable = (float) $batches->sum('qty_kg_available');
-        } else {
-            $totalAvailable = (float) $batches->sum('qty_available');
-        }
+        $locationInventory = app(InventoryLocationService::class);
+        $totalAvailable = (float) $batches->sum(
+            fn (PurchaseItem $batch) => $locationInventory->availableForBatch($batch)
+        );
 
         if ($totalAvailable + self::EPSILON < $actualQuantity) {
             Log::error('❌ Insufficient stock', [
@@ -691,7 +702,12 @@ class StockDeductionService
             // required by the BOM. For every other unit we keep the legacy native
             // quantity behaviour untouched.
             if ($isRoll) {
-                $consumedKg = min((float) $batch->qty_kg_available, $remaining);
+                $warehouseAvailable = $locationInventory->availableForBatch($batch);
+                $consumedKg = min(
+                    (float) $batch->qty_kg_available,
+                    $warehouseAvailable,
+                    $remaining
+                );
                 $consumedKg = max($consumedKg, 0);
 
                 if ($consumedKg <= self::EPSILON) {
@@ -706,6 +722,7 @@ class StockDeductionService
                 $batch->qty_available = max((float) $batch->qty_available - $consumedRolls, 0);
                 $batch->qty_used = (float) ($batch->qty_used ?? 0) + $consumedRolls;
                 $batch->save();
+                app(InventoryLocationService::class)->syncAfterBatchChange($batch);
 
                 $usdUnitCost = $batch->landedCostPerKg();
                 $exchangeRate = $this->resolveConsumptionExchangeRate($saleId, $batch);
@@ -724,7 +741,10 @@ class StockDeductionService
                     'new_qty_available' => $batch->qty_available,
                 ]);
             } else {
-                $available = (float) $batch->qty_available;
+                $available = min(
+                    (float) $batch->qty_available,
+                    $locationInventory->availableForBatch($batch)
+                );
                 $quantityFromBatch = min($available, $remaining);
 
                 if ($quantityFromBatch <= self::EPSILON) {
@@ -744,6 +764,7 @@ class StockDeductionService
                 }
 
                 $batch->save();
+                $locationInventory->syncAfterBatchChange($batch);
 
                 Log::info('✅ Deducted from batch', [
                     'purchase_item_id' => $batch->id,
@@ -1022,6 +1043,7 @@ class StockDeductionService
                 }
 
                 $batch->save();
+                app(InventoryLocationService::class)->syncAfterBatchChange($batch);
 
                 if ($batch->isRollBatch()) {
                     app(ReelInventoryService::class)

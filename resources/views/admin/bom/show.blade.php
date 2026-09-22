@@ -198,10 +198,38 @@
                         </span>
                     </p>
                 </div>
-                <div class="d-flex gap-2">
-                    <a href="{{ route('bom.edit', $bom) }}" class="btn btn-primary">
-                        <i class="bi bi-pencil me-1"></i> {{ __('ui.edit') }}
-                    </a>
+                <div class="d-flex gap-2 flex-wrap justify-content-end">
+                    @if(!$bom->locked_at)
+                        <a href="{{ route('bom.edit', $bom) }}" class="btn btn-primary">
+                            <i class="bi bi-pencil me-1"></i> {{ __('ui.edit') }}
+                        </a>
+                    @endif
+
+                    @can('revise bom')
+                        <form method="POST" action="{{ route('bom.revise', $bom) }}">
+                            @csrf
+                            <button class="btn btn-outline-primary">
+                                <i class="bi bi-files me-1"></i> Create Revision
+                            </button>
+                        </form>
+                    @endcan
+
+                    @if($bom->status === 'draft')
+                        @can('approve bom')
+                            <form method="POST" action="{{ route('bom.approve-revision', $bom) }}" class="d-flex gap-2">
+                                @csrf
+                                <input type="date"
+                                       class="form-control"
+                                       name="effective_from"
+                                       value="{{ now()->toDateString() }}"
+                                       aria-label="Effective from">
+                                <button class="btn btn-success text-nowrap">
+                                    <i class="bi bi-shield-check me-1"></i> Approve & Lock
+                                </button>
+                            </form>
+                        @endcan
+                    @endif
+
                     <a href="{{ route('bom.index') }}" class="btn btn-light">
                         <i class="bi bi-arrow-left me-1"></i> Back
                     </a>
@@ -227,6 +255,39 @@
                             <div class="detail-label">{{ __('ui.version') }}</div>
                             <div class="detail-value">v{{ $bom->version }}</div>
                         </div>
+                        <div class="mb-3">
+                            <div class="detail-label">Revision Control</div>
+                            <div class="detail-value">
+                                Revision {{ $bom->revision_sequence ?? 1 }}
+                                @if($bom->locked_at)
+                                    <span class="badge bg-success ms-1"><i class="bi bi-lock-fill me-1"></i>Locked</span>
+                                @else
+                                    <span class="badge bg-warning text-dark ms-1">Editable Draft</span>
+                                @endif
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <div class="detail-label">Effective Period</div>
+                            <div class="detail-value">
+                                {{ $bom->effective_from?->format('d M Y') ?? 'Not effective yet' }}
+                                @if($bom->effective_to)
+                                    — {{ $bom->effective_to->format('d M Y') }}
+                                @elseif($bom->effective_from)
+                                    — Open
+                                @endif
+                            </div>
+                        </div>
+                        @if($bom->approved_at)
+                            <div class="mb-3">
+                                <div class="detail-label">Approved</div>
+                                <div class="detail-value">
+                                    {{ $bom->approved_at->format('d M Y H:i') }}
+                                    @if($bom->approvedBy)
+                                        <span class="text-muted small">by {{ $bom->approvedBy->name }}</span>
+                                    @endif
+                                </div>
+                            </div>
+                        @endif
                         <div class="mb-3">
                             <div class="detail-label">{{ __('ui.formula_type') }}</div>
                             <div class="detail-value">

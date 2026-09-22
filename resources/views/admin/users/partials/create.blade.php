@@ -61,6 +61,45 @@
                 </div>
             </div>
 
+            <div class="card border-0 bg-light mt-4">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start gap-3 mb-3">
+                        <div>
+                            <h6 class="mb-1 text-primary"><i class="bi bi-buildings me-1"></i> Business Access</h6>
+                            <div class="small text-muted">
+                                Select 3D Carton, Syrup Pack, or both. Leaving all unchecked keeps legacy all-business access.
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row g-3">
+                        @foreach($businessUnits as $businessUnit)
+                            <div class="col-md-6">
+                                <div class="form-check border rounded-3 p-3 ps-5 bg-white h-100">
+                                    <input class="form-check-input business-unit-checkbox"
+                                           type="checkbox"
+                                           name="business_units[]"
+                                           value="{{ $businessUnit->id }}"
+                                           id="create-business-unit-{{ $businessUnit->id }}">
+                                    <label class="form-check-label fw-semibold" for="create-business-unit-{{ $businessUnit->id }}">
+                                        <i class="bi {{ $businessUnit->icon ?: 'bi-building' }} me-1"></i>
+                                        {{ $businessUnit->name }}
+                                    </label>
+                                </div>
+                            </div>
+                        @endforeach
+                        <div class="col-12">
+                            <label class="form-label">Default Business</label>
+                            <select name="default_business_unit_id" class="form-select" id="createDefaultBusinessUnit">
+                                <option value="">Use first assigned business</option>
+                                @foreach($businessUnits as $businessUnit)
+                                    <option value="{{ $businessUnit->id }}">{{ $businessUnit->name }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- Permissions Section -->
             <div class="mt-4">
                 <h6 class="text-primary">{{ __('ui.assign_permissions') }}</h6>

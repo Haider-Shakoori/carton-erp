@@ -38,9 +38,9 @@ class PermissionsSeeder extends Seeder
             // ============================================================
             // PRODUCTION (NEW)
             // ============================================================
-            'bom' => ['view', 'create', 'update', 'delete'],
+            'bom' => ['view', 'create', 'update', 'delete', 'revise', 'approve'],
             'production planning' => ['view'],
-            'production orders' => ['view', 'create', 'update', 'delete'],
+            'production orders' => ['view', 'create', 'update', 'delete', 'approve', 'close', 'reopen', 'reverse'],
             'work orders' => ['view', 'create', 'update', 'delete'],
             'quality' => ['view', 'create', 'update', 'delete'],
 
@@ -48,8 +48,14 @@ class PermissionsSeeder extends Seeder
             // INVENTORY & PURCHASING
             // ============================================================
             'suppliers' => ['view', 'create', 'update', 'delete', 'print', 'send-whatsapp'],
-            'purchase orders' => ['view', 'create', 'update', 'delete', 'print', 'send-whatsapp'],
-            'stock' => ['view', 'create', 'update', 'delete'],
+            'purchase orders' => ['view', 'create', 'update', 'delete', 'approve', 'print', 'send-whatsapp'],
+            'purchase requests' => ['view', 'create', 'submit', 'approve'],
+            'rfq' => ['view', 'create', 'update', 'award'],
+            'goods receipts' => ['view', 'create', 'post'],
+            'supplier invoices' => ['view', 'create', 'match', 'approve', 'pay'],
+            'stock' => ['view', 'create', 'update', 'delete', 'condition'],
+            'warehouses' => ['view', 'create', 'update'],
+            'stock transfers' => ['view', 'create', 'approve'],
             'products' => ['view', 'create', 'update', 'delete', 'print', 'send-whatsapp'],
             'stock movements' => ['view'], // NEW
             'stock reconciliations' => ['view', 'create', 'update', 'submit', 'approve', 'post', 'cancel', 'investigate', 'resolve', 'escalate', 'review'],
@@ -82,11 +88,13 @@ class PermissionsSeeder extends Seeder
             'inventory reports' => ['view'],
             'financial reports' => ['view'],
             'reports' => ['view', 'create', 'update', 'delete'],
+            'management reporting' => ['view', 'consolidated'],
 
             // ============================================================
             // ACCOUNTING
             // ============================================================
             'journal' => ['view', 'delete', 'export', 'print', 'send-whatsapp'],
+            'financial accounting' => ['view', 'manage-periods'],
             'creditors' => ['view', 'create', 'update', 'delete'],
             'debtors' => ['view', 'create', 'update', 'delete'],
             'account categories' => ['view', 'create', 'update', 'delete'],

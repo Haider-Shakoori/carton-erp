@@ -38,7 +38,21 @@ class BusinessUnitContext
             return $this->availableCache = collect();
         }
 
-        return $this->availableCache = BusinessUnit::query()->active()->get();
+        $query = BusinessUnit::query()->active();
+
+        if (auth()->check()) {
+            $user = auth()->user();
+            $assignedIds = $user->businessUnits()->pluck('business_units.id');
+
+            // Existing users remain backward-compatible until an administrator
+            // explicitly assigns business access. Once assigned, the allow-list
+            // becomes authoritative.
+            if ($assignedIds->isNotEmpty()) {
+                $query->whereIn('id', $assignedIds);
+            }
+        }
+
+        return $this->availableCache = $query->get();
     }
 
     public function current(): ?BusinessUnit
@@ -68,7 +82,21 @@ class BusinessUnitContext
             return $this->currentCache = $current;
         }
 
-        $defaultId = (int) (Setting::query()->value('default_business_unit_id') ?? 0);
+        $defaultId = 0;
+
+        if (auth()->check() && method_exists(auth()->user(), 'businessUnits')) {
+            $defaultId = (int) (
+                auth()->user()
+                    ->businessUnits()
+                    ->wherePivot('is_default', true)
+                    ->value('business_units.id') ?? 0
+            );
+        }
+
+        if ($defaultId <= 0) {
+            $defaultId = (int) (Setting::query()->value('default_business_unit_id') ?? 0);
+        }
+
         $current = $available->firstWhere('id', $defaultId) ?? $available->first();
 
         session()->put(self::SESSION_KEY, $current->id);
@@ -93,6 +121,10 @@ class BusinessUnitContext
 
         if (! $businessUnit->is_active) {
             throw new \RuntimeException('The selected business unit is inactive.');
+        }
+
+        if (! $this->available()->contains('id', $businessUnit->id)) {
+            throw new \RuntimeException('You do not have access to the selected business unit.');
         }
 
         session()->put(self::SESSION_KEY, $businessUnit->id);

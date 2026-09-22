@@ -41,6 +41,7 @@ class PurchaseItem extends Model
         'qty_kg_adjusted',
         'qty_kg_available',
         'landed_cost_per_kg',
+        'warehouse_location_id',
     ];
 
     protected $casts = [
@@ -81,6 +82,16 @@ class PurchaseItem extends Model
     public function product(): BelongsTo
     {
         return $this->belongsTo(Product::class, 'product_id');
+    }
+
+    public function warehouseLocation(): BelongsTo
+    {
+        return $this->belongsTo(WarehouseLocation::class, 'warehouse_location_id');
+    }
+
+    public function locationBalances()
+    {
+        return $this->hasMany(InventoryLocationBalance::class);
     }
 
     public function reels()

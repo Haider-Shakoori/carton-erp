@@ -2,7 +2,9 @@
 // routes/web.php
 
 use App\Http\Controllers\Admin\DashboardController;
+use App\Http\Controllers\Admin\ManagementReportingController;
 use App\Http\Controllers\Admin\AccountsController;
+use App\Http\Controllers\Admin\AccountingController;
 use App\Http\Controllers\Admin\AgentController;
 use App\Http\Controllers\Admin\AppSettingsController;
 use App\Http\Controllers\Admin\AuditLogController;
@@ -43,10 +45,13 @@ use App\Http\Controllers\Admin\TransactionsController;
 use App\Http\Controllers\Admin\UsersController;
 use App\Http\Controllers\WhatsAppController;
 use App\Http\Controllers\Admin\BOMController;
+use App\Http\Controllers\Admin\BOMGovernanceController;
 use App\Http\Controllers\Admin\BusinessUnitSwitchController;
 use App\Http\Controllers\Admin\CartonQuotationController;
 use App\Http\Controllers\Admin\ProductionOrderController;
+use App\Http\Controllers\Admin\ProcurementController;
 use App\Http\Controllers\Admin\WorkOrderController;
+use App\Http\Controllers\Admin\WarehouseController;
 use App\Http\Controllers\Admin\ShareholderWithdrawalController;
 use App\Http\Controllers\Admin\ShareholderController;
 use App\Http\Controllers\Admin\ShareholderSettingsController;
@@ -137,6 +142,22 @@ Route::middleware(['auth', InitializeBusinessUnitContext::class])->prefix('admin
             ->name('rebaseline')->middleware('permission.feedback:update stock');
     });
 
+    // Warehouses / location control
+    Route::get('warehouses', [WarehouseController::class, 'index'])
+        ->name('admin.warehouses.index')->middleware('permission.feedback:view warehouses');
+    Route::get('warehouses/transfers', [WarehouseController::class, 'transfers'])
+        ->name('admin.warehouses.transfers')->middleware('permission.feedback:view stock transfers');
+    Route::get('warehouses/transfers/create', [WarehouseController::class, 'createTransfer'])
+        ->name('admin.warehouses.transfers.create')->middleware('permission.feedback:create stock transfers');
+    Route::post('warehouses/transfers', [WarehouseController::class, 'storeTransfer'])
+        ->name('admin.warehouses.transfers.store')->middleware('permission.feedback:create stock transfers');
+    Route::post('warehouses/transfers/{inventoryTransfer}/approve', [WarehouseController::class, 'approveTransfer'])
+        ->name('admin.warehouses.transfers.approve')->middleware('permission.feedback:approve stock transfers');
+    Route::post('warehouses/transfers/{inventoryTransfer}/complete', [WarehouseController::class, 'completeTransfer'])
+        ->name('admin.warehouses.transfers.complete')->middleware('permission.feedback:update stock');
+    Route::patch('warehouses/balances/{balance}/condition', [WarehouseController::class, 'updateCondition'])
+        ->name('admin.warehouses.balances.condition')->middleware('permission.feedback:condition stock');
+
     // Stock
     Route::get('stock', [StockController::class, 'index'])->name('admin.stock.index')->middleware('permission.feedback:view stock');
     Route::get('/{product}/stock-in', [StockController::class, 'stockIn'])->name('admin.stock.stock-in')->middleware('permission.feedback:update stock');
@@ -144,6 +165,55 @@ Route::middleware(['auth', InitializeBusinessUnitContext::class])->prefix('admin
     Route::get('products/{product}', [App\Http\Controllers\Admin\StockController::class, 'show'])->name('admin.products.show')->middleware('permission.feedback:view stock');
     Route::get('/fetch', [AccountsController::class, 'fetchAccounts'])->name('fetch')->middleware('permission.feedback:view customers');
     Route::get('/products/low-stock', [App\Http\Controllers\Admin\ProductController::class, 'getLowStockProducts'])->name('admin.products.low-stock')->middleware('permission.feedback:view stock');
+
+    // Procure-to-Pay
+    Route::prefix('procurement')->name('admin.procurement.')->group(function () {
+        Route::get('/', [ProcurementController::class, 'index'])
+            ->name('index')->middleware('permission.feedback:view purchase requests');
+
+        Route::get('/requests/create', [ProcurementController::class, 'createRequest'])
+            ->name('requests.create')->middleware('permission.feedback:create purchase requests');
+        Route::post('/requests', [ProcurementController::class, 'storeRequest'])
+            ->name('requests.store')->middleware('permission.feedback:create purchase requests');
+        Route::post('/requests/{purchaseRequest}/submit', [ProcurementController::class, 'submitRequest'])
+            ->name('requests.submit')->middleware('permission.feedback:submit purchase requests');
+        Route::post('/requests/{purchaseRequest}/approve', [ProcurementController::class, 'approveRequest'])
+            ->name('requests.approve')->middleware('permission.feedback:approve purchase requests');
+
+        Route::get('/requests/{purchaseRequest}/rfq/create', [ProcurementController::class, 'createRfq'])
+            ->name('rfqs.create')->middleware('permission.feedback:create rfq');
+        Route::post('/requests/{purchaseRequest}/rfq', [ProcurementController::class, 'storeRfq'])
+            ->name('rfqs.store')->middleware('permission.feedback:create rfq');
+        Route::get('/rfqs/{rfq}', [ProcurementController::class, 'showRfq'])
+            ->name('rfqs.show')->middleware('permission.feedback:view rfq');
+        Route::post('/rfqs/{rfq}/open', [ProcurementController::class, 'openRfq'])
+            ->name('rfqs.open')->middleware('permission.feedback:update rfq');
+        Route::post('/rfqs/{rfq}/quotes', [ProcurementController::class, 'storeQuote'])
+            ->name('rfqs.quotes.store')->middleware('permission.feedback:update rfq');
+        Route::post('/quotes/{quote}/select', [ProcurementController::class, 'selectQuote'])
+            ->name('quotes.select')->middleware('permission.feedback:award rfq');
+
+        Route::get('/purchases/{purchase}/receipts/create', [ProcurementController::class, 'createReceipt'])
+            ->name('receipts.create')->middleware('permission.feedback:create goods receipts');
+        Route::post('/purchases/{purchase}/receipts', [ProcurementController::class, 'storeReceipt'])
+            ->name('receipts.store')->middleware('permission.feedback:create goods receipts');
+        Route::post('/receipts/{receipt}/post', [ProcurementController::class, 'postReceipt'])
+            ->name('receipts.post')->middleware('permission.feedback:post goods receipts');
+
+        Route::get('/purchases/{purchase}/invoices/create', [ProcurementController::class, 'createInvoice'])
+            ->name('invoices.create')->middleware('permission.feedback:create supplier invoices');
+        Route::post('/purchases/{purchase}/invoices', [ProcurementController::class, 'storeInvoice'])
+            ->name('invoices.store')->middleware('permission.feedback:create supplier invoices');
+        Route::post('/invoices/{invoice}/match', [ProcurementController::class, 'rematchInvoice'])
+            ->name('invoices.match')->middleware('permission.feedback:match supplier invoices');
+        Route::post('/invoices/{invoice}/approve', [ProcurementController::class, 'approveInvoice'])
+            ->name('invoices.approve')->middleware('permission.feedback:approve supplier invoices');
+        Route::post('/invoices/{invoice}/pay', [ProcurementController::class, 'payInvoice'])
+            ->name('invoices.pay')->middleware('permission.feedback:pay supplier invoices');
+    });
+
+    Route::post('purchase-orders/{id}/approve', [PurchaseOrderController::class, 'approve'])
+        ->name('admin.purchase-orders.approve')->middleware('permission.feedback:approve purchase orders');
 
     // Stock Reconciliation / Cycle Counts
     Route::prefix('stock-reconciliations')->name('admin.stock-reconciliations.')->group(function () {
@@ -445,6 +515,23 @@ Route::middleware(['auth', InitializeBusinessUnitContext::class])->prefix('admin
     });
 
     // ==================== REPORTS ====================
+    Route::get('/management-reporting', [ManagementReportingController::class, 'index'])
+        ->name('admin.management-reporting.index')
+        ->middleware('permission.feedback:view management reporting');
+
+    Route::prefix('accounting')->name('admin.accounting.')->group(function () {
+        Route::get('/', [AccountingController::class, 'index'])
+            ->name('index')->middleware('permission.feedback:view financial accounting');
+        Route::post('/periods', [AccountingController::class, 'storePeriod'])
+            ->name('periods.store')->middleware('permission.feedback:manage-periods financial accounting');
+        Route::post('/periods/{period}/close', [AccountingController::class, 'closePeriod'])
+            ->name('periods.close')->middleware('permission.feedback:manage-periods financial accounting');
+        Route::post('/periods/{period}/lock', [AccountingController::class, 'lockPeriod'])
+            ->name('periods.lock')->middleware('permission.feedback:manage-periods financial accounting');
+        Route::post('/periods/{period}/reopen', [AccountingController::class, 'reopenPeriod'])
+            ->name('periods.reopen')->middleware('permission.feedback:manage-periods financial accounting');
+    });
+
     Route::prefix('reports')->name('admin.reports.')->group(function () {
         Route::get('/customers', [ReportsController::class, 'customers'])->name('customers')->middleware('permission.feedback:view customers reports');
         Route::get('/customers/data', [ReportsController::class, 'customersData'])->name('customers.data')->middleware('permission.feedback:view customers reports');
@@ -478,6 +565,7 @@ Route::middleware(['auth', InitializeBusinessUnitContext::class])->prefix('admin
         Route::put('/{id}/update-password', [UsersController::class, 'updatePassword'])->name('update-password')->middleware('permission.feedback:update users');
         Route::post('/{id}/assign-permissions', [UsersController::class, 'assignPermissions'])->name('assign-permissions')->middleware('permission.feedback:update users');
         Route::post('/{id}/update-permissions', [UsersController::class, 'updatePermissions'])->name('update-permissions')->middleware('permission.feedback:update users');
+        Route::post('/{id}/business-units', [UsersController::class, 'updateBusinessUnits'])->name('business-units')->middleware('permission.feedback:update users');
     });
 
     // ==================== ROLES ====================
@@ -598,6 +686,8 @@ Route::middleware(['auth', InitializeBusinessUnitContext::class])->prefix('admin
     Route::delete('/bom/{bom}', [BOMController::class, 'destroy'])->name('bom.destroy')->middleware('permission.feedback:delete bom');
     Route::post('/bom/{bom}/clone', [BOMController::class, 'clone'])->name('bom.clone')->middleware('permission.feedback:create bom');
     Route::post('/bom/{bom}/toggle-status', [BOMController::class, 'toggleStatus'])->name('bom.toggle-status')->middleware('permission.feedback:update bom');
+    Route::post('/bom/{bom}/revise', [BOMGovernanceController::class, 'revise'])->name('bom.revise')->middleware('permission.feedback:revise bom');
+    Route::post('/bom/{bom}/approve-revision', [BOMGovernanceController::class, 'approve'])->name('bom.approve-revision')->middleware('permission.feedback:approve bom');
     Route::post('/bom/calculate', [BOMController::class, 'calculate'])->name('bom.calculate')->middleware('permission.feedback:create bom');
     Route::get('bom/get-material-cost/{material_id}', [BOMController::class, 'getMaterialCost'])->name('bom.get-material-cost')->middleware('permission.feedback:view bom');
 
@@ -614,7 +704,11 @@ Route::middleware(['auth', InitializeBusinessUnitContext::class])->prefix('admin
     Route::get('production-orders/{productionOrder}/edit', [ProductionOrderController::class, 'edit'])->name('production-orders.edit')->middleware('permission.feedback:update production orders');
     Route::put('production-orders/{productionOrder}', [ProductionOrderController::class, 'update'])->name('production-orders.update')->middleware('permission.feedback:update production orders');
     Route::post('production-orders/{productionOrder}/start', [ProductionOrderController::class, 'startProduction'])->name('production-orders.start')->middleware('permission.feedback:update production orders');
+    Route::post('production-orders/{productionOrder}/approve', [ProductionOrderController::class, 'approveProduction'])->name('production-orders.approve')->middleware('permission.feedback:approve production orders');
     Route::post('production-orders/{productionOrder}/complete', [ProductionOrderController::class, 'completeProduction'])->name('production-orders.complete')->middleware('permission.feedback:update production orders');
+    Route::post('production-orders/{productionOrder}/close', [ProductionOrderController::class, 'closeProduction'])->name('production-orders.close')->middleware('permission.feedback:close production orders');
+    Route::post('production-orders/{productionOrder}/reopen', [ProductionOrderController::class, 'reopenProduction'])->name('production-orders.reopen')->middleware('permission.feedback:reopen production orders');
+    Route::post('production-orders/{productionOrder}/reverse-completion', [ProductionOrderController::class, 'reverseCompletion'])->name('production-orders.reverse-completion')->middleware('permission.feedback:reverse production orders');
     Route::post('production-orders/{productionOrder}/cancel', [ProductionOrderController::class, 'cancelProduction'])->name('production-orders.cancel')->middleware('permission.feedback:update production orders');
     Route::get('production-orders/data', [ProductionOrderController::class, 'data'])->name('production-orders.data')->middleware('permission.feedback:view production orders');
     Route::get('sales/{sale}/details', [SaleController::class, 'getSaleDetails'])->name('admin.sales.details')->middleware('permission.feedback:view sales');

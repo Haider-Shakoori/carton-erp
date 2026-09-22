@@ -23,9 +23,6 @@ trait BelongsToBusinessUnit
         });
 
         static::addGlobalScope('business_unit', function (Builder $builder): void {
-            // Admin HTTP middleware resolves Settings once and initializes this
-            // session key before controllers execute. Reading the session here
-            // keeps every model query free of extra Settings/schema queries.
             $activeBusinessUnitId = (int) session(BusinessUnitContext::SESSION_KEY, 0);
 
             if ($activeBusinessUnitId <= 0) {

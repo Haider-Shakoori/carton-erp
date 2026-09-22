@@ -18,6 +18,7 @@ use App\Models\SaleReturn;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
+use App\Services\AccountingService;
 use App\Services\ProductionService;
 use App\Services\SaleProfitService;
 use App\Services\GatePassService;
@@ -2002,6 +2003,10 @@ class SaleController extends Controller
             $sale->confirmed_at = now();
             $sale->save();
 
+            $accounting = app(AccountingService::class);
+            $accounting->postSaleInvoice($sale);
+            $accounting->postCustomerAdvance($sale);
+
             // ─── Start production if checked ───
             $productionStarted = false;
             $productionMessage = '';
@@ -2493,6 +2498,8 @@ class SaleController extends Controller
                     $sale->delivery_date = now();
                     $sale->save();
                 }
+
+                app(AccountingService::class)->postDeliveryCogs($sale);
 
                 return app(GatePassService::class)->createOrRefreshForSale($sale);
             });

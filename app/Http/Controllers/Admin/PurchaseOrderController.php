@@ -13,6 +13,10 @@ use App\Models\Transaction;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use App\Services\AccountingService;
+use App\Services\InventoryLocationService;
+use App\Services\ProcurementService;
+use App\Models\Setting;
 use Yajra\DataTables\Facades\DataTables;
 
 class PurchaseOrderController extends Controller
@@ -293,6 +297,15 @@ class PurchaseOrderController extends Controller
             $oldStatus = $purchase->status;
             $newStatus = $request->status;
 
+            $approvalRequired = (bool) (Setting::query()->value('purchase_approval_required') ?? false);
+            if (
+                $approvalRequired
+                && in_array($newStatus, ['shipping', 'arrived'], true)
+                && $purchase->approval_status !== 'approved'
+            ) {
+                throw new \RuntimeException('Purchase approval is required before shipping or receiving stock.');
+            }
+
             // If status is changing to 'shipping', create a transaction
             if ($newStatus === 'shipping' && $oldStatus !== 'shipping') {
                 // Check if transaction already exists for this purchase
@@ -333,12 +346,36 @@ class PurchaseOrderController extends Controller
 
             $purchase->save();
 
+            if ($newStatus === 'arrived') {
+                $purchase->loadMissing('items');
+                $warehouseInventory = app(InventoryLocationService::class);
+
+                foreach ($purchase->items as $item) {
+                    $warehouseInventory->ensureBatch($item);
+                }
+
+                app(ProcurementService::class)->ensureLegacyGoodsReceipt($purchase);
+                app(AccountingService::class)->postPurchaseReceipt($purchase);
+            }
+
             DB::commit();
 
             return redirect()->back()->with('success', "Purchase order status changed from {$oldStatus} to {$newStatus}");
         } catch (\Exception $e) {
             DB::rollBack();
             return redirect()->back()->with('error', 'Error updating status: ' . $e->getMessage());
+        }
+    }
+
+    public function approve($id, ProcurementService $procurement)
+    {
+        try {
+            $purchase = Purchase::query()->findOrFail($id);
+            $procurement->approvePurchase($purchase, Auth::user());
+
+            return back()->with('success', 'Purchase order approved.');
+        } catch (\Throwable $e) {
+            return back()->with('error', $e->getMessage());
         }
     }
 

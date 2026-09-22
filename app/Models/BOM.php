@@ -21,7 +21,11 @@ class BOM extends Model
         'code',
         'product_id',
         'version',
+        'revision_sequence',
         'status',
+        'effective_from',
+        'effective_to',
+        'supersedes_bom_id',
         'description',
         'is_active',
         // Formula Defaults & Pricing
@@ -36,7 +40,11 @@ class BOM extends Model
         'selling_price_afn',
         'profit_afn',
         'created_by',
-        'updated_by'
+        'updated_by',
+        'approved_by',
+        'approved_at',
+        'locked_by',
+        'locked_at',
     ];
 
     protected $casts = [
@@ -44,6 +52,11 @@ class BOM extends Model
         'profit_margin_percentage' => 'decimal:2',
         'exchange_rate' => 'decimal:4',
         'exchange_rate_updated_at' => 'datetime',
+        'effective_from' => 'date',
+        'effective_to' => 'date',
+        'approved_at' => 'datetime',
+        'locked_at' => 'datetime',
+        'revision_sequence' => 'integer',
         'is_active' => 'boolean',
         'total_material_cost_usd' => 'decimal:4',
         'total_material_cost_afn' => 'decimal:4',
@@ -107,6 +120,41 @@ class BOM extends Model
     public function updatedBy()
     {
         return $this->belongsTo(User::class, 'updated_by');
+    }
+
+    public function approvedBy()
+    {
+        return $this->belongsTo(User::class, 'approved_by');
+    }
+
+    public function lockedBy()
+    {
+        return $this->belongsTo(User::class, 'locked_by');
+    }
+
+    public function supersedes()
+    {
+        return $this->belongsTo(self::class, 'supersedes_bom_id');
+    }
+
+    public function revisions()
+    {
+        return $this->hasMany(self::class, 'supersedes_bom_id');
+    }
+
+    public function getIsLockedAttribute(): bool
+    {
+        return $this->locked_at !== null;
+    }
+
+    public function getIsEffectiveAttribute(): bool
+    {
+        $today = now()->toDateString();
+
+        return $this->status === 'active'
+            && $this->is_active
+            && (! $this->effective_from || $this->effective_from->toDateString() <= $today)
+            && (! $this->effective_to || $this->effective_to->toDateString() >= $today);
     }
 
     public function productionOrders()
