@@ -106,7 +106,6 @@ class DashboardController extends Controller
                     'currency_balances' => $currencyBalances,
                     'timeframe' => $timeframe,
                     'alerts' => $this->getAlertData(),
-                    'business_unit' => $this->businessUnitMeta(),
                 ]
             ]);
         } catch (\Exception $e) {
