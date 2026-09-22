@@ -82,6 +82,13 @@
                         <a class="nav-link active" data-bs-toggle="tab" href="#permissionsTab" role="tab">{{ __('ui.permissions') }}</a>
                     </li>
                     @endif
+                    @if ($user->account_type === 'admin')
+                    <li class="nav-item">
+                        <a class="nav-link" data-bs-toggle="tab" href="#businessAccessTab" role="tab">
+                            <i class="bi bi-buildings me-1"></i> Business Access
+                        </a>
+                    </li>
+                    @endif
                     <li class="nav-item">
                         <a class="nav-link {{ $user->account_type !== 'admin' ? 'active' : '' }}" data-bs-toggle="tab" href="#passwordTab" role="tab">{{ __('ui.change_password') }}</a>
                     </li>
@@ -162,6 +169,68 @@
 
                     </div>
                     @endif
+
+                    @if ($user->account_type === 'admin')
+                    <div class="tab-pane fade" id="businessAccessTab" role="tabpanel">
+                        <form method="POST" action="{{ route('admin.users.business-units', $user->id) }}" class="mt-3">
+                            @csrf
+                            <div class="alert alert-info small">
+                                <i class="bi bi-info-circle me-1"></i>
+                                Assign this user to <strong>3D Carton</strong>, <strong>Syrup Pack</strong>, or both.
+                                If no businesses are selected, the user keeps legacy access to every active business.
+                            </div>
+
+                            @php
+                                $assignedBusinessIds = $user->businessUnits->pluck('id')->map(fn($id) => (int) $id);
+                                $defaultBusinessId = optional($user->businessUnits->firstWhere('pivot.is_default', true))->id;
+                            @endphp
+
+                            <div class="row g-3">
+                                @foreach($businessUnits as $businessUnit)
+                                    <div class="col-md-6">
+                                        <label class="card border h-100 shadow-sm cursor-pointer">
+                                            <div class="card-body d-flex align-items-center gap-3">
+                                                <input class="form-check-input business-access-checkbox"
+                                                       type="checkbox"
+                                                       name="business_units[]"
+                                                       value="{{ $businessUnit->id }}"
+                                                       @checked($assignedBusinessIds->contains((int) $businessUnit->id))>
+                                                <div>
+                                                    <div class="fw-semibold">
+                                                        <i class="bi {{ $businessUnit->icon ?: 'bi-building' }} me-1"></i>
+                                                        {{ $businessUnit->name }}
+                                                    </div>
+                                                    <div class="small text-muted">{{ $businessUnit->description }}</div>
+                                                </div>
+                                            </div>
+                                        </label>
+                                    </div>
+                                @endforeach
+
+                                <div class="col-md-6">
+                                    <label class="form-label fw-semibold">Default Business</label>
+                                    <select class="form-select" name="default_business_unit_id">
+                                        <option value="">Use first assigned business</option>
+                                        @foreach($businessUnits as $businessUnit)
+                                            <option value="{{ $businessUnit->id }}"
+                                                @selected((int) $defaultBusinessId === (int) $businessUnit->id)>
+                                                {{ $businessUnit->name }}
+                                            </option>
+                                        @endforeach
+                                    </select>
+                                    <div class="form-text">The user's starting business when separate-business mode is enabled.</div>
+                                </div>
+                            </div>
+
+                            <div class="mt-4">
+                                <button class="btn btn-primary">
+                                    <i class="bi bi-check2-circle me-1"></i> Save Business Access
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                    @endif
+
                     <div class="tab-pane fade {{ $user->account_type !== 'admin' ? 'show active' : '' }}" id="passwordTab" role="tabpanel">
                         <form method="post" action="{{ route('admin.users.update-password', $user->id) }}" class="mt-4">
                             @csrf @method('put')
