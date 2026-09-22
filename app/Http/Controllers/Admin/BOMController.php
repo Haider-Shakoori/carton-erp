@@ -951,10 +951,14 @@ class BOMController extends Controller
     {
         $bom->load(['product', 'items.material', 'createdBy', 'updatedBy']);
 
-        // Calculate totals
-        $bom->calculateTotals();
-        $bom->saveQuietly();
-        $bom->refresh()->load(['product', 'items.material', 'createdBy', 'updatedBy']);
+        // Approved/effective BOM revisions are immutable. Historical totals
+        // must remain exactly as approved instead of being recalculated from
+        // today's inventory rates when the record is merely viewed.
+        if (! $bom->locked_at) {
+            $bom->calculateTotals();
+            $bom->saveQuietly();
+            $bom->refresh()->load(['product', 'items.material', 'createdBy', 'updatedBy']);
+        }
 
         return view('admin.bom.show', compact('bom'));
     }
@@ -964,6 +968,12 @@ class BOMController extends Controller
      */
     public function edit(BOM $bom)
     {
+        if ($bom->locked_at) {
+            return redirect()
+                ->route('bom.show', $bom)
+                ->with('error', 'Approved BOM revisions are locked. Create a new revision to make changes.');
+        }
+
         $bom->load('items');
 
         $products = Product::finishedGoods()
@@ -1031,6 +1041,12 @@ class BOMController extends Controller
      */
     public function update(Request $request, BOM $bom)
     {
+        if ($bom->locked_at) {
+            return redirect()
+                ->route('bom.show', $bom)
+                ->with('error', 'Approved BOM revisions are immutable. Create a new revision instead of editing history.');
+        }
+
         // Existing BOM rows may hold legacy currency ids; normalise them the
         // same way as the store flow before validating.
         $this->normalizeItemCurrencyReferences($request);
