@@ -2,7 +2,9 @@
 // routes/web.php
 
 use App\Http\Controllers\Admin\DashboardController;
+use App\Http\Controllers\Admin\ManagementReportingController;
 use App\Http\Controllers\Admin\AccountsController;
+use App\Http\Controllers\Admin\AccountingController;
 use App\Http\Controllers\Admin\AgentController;
 use App\Http\Controllers\Admin\AppSettingsController;
 use App\Http\Controllers\Admin\AuditLogController;
@@ -513,6 +515,23 @@ Route::middleware(['auth', InitializeBusinessUnitContext::class])->prefix('admin
     });
 
     // ==================== REPORTS ====================
+    Route::get('/management-reporting', [ManagementReportingController::class, 'index'])
+        ->name('admin.management-reporting.index')
+        ->middleware('permission.feedback:view management reporting');
+
+    Route::prefix('accounting')->name('admin.accounting.')->group(function () {
+        Route::get('/', [AccountingController::class, 'index'])
+            ->name('index')->middleware('permission.feedback:view financial accounting');
+        Route::post('/periods', [AccountingController::class, 'storePeriod'])
+            ->name('periods.store')->middleware('permission.feedback:manage-periods financial accounting');
+        Route::post('/periods/{period}/close', [AccountingController::class, 'closePeriod'])
+            ->name('periods.close')->middleware('permission.feedback:manage-periods financial accounting');
+        Route::post('/periods/{period}/lock', [AccountingController::class, 'lockPeriod'])
+            ->name('periods.lock')->middleware('permission.feedback:manage-periods financial accounting');
+        Route::post('/periods/{period}/reopen', [AccountingController::class, 'reopenPeriod'])
+            ->name('periods.reopen')->middleware('permission.feedback:manage-periods financial accounting');
+    });
+
     Route::prefix('reports')->name('admin.reports.')->group(function () {
         Route::get('/customers', [ReportsController::class, 'customers'])->name('customers')->middleware('permission.feedback:view customers reports');
         Route::get('/customers/data', [ReportsController::class, 'customersData'])->name('customers.data')->middleware('permission.feedback:view customers reports');
