@@ -110,6 +110,8 @@ jobs:
           php -l database/seeders/CurrencySeeder.php
           php -l database/seeders/ClientCartonOpeningStockSeeder.php
           php -l database/seeders/TransactionsSeeder.php
+          php -l database/seeders/PermissionsSeeder.php
+          php -l config/bootstrap.php
           php -l app/Services/BOMCostingService.php
           php -l app/Services/CartonSpecificationService.php
           php -l app/Models/ProductionOrder.php
