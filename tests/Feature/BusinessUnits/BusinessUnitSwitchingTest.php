@@ -5,6 +5,7 @@ use App\Models\Setting;
 use App\Models\Purchase;
 use App\Models\User;
 use App\Support\Business\BusinessUnitContext;
+use Database\Seeders\BusinessUnitSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 
 uses(RefreshDatabase::class);
@@ -21,6 +22,28 @@ it('installs the two client business units with unified mode disabled by default
     $setting = Setting::firstOrCreate([]);
 
     expect((bool) $setting->separate_business_units_enabled)->toBeFalse();
+});
+
+it('restores the required business units and default safely on existing databases', function () {
+    $setting = Setting::firstOrCreate([]);
+    $setting->update(['default_business_unit_id' => null]);
+
+    BusinessUnit::query()->delete();
+
+    expect(BusinessUnit::query()->count())->toBe(0);
+
+    $this->seed(BusinessUnitSeeder::class);
+    $this->seed(BusinessUnitSeeder::class);
+
+    $units = BusinessUnit::query()
+        ->active()
+        ->get();
+
+    expect($units)->toHaveCount(2)
+        ->and($units->pluck('code')->all())->toBe(['3d_carton', 'syrup_pack'])
+        ->and($units->pluck('name')->all())->toBe(['3D Carton', 'Syrup Pack'])
+        ->and((int) $setting->fresh()->default_business_unit_id)
+        ->toBe((int) $units->firstWhere('code', '3d_carton')->id);
 });
 
 it('switches the active business only when separate business mode is enabled', function () {
