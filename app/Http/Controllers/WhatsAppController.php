@@ -3,7 +3,6 @@
 namespace App\Http\Controllers;
 
 use App\Models\WhatsappSession;
-use Illuminate\Http\Client\Response;
 use Illuminate\Http\Response as HttpResponse;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
