@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\BusinessUnit;
 use App\Models\Currency;
 use App\Models\Setting;
+use App\Support\Business\BusinessUnitContext;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 
@@ -63,6 +64,9 @@ class SettingsController extends Controller
         }
 
         $setting->update($data);
+
+        app(BusinessUnitContext::class)->reset();
+
         return back()->with('success', 'Settings updated successfully!');
     }
 }
