@@ -122,6 +122,8 @@ Route::middleware(['auth', InitializeBusinessUnitContext::class])->prefix('admin
             ->name('read-all')->middleware('permission.feedback:view stock reconciliations');
         Route::patch('/settings', [StockNotificationController::class, 'updateSettings'])
             ->name('settings')->middleware('permission.feedback:view stock reconciliations');
+        Route::post('/deliveries/{delivery}/retry', [StockNotificationController::class, 'retryDelivery'])
+            ->name('deliveries.retry')->middleware('permission.feedback:view stock reconciliations');
     });
 
     // Physical Reel / Remnant Tracking
