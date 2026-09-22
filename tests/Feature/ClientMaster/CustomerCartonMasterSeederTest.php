@@ -98,8 +98,16 @@ it('imports 171 distinct finished goods with customer-free display names and ref
             ->and($specification->product->name)
             ->not->toStartWith($specification->customer->name.' -');
 
-        expect(stripos($specification->product->name, 'pcs'))->toBeFalse()
-            ->and($specification->product->unit)->toBe('pcs');
+        $packDescription = trim((string) ($specification->pack_description ?? ''));
+
+        expect($specification->product->unit)->toBe('pcs');
+
+        if ($packDescription !== '') {
+            expect(stripos(
+                $specification->product->name,
+                $packDescription
+            ))->toBeFalse();
+        }
     }
 });
 
@@ -128,7 +136,7 @@ it('keeps duplicate customer carton sizes as distinct neutral variants', functio
     }
 });
 
-it('removes pcs from previously generated neutral finished-good names without changing the inventory unit', function () {
+it('removes the entire pack section from previously generated finished-good names without changing the inventory unit', function () {
     $this->seed(CustomerCartonSizeSeeder::class);
 
     $spec = FinishedGoodSpecification::query()
@@ -145,8 +153,30 @@ it('removes pcs from previously generated neutral finished-good names without ch
 
     $spec->refresh()->load('product');
 
-    expect($spec->product->name)->toBe('Carton (44*40*31)cm - 200ml,70')
+    expect($spec->product->name)->toStartWith('Carton (44*40*31)cm')
+        ->and($spec->product->name)->not->toContain('200ml')
+        ->and($spec->product->name)->not->toContain('70pcs')
         ->and($spec->product->unit)->toBe('pcs');
+});
+
+it('keeps client pack text out of generated BOM names while preserving it on the specification', function () {
+    $this->seed(DatabaseSeeder::class);
+
+    $spec = FinishedGoodSpecification::query()
+        ->importedClientCartons()
+        ->where('source_row', 4)
+        ->with(['product', 'product.boms'])
+        ->firstOrFail();
+
+    $bom = $spec->product->boms
+        ->first(fn ($item) => str_starts_with((string) $item->code, 'BOM-CLIENT-'));
+
+    expect($spec->pack_description)->toBe('200ml,70pcs')
+        ->and($spec->product->name)->not->toContain('200ml')
+        ->and($spec->product->name)->not->toContain('70pcs')
+        ->and($bom)->not->toBeNull()
+        ->and($bom->name)->not->toContain('200ml')
+        ->and($bom->name)->not->toContain('70pcs');
 });
 
 it('creates one safe draft BOM for every imported finished good', function () {
