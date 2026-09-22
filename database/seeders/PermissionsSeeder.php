@@ -38,7 +38,7 @@ class PermissionsSeeder extends Seeder
             // ============================================================
             // PRODUCTION (NEW)
             // ============================================================
-            'bom' => ['view', 'create', 'update', 'delete'],
+            'bom' => ['view', 'create', 'update', 'delete', 'revise', 'approve'],
             'production planning' => ['view'],
             'production orders' => ['view', 'create', 'update', 'delete', 'approve', 'close', 'reopen', 'reverse'],
             'work orders' => ['view', 'create', 'update', 'delete'],
