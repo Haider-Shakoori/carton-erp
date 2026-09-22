@@ -5,6 +5,7 @@ use App\Models\Setting;
 use App\Models\Purchase;
 use App\Models\User;
 use App\Support\Business\BusinessUnitContext;
+use App\Services\BusinessUnitProvisioningService;
 use Database\Seeders\BusinessUnitSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 
@@ -44,6 +45,38 @@ it('restores the required business units and default safely on existing database
         ->and($units->pluck('name')->all())->toBe(['3D Carton', 'Syrup Pack'])
         ->and((int) $setting->fresh()->default_business_unit_id)
         ->toBe((int) $units->firstWhere('code', '3d_carton')->id);
+});
+
+it('self-heals missing business units for settings and the topbar context', function () {
+    $setting = Setting::firstOrCreate([]);
+    $setting->update([
+        'separate_business_units_enabled' => true,
+        'default_business_unit_id' => null,
+    ]);
+
+    BusinessUnit::query()->delete();
+
+    expect(BusinessUnit::query()->count())->toBe(0);
+
+    $units = app(BusinessUnitProvisioningService::class)
+        ->ensureRequiredUnits();
+
+    expect($units->pluck('code')->all())->toBe(['3d_carton', 'syrup_pack'])
+        ->and((int) $setting->fresh()->default_business_unit_id)
+        ->toBe((int) $units->firstWhere('code', '3d_carton')->id);
+
+    $user = User::factory()->create();
+    $this->actingAs($user);
+
+    $context = app(BusinessUnitContext::class);
+    $context->reset();
+
+    BusinessUnit::query()->delete();
+    $setting->fresh()->update(['default_business_unit_id' => null]);
+
+    expect($context->available()->pluck('code')->all())
+        ->toBe(['3d_carton', 'syrup_pack'])
+        ->and($context->current()?->code)->toBe('3d_carton');
 });
 
 it('switches the active business only when separate business mode is enabled', function () {
