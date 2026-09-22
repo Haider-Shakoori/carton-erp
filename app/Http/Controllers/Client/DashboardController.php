@@ -22,8 +22,8 @@ class DashboardController extends Controller
 {
     public function index()
     {
-        $accountId = Auth::user()->account_id ?? Account::where('user_id', Auth::id())->value('id');
-        $account   = Account::findOrFail($accountId);
+        $accountId = $this->authenticatedClientAccountId();
+        $account = Account::findOrFail($accountId);
 
         // ---------------- BALANCES ----------------
         $balances = AccountBalance::with('currency:id,code,symbol')
@@ -106,6 +106,8 @@ class DashboardController extends Controller
     // ============================================================
     public function journal(Request $r, $accountId)
     {
+        $accountId = $this->authorizeClientAccountId($accountId);
+
         $q = Transaction::with('currency:id,code,symbol')
             ->where('account_id', $accountId)
             ->orderByDesc('created_at');
@@ -127,6 +129,8 @@ class DashboardController extends Controller
 
     public function journalSummary(Request $r, $accountId)
     {
+        $accountId = $this->authorizeClientAccountId($accountId);
+
         $q = Transaction::where('account_id', $accountId);
 
         if ($r->filled('currency_id')) $q->where('currency_id', $r->currency_id);
@@ -157,6 +161,8 @@ class DashboardController extends Controller
     // ============================================================
     public function exchanges(Request $r, $accountId)
     {
+        $accountId = $this->authorizeClientAccountId($accountId);
+
         $q = Exchange::with(['baseCurrency:id,code,symbol', 'targetCurrency:id,code,symbol'])
             ->where('customer_account_id', $accountId)
             ->orderByDesc('created_at');
@@ -184,6 +190,8 @@ class DashboardController extends Controller
 
     public function exchangesSummary($accountId)
     {
+        $accountId = $this->authorizeClientAccountId($accountId);
+
         $base = Exchange::select('base_currency_id', DB::raw('SUM(base_amount) as total'))
             ->where('customer_account_id', $accountId)
             ->groupBy('base_currency_id')
@@ -202,6 +210,8 @@ class DashboardController extends Controller
     // ============================================================
     public function remittances(Request $r, $accountId)
     {
+        $accountId = $this->authorizeClientAccountId($accountId);
+
         $q = Remittance::with('currency:id,code,symbol')
             ->where('account_id', $accountId)
             ->orderByDesc('created_at');
@@ -222,6 +232,8 @@ class DashboardController extends Controller
 
     public function remittancesSummary($accountId)
     {
+        $accountId = $this->authorizeClientAccountId($accountId);
+
         $byCurrency = Remittance::select('currency_id', DB::raw('SUM(amount) as total'))
             ->where('account_id', $accountId)
             ->groupBy('currency_id')
@@ -238,7 +250,9 @@ class DashboardController extends Controller
     }
 
     public function statement(Request $r, $accountId)
-{
+    {
+        $accountId = $this->authorizeClientAccountId($accountId);
+
     $account = Account::findOrFail($accountId);
     $setting = Setting::first();
 
@@ -272,5 +286,37 @@ class DashboardController extends Controller
 
     return $pdf->download("Statement-{$account->code}.pdf");
 }
+
+
+    private function authenticatedClientAccountId(): int
+    {
+        $user = Auth::user();
+
+        abort_unless($user && ($user->hasRole('client') || $user->account_type === 'client'), 403);
+
+        $accountId = $user->account_id
+            ?? Account::query()->where('user_id', $user->id)->value('id');
+
+        abort_unless($accountId, 403);
+
+        $account = Account::query()
+            ->whereKey($accountId)
+            ->where('account_type', Account::TYPE_CUSTOMER)
+            ->where('is_active', true)
+            ->first();
+
+        abort_unless($account, 403);
+
+        return (int) $account->id;
+    }
+
+    private function authorizeClientAccountId(int|string $accountId): int
+    {
+        $authorizedAccountId = $this->authenticatedClientAccountId();
+
+        abort_unless((int) $accountId === $authorizedAccountId, 403);
+
+        return $authorizedAccountId;
+    }
 
 }

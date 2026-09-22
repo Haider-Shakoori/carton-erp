@@ -2,6 +2,10 @@
 
 use App\Models\User;
 
+test('guests are redirected away from profile routes', function () {
+    $this->get('/profile')->assertRedirect('/login');
+});
+
 test('profile page is displayed', function () {
     $user = User::factory()->create();
 

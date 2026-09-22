@@ -28,6 +28,7 @@ Before enabling traffic, verify:
 - `APP_DEBUG=false`
 - `APP_URL` is the real HTTPS production URL
 - `APP_KEY` is stable and already provisioned
+- for a brand-new seeded installation, `INITIAL_ADMIN_PASSWORD` is set to a strong one-time value
 - production database credentials are correct
 - `QUEUE_CONNECTION` is a persistent production-capable driver (the supplied example uses `database`)
 - session/cache configuration is appropriate for the host
@@ -82,7 +83,8 @@ Verify the following with controlled test records or staging data:
 11. Procure-to-Pay controls (request, RFQ/comparison, PO, receipt, supplier invoice/payment) enforce approvals and matching.
 12. Accounting postings balance, fiscal-period controls work, and management financial reports render.
 13. BOM revisions, effective dates, approval and locked-history governance operate correctly.
-14. `GET /up` returns healthy after caches are rebuilt.
+14. Public self-registration is unavailable, client-portal access requires an active linked client account, and one client cannot access another client's account-scoped data.
+15. `GET /up` returns healthy after caches are rebuilt.
 
 Production scheduling/machine planning and QC/quality-control modules are intentionally outside this release scope.
 

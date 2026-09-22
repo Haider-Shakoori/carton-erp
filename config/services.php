@@ -28,6 +28,12 @@ return [
         'key' => env('RESEND_KEY'),
     ],
 
+    'wasender' => [
+        'api_key' => env('WASENDER_API_KEY'),
+        'api_url' => env('WASENDER_API_URL'),
+        'base_url' => rtrim(env('WASENDER_BASE_URL', 'https://www.wasenderapi.com/api'), '/'),
+    ],
+
     'slack' => [
         'notifications' => [
             'bot_user_oauth_token' => env('SLACK_BOT_USER_OAUTH_TOKEN'),

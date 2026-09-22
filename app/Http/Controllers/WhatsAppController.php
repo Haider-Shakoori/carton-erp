@@ -2,9 +2,10 @@
 
 namespace App\Http\Controllers;
 
-use Illuminate\Http\Request;
 use App\Models\WhatsappSession;
+use Illuminate\Http\Response as HttpResponse;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 
 class WhatsappController extends Controller
 {
@@ -12,63 +13,91 @@ class WhatsappController extends Controller
     {
         $session = WhatsappSession::first();
 
-        if (!$session) {
+        if (! $session) {
             return redirect()->back()->with('error', 'No WhatsApp session configured.');
         }
 
         $status = 'disconnected';
         $qr = null;
+        $baseUrl = $this->providerBaseUrl();
 
         if ($session->session_id) {
-            $response = Http::withHeaders([
-                'Authorization' => 'Bearer ' . $session->api_key
-            ])->get("https://www.wasenderapi.com/api/whatsapp-sessions/{$session->session_id}");
+            $response = Http::timeout(15)
+                ->withToken($session->api_key)
+                ->acceptJson()
+                ->get("{$baseUrl}/whatsapp-sessions/{$session->session_id}");
 
-            $status = $response->json()['status'] ?? 'disconnected';
+            $status = $response->json('status', 'disconnected');
         }
 
         if ($status !== 'connected') {
-            // Start a new connection
-            $start = Http::withHeaders([
-                'Authorization' => 'Bearer ' . $session->api_key
-            ])->post("https://www.wasenderapi.com/api/whatsapp-sessions/connect");
+            $start = Http::timeout(15)
+                ->withToken($session->api_key)
+                ->acceptJson()
+                ->post("{$baseUrl}/whatsapp-sessions/connect");
 
-            $session_id = $start->json()['id'] ?? null;
-            if ($session_id) {
-                $session->update(['session_id' => $session_id]);
+            $sessionId = $start->json('id');
 
-                $qrRes = Http::withHeaders([
-                    'Authorization' => 'Bearer ' . $session->api_key
-                ])->get("https://www.wasenderapi.com/api/whatsapp-sessions/{$session_id}/qrcode");
-                \Log::info('QR response:', ['data' => $qrRes->body()]); // Add this to debug
-                $qr = $qrRes->json()['qr'] ?? null;
+            if ($sessionId) {
+                $session->update(['session_id' => $sessionId]);
+
+                $qrResponse = Http::timeout(15)
+                    ->withToken($session->api_key)
+                    ->acceptJson()
+                    ->get("{$baseUrl}/whatsapp-sessions/{$sessionId}/qrcode");
+
+                $qr = $qrResponse->json('qr');
+
+                Log::info('WhatsApp QR request completed.', [
+                    'status' => $qrResponse->status(),
+                    'has_qr' => filled($qr),
+                ]);
             }
         }
 
         return view('admin.settings.whatsapp.index', compact('session', 'status', 'qr'));
     }
 
-    public function fetchSessionId()
-{
-    $token = env('WASENDER_API_KEY');
+    public function fetchSessionId(): HttpResponse
+    {
+        $token = trim((string) config('services.wasender.api_key'));
 
-    $response = Http::withHeaders([
-        'Authorization' => 'Bearer ' . $token
-    ])->get('https://www.wasenderapi.com/api/whatsapp-sessions');
+        if ($token === '') {
+            return response('WhatsApp provider is not configured.', 503);
+        }
 
-    \Log::info('WhatsApp sessions response:', ['body' => $response->body()]);
+        $response = Http::timeout(15)
+            ->withToken($token)
+            ->acceptJson()
+            ->get($this->providerBaseUrl() . '/whatsapp-sessions');
 
-    $sessions = $response->json();
+        $sessions = $response->json();
 
-    if (isset($sessions[0]['id'])) {
-        $session = \App\Models\WhatsappSession::first();
+        Log::info('WhatsApp sessions lookup completed.', [
+            'status' => $response->status(),
+            'session_count' => is_array($sessions) ? count($sessions) : 0,
+        ]);
+
+        if (! $response->successful() || ! is_array($sessions) || ! isset($sessions[0]['id'])) {
+            return response('No session found or the WhatsApp provider request failed.', 502);
+        }
+
+        $session = WhatsappSession::first();
+
+        if (! $session) {
+            return response('No WhatsApp session is configured locally.', 409);
+        }
+
         $session->update(['session_id' => $sessions[0]['id']]);
 
-        return "Session ID saved: " . $sessions[0]['id'];
+        return response('Session ID saved: ' . $sessions[0]['id']);
     }
 
-    return "No session found or something went wrong.";
-}
-
-
+    private function providerBaseUrl(): string
+    {
+        return rtrim(
+            (string) config('services.wasender.base_url', 'https://www.wasenderapi.com/api'),
+            '/'
+        );
+    }
 }

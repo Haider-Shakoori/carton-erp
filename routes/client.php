@@ -7,7 +7,7 @@ use App\Http\Controllers\Client\{
 };
 use Illuminate\Support\Facades\Auth;
 
-Route::middleware(['auth'])->prefix('client')->name('client.')->group(function () {
+Route::middleware(['auth', 'client.portal'])->prefix('client')->name('client.')->group(function () {
 
     // 🏠 Dashboard
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
