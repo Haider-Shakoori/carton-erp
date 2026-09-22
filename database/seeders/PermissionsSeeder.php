@@ -88,11 +88,13 @@ class PermissionsSeeder extends Seeder
             'inventory reports' => ['view'],
             'financial reports' => ['view'],
             'reports' => ['view', 'create', 'update', 'delete'],
+            'management reporting' => ['view', 'consolidated'],
 
             // ============================================================
             // ACCOUNTING
             // ============================================================
             'journal' => ['view', 'delete', 'export', 'print', 'send-whatsapp'],
+            'financial accounting' => ['view', 'manage-periods'],
             'creditors' => ['view', 'create', 'update', 'delete'],
             'debtors' => ['view', 'create', 'update', 'delete'],
             'account categories' => ['view', 'create', 'update', 'delete'],
