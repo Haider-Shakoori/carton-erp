@@ -38,20 +38,34 @@ return new class extends Migration
 
         Schema::create('accounting_settings', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('cash_account_id')->constrained('gl_accounts')->restrictOnDelete();
-            $table->foreignId('receivables_account_id')->constrained('gl_accounts')->restrictOnDelete();
-            $table->foreignId('raw_material_inventory_account_id')->constrained('gl_accounts')->restrictOnDelete();
-            $table->foreignId('wip_account_id')->constrained('gl_accounts')->restrictOnDelete();
-            $table->foreignId('finished_goods_inventory_account_id')->constrained('gl_accounts')->restrictOnDelete();
-            $table->foreignId('grni_account_id')->constrained('gl_accounts')->restrictOnDelete();
-            $table->foreignId('payables_account_id')->constrained('gl_accounts')->restrictOnDelete();
-            $table->foreignId('sales_revenue_account_id')->constrained('gl_accounts')->restrictOnDelete();
-            $table->foreignId('cogs_account_id')->constrained('gl_accounts')->restrictOnDelete();
-            $table->foreignId('production_conversion_clearing_account_id')->constrained('gl_accounts')->restrictOnDelete();
-            $table->foreignId('purchase_variance_account_id')->constrained('gl_accounts')->restrictOnDelete();
-            $table->foreignId('production_variance_account_id')->constrained('gl_accounts')->restrictOnDelete();
-            $table->foreignId('wastage_expense_account_id')->constrained('gl_accounts')->restrictOnDelete();
+            $table->unsignedBigInteger('cash_account_id');
+            $table->unsignedBigInteger('receivables_account_id');
+            $table->unsignedBigInteger('raw_material_inventory_account_id');
+            $table->unsignedBigInteger('wip_account_id');
+            $table->unsignedBigInteger('finished_goods_inventory_account_id');
+            $table->unsignedBigInteger('grni_account_id');
+            $table->unsignedBigInteger('payables_account_id');
+            $table->unsignedBigInteger('sales_revenue_account_id');
+            $table->unsignedBigInteger('cogs_account_id');
+            $table->unsignedBigInteger('production_conversion_clearing_account_id');
+            $table->unsignedBigInteger('purchase_variance_account_id');
+            $table->unsignedBigInteger('production_variance_account_id');
+            $table->unsignedBigInteger('wastage_expense_account_id');
             $table->timestamps();
+
+            $table->foreign('cash_account_id', 'acct_cfg_cash_fk')->references('id')->on('gl_accounts')->restrictOnDelete();
+            $table->foreign('receivables_account_id', 'acct_cfg_ar_fk')->references('id')->on('gl_accounts')->restrictOnDelete();
+            $table->foreign('raw_material_inventory_account_id', 'acct_cfg_raw_inv_fk')->references('id')->on('gl_accounts')->restrictOnDelete();
+            $table->foreign('wip_account_id', 'acct_cfg_wip_fk')->references('id')->on('gl_accounts')->restrictOnDelete();
+            $table->foreign('finished_goods_inventory_account_id', 'acct_cfg_fg_inv_fk')->references('id')->on('gl_accounts')->restrictOnDelete();
+            $table->foreign('grni_account_id', 'acct_cfg_grni_fk')->references('id')->on('gl_accounts')->restrictOnDelete();
+            $table->foreign('payables_account_id', 'acct_cfg_ap_fk')->references('id')->on('gl_accounts')->restrictOnDelete();
+            $table->foreign('sales_revenue_account_id', 'acct_cfg_sales_fk')->references('id')->on('gl_accounts')->restrictOnDelete();
+            $table->foreign('cogs_account_id', 'acct_cfg_cogs_fk')->references('id')->on('gl_accounts')->restrictOnDelete();
+            $table->foreign('production_conversion_clearing_account_id', 'acct_cfg_prod_clear_fk')->references('id')->on('gl_accounts')->restrictOnDelete();
+            $table->foreign('purchase_variance_account_id', 'acct_cfg_purch_var_fk')->references('id')->on('gl_accounts')->restrictOnDelete();
+            $table->foreign('production_variance_account_id', 'acct_cfg_prod_var_fk')->references('id')->on('gl_accounts')->restrictOnDelete();
+            $table->foreign('wastage_expense_account_id', 'acct_cfg_waste_fk')->references('id')->on('gl_accounts')->restrictOnDelete();
         });
 
         Schema::create('journal_entries', function (Blueprint $table) {
