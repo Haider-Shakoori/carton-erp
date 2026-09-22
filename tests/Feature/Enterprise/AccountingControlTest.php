@@ -5,7 +5,6 @@ use App\Models\GlAccount;
 use App\Models\User;
 use App\Services\AccountingService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use RuntimeException;
 
 uses(RefreshDatabase::class);
 
