@@ -107,6 +107,8 @@ class EnterpriseReadinessCheck extends Command
                 ->where('journal_entries.status', 'posted')
                 ->groupBy('journal_entries.id')
                 ->havingRaw('ABS(SUM(journal_lines.debit_usd) - SUM(journal_lines.credit_usd)) > 0.00001')
+                ->select('journal_entries.id as journal_entry_id')
+                ->get()
                 ->count();
 
             $add(
