@@ -21,7 +21,7 @@ Route::middleware(['set_locale'])->group(function () {
             return redirect()->route('admin.dashboard');
         }
 
-        if ($user->hasRole('client')) {
+        if ($user->hasRole('client') || $user->account_type === 'client') {
             return redirect()->route('client.dashboard');
         }
 
