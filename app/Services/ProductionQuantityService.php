@@ -6,6 +6,7 @@ use App\Models\ProductionMaterialConsumption;
 use App\Models\ProductionOrder;
 use App\Models\Sale;
 use App\Models\SaleItem;
+use App\Models\Setting;
 use App\Models\Transaction;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -35,6 +36,13 @@ class ProductionQuantityService
             if ($order->status !== ProductionOrder::STATUS_PENDING) {
                 throw new RuntimeException(
                     'Production order must be pending before it can be started.'
+                );
+            }
+
+            $approvalRequired = (bool) (Setting::query()->value('production_approval_required') ?? false);
+            if ($approvalRequired && ! $order->approved_at) {
+                throw new RuntimeException(
+                    'Supervisor approval is required before production can start.'
                 );
             }
 
@@ -111,7 +119,11 @@ class ProductionQuantityService
                 + (float) $order->total_overhead_cost;
             $order->status = ProductionOrder::STATUS_IN_PROGRESS;
             $order->start_date = $order->start_date ?: now()->toDateString();
+            $order->reversed_by = null;
+            $order->reversed_at = null;
             $order->save();
+
+            app(ProductionControlService::class)->recordStarted($order);
 
             return [
                 'allocation_quantity' => $plannedQty,
@@ -187,6 +199,9 @@ class ProductionQuantityService
             $sale ??= $order->sale()->with(['items', 'currency'])->first();
             $saleItem = $sale ? $this->resolveSaleItem($sale, $order) : null;
 
+            app(ProductionControlService::class)
+                ->snapshotBeforeCompletion($order, $sale, $saleItem);
+
             $materialResult = $actualMaterials !== null
                 ? $this->reconcileMaterialsToActuals($order, $actualMaterials, $sale, $saleItem)
                 : $this->reconcileMaterialsToQuantity($order, $goodQuantity, $sale, $saleItem);
@@ -230,6 +245,13 @@ class ProductionQuantityService
             }
 
             $plannedQty = (float) ($order->quantity_planned ?: $order->quantity_ordered);
+
+            app(ProductionControlService::class)->recordCompleted($order, [
+                'manufactured_quantity' => $manufacturedQuantity,
+                'good_quantity' => $goodQuantity,
+                'rejected_quantity' => $rejectedQuantity,
+                'material_cost_usd' => $materialResult['material_cost_usd'],
+            ]);
 
             return [
                 'ordered_quantity' => (float) $order->quantity_ordered,
