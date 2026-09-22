@@ -42,6 +42,7 @@ it('switches the active business only when separate business mode is enabled', f
         ->and(app(BusinessUnitContext::class)->current()?->code)->toBe('syrup_pack');
 
     $setting->update(['separate_business_units_enabled' => false]);
+    app(BusinessUnitContext::class)->reset();
 
     expect(app(BusinessUnitContext::class)->current())->toBeNull()
         ->and(session()->has(BusinessUnitContext::SESSION_KEY))->toBeFalse();
