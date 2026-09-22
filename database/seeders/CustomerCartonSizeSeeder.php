@@ -286,8 +286,25 @@ class CustomerCartonSizeSeeder extends Seeder
             }
 
             $currentName = trim((string) $specification->product->name);
+            $packDescription = trim((string) ($row['pcs_ml'] ?? ''));
 
-            if (mb_strtolower($currentName) === mb_strtolower($previousName)) {
+            $matchesPreviousGeneratedName =
+                mb_strtolower($currentName) === mb_strtolower($previousName);
+
+            $stillContainsWorkbookPackSection =
+                $packDescription !== ''
+                && str_starts_with(mb_strtolower($currentName), 'carton ')
+                && str_contains(
+                    mb_strtolower($currentName),
+                    mb_strtolower($packDescription)
+                );
+
+            if (
+                $matchesPreviousGeneratedName
+                || $stillContainsWorkbookPackSection
+            ) {
+                // Updating the name through the Product model also regenerates
+                // the slug, removing stale pack text from existing DB rows.
                 $specification->product->update(['name' => $desiredName]);
             }
         }
