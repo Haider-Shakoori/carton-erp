@@ -159,6 +159,36 @@ it('removes the entire pack section from previously generated finished-good name
         ->and($spec->product->unit)->toBe('pcs');
 });
 
+it('normalizes existing imported product names and slugs that still contain workbook pack text', function () {
+    $this->seed(CustomerCartonSizeSeeder::class);
+
+    $spec = FinishedGoodSpecification::query()
+        ->importedClientCartons()
+        ->where('source_row', 5)
+        ->with('product')
+        ->firstOrFail();
+
+    $spec->product->update([
+        'name' => 'Carton (54.8*34*20) - pep gas 200ml,80pcs',
+    ]);
+
+    $oldSlug = $spec->product->fresh()->slug;
+
+    expect($oldSlug)->toContain('200ml80pcs');
+
+    $this->seed(CustomerCartonSizeSeeder::class);
+
+    $spec->refresh()->load('product');
+
+    expect($spec->product->name)->toStartWith('Carton (54.8*34*20)')
+        ->and($spec->product->name)->not->toContain('pep gas')
+        ->and($spec->product->name)->not->toContain('200ml')
+        ->and($spec->product->name)->not->toContain('80pcs')
+        ->and($spec->product->slug)->not->toContain('pep-gas')
+        ->and($spec->product->slug)->not->toContain('200ml80pcs')
+        ->and($spec->product->unit)->toBe('pcs');
+});
+
 it('keeps client pack text out of generated BOM names while preserving it on the specification', function () {
     $this->seed(DatabaseSeeder::class);
 
