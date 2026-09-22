@@ -84,6 +84,8 @@ class ProductionVarianceService
         $actualMaterialCostUsd = 0.0;
         $plannedWastageCostUsd = 0.0;
         $actualWastageCostUsd = 0.0;
+        $materialUsageVarianceUsd = 0.0;
+        $materialRateVarianceUsd = 0.0;
 
         foreach ($materialIds as $materialId) {
             $plannedRow = $planned[$materialId] ?? null;
@@ -104,6 +106,13 @@ class ProductionVarianceService
             $actualWastageCostUsd += $actualWastageQty * $plannedUnitCost;
 
             $costVarianceUsd = $actualCost - $plannedCost;
+            $actualUnitCost = $actualQty > 0.000001 ? $actualCost / $actualQty : 0.0;
+            $usageVarianceUsd = ($actualQty - $plannedQty) * $plannedUnitCost;
+            $rateVarianceUsd = $actualCost - ($actualQty * $plannedUnitCost);
+            $wastageVarianceUsd = ($actualWastageQty - $plannedWastageQty) * $plannedUnitCost;
+
+            $materialUsageVarianceUsd += $usageVarianceUsd;
+            $materialRateVarianceUsd += $rateVarianceUsd;
 
             $rows[] = [
                 'material_id' => (int) $materialId,
@@ -116,7 +125,11 @@ class ProductionVarianceService
                 'variance_quantity' => round($actualQty - $plannedQty, 6),
                 'planned_cost_per_unit_usd' => round($plannedUnitCost, 6),
                 'planned_cost_usd' => round($plannedCost, 6),
+                'actual_cost_per_unit_usd' => round($actualUnitCost, 6),
                 'actual_cost_usd' => round($actualCost, 6),
+                'usage_variance_usd' => round($usageVarianceUsd, 6),
+                'rate_variance_usd' => round($rateVarianceUsd, 6),
+                'wastage_variance_usd' => round($wastageVarianceUsd, 6),
                 'cost_variance_usd' => round($costVarianceUsd, 6),
                 'planned_wastage_quantity' => round($plannedWastageQty, 6),
                 'actual_wastage_quantity' => round($actualWastageQty, 6),
@@ -149,6 +162,8 @@ class ProductionVarianceService
                 'planned_material_cost_usd' => round($plannedMaterialCostUsd, 4),
                 'actual_material_cost_usd' => round($actualMaterialCostUsd, 4),
                 'material_cost_variance_usd' => round($actualMaterialCostUsd - $plannedMaterialCostUsd, 4),
+                'material_usage_variance_usd' => round($materialUsageVarianceUsd, 4),
+                'material_rate_variance_usd' => round($materialRateVarianceUsd, 4),
                 'planned_wastage_cost_usd' => round($plannedWastageCostUsd, 4),
                 'actual_wastage_cost_usd' => round($actualWastageCostUsd, 4),
                 'estimated_production_cost_usd' => round($estimatedProductionCostUsd, 4),
@@ -225,6 +240,8 @@ class ProductionVarianceService
         $rows = [];
         $plannedTotal = 0.0;
         $actualTotal = 0.0;
+        $usageVarianceTotal = 0.0;
+        $rateVarianceTotal = 0.0;
 
         foreach ($materialIds as $materialId) {
             $plannedRow = $planned[$materialId] ?? null;
@@ -238,6 +255,13 @@ class ProductionVarianceService
             $plannedTotal += $plannedCost;
             $actualTotal += $actualCost;
 
+            $plannedUnitCost = (float) ($plannedRow['planned_cost_per_unit_usd'] ?? 0);
+            $actualUnitCost = $actualQty > 0.000001 ? $actualCost / $actualQty : 0.0;
+            $usageVariance = ($actualQty - $plannedQty) * $plannedUnitCost;
+            $rateVariance = $actualCost - ($actualQty * $plannedUnitCost);
+            $usageVarianceTotal += $usageVariance;
+            $rateVarianceTotal += $rateVariance;
+
             $rows[] = [
                 'material_id' => (int) $materialId,
                 'material_name' => $plannedRow['material_name'] ?? ('Material #' . $materialId),
@@ -245,8 +269,12 @@ class ProductionVarianceService
                 'planned_quantity' => round($plannedQty, 6),
                 'actual_quantity' => round($actualQty, 6),
                 'variance_quantity' => round($actualQty - $plannedQty, 6),
+                'planned_cost_per_unit_usd' => round($plannedUnitCost, 6),
                 'planned_cost_usd' => round($plannedCost, 6),
+                'actual_cost_per_unit_usd' => round($actualUnitCost, 6),
                 'actual_cost_usd' => round($actualCost, 6),
+                'usage_variance_usd' => round($usageVariance, 6),
+                'rate_variance_usd' => round($rateVariance, 6),
                 'cost_variance_usd' => round($actualCost - $plannedCost, 6),
                 'planned_wastage_quantity' => (float) ($plannedRow['planned_wastage_quantity'] ?? 0),
                 'actual_wastage_quantity' => round((float) ($actualRow->wastage_quantity ?? 0), 6),
@@ -255,6 +283,20 @@ class ProductionVarianceService
                     : (($actualCost - $plannedCost) < -0.000001 ? 'favorable' : 'neutral'),
             ];
         }
+
+        $completionSnapshot = $order->events()
+            ->where('event_type', 'completion_snapshot')
+            ->latest('id')
+            ->first();
+
+        $snapshotOrder = is_array($completionSnapshot?->metadata['order'] ?? null)
+            ? $completionSnapshot->metadata['order']
+            : [];
+
+        $plannedConversionCost = (float) ($snapshotOrder['total_labor_cost'] ?? $order->total_labor_cost ?? 0)
+            + (float) ($snapshotOrder['total_overhead_cost'] ?? $order->total_overhead_cost ?? 0);
+        $actualConversionCost = (float) ($order->total_labor_cost ?? 0)
+            + (float) ($order->total_overhead_cost ?? 0);
 
         $plannedOutput = (float) ($order->quantity_planned ?: $order->quantity_ordered);
         $manufacturedOutput = (float) ($order->quantity_manufactured ?? $order->quantity_produced ?? 0);
@@ -281,6 +323,17 @@ class ProductionVarianceService
                 'planned_material_cost_usd' => round($plannedTotal, 4),
                 'actual_material_cost_usd' => round($actualTotal, 4),
                 'material_cost_variance_usd' => round($actualTotal - $plannedTotal, 4),
+                'material_usage_variance_usd' => round($usageVarianceTotal, 4),
+                'material_rate_variance_usd' => round($rateVarianceTotal, 4),
+                'planned_conversion_cost_usd' => round($plannedConversionCost, 4),
+                'actual_conversion_cost_usd' => round($actualConversionCost, 4),
+                'conversion_cost_variance_usd' => round($actualConversionCost - $plannedConversionCost, 4),
+                'planned_total_production_cost_usd' => round($plannedTotal + $plannedConversionCost, 4),
+                'actual_total_production_cost_usd' => round($actualTotal + $actualConversionCost, 4),
+                'total_production_cost_variance_usd' => round(
+                    ($actualTotal + $actualConversionCost) - ($plannedTotal + $plannedConversionCost),
+                    4
+                ),
                 'indicator' => $actual->isEmpty()
                     ? 'pending'
                     : (($actualTotal - $plannedTotal) > 0.000001 ? 'unfavorable' : 'favorable'),
