@@ -47,6 +47,7 @@ use App\Http\Controllers\Admin\BusinessUnitSwitchController;
 use App\Http\Controllers\Admin\CartonQuotationController;
 use App\Http\Controllers\Admin\ProductionOrderController;
 use App\Http\Controllers\Admin\WorkOrderController;
+use App\Http\Controllers\Admin\WarehouseController;
 use App\Http\Controllers\Admin\ShareholderWithdrawalController;
 use App\Http\Controllers\Admin\ShareholderController;
 use App\Http\Controllers\Admin\ShareholderSettingsController;
@@ -135,6 +136,22 @@ Route::middleware(['auth'])->prefix('admin')->group(function () {
         Route::post('/batches/{purchaseItem}/rebaseline', [ReelInventoryController::class, 'rebaseline'])
             ->name('rebaseline')->middleware('permission.feedback:update stock');
     });
+
+    // Warehouses / location control
+    Route::get('warehouses', [WarehouseController::class, 'index'])
+        ->name('admin.warehouses.index')->middleware('permission.feedback:view warehouses');
+    Route::get('warehouses/transfers', [WarehouseController::class, 'transfers'])
+        ->name('admin.warehouses.transfers')->middleware('permission.feedback:view stock transfers');
+    Route::get('warehouses/transfers/create', [WarehouseController::class, 'createTransfer'])
+        ->name('admin.warehouses.transfers.create')->middleware('permission.feedback:create stock transfers');
+    Route::post('warehouses/transfers', [WarehouseController::class, 'storeTransfer'])
+        ->name('admin.warehouses.transfers.store')->middleware('permission.feedback:create stock transfers');
+    Route::post('warehouses/transfers/{inventoryTransfer}/approve', [WarehouseController::class, 'approveTransfer'])
+        ->name('admin.warehouses.transfers.approve')->middleware('permission.feedback:approve stock transfers');
+    Route::post('warehouses/transfers/{inventoryTransfer}/complete', [WarehouseController::class, 'completeTransfer'])
+        ->name('admin.warehouses.transfers.complete')->middleware('permission.feedback:update stock');
+    Route::patch('warehouses/balances/{balance}/condition', [WarehouseController::class, 'updateCondition'])
+        ->name('admin.warehouses.balances.condition')->middleware('permission.feedback:condition stock');
 
     // Stock
     Route::get('stock', [StockController::class, 'index'])->name('admin.stock.index')->middleware('permission.feedback:view stock');
