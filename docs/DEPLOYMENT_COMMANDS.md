@@ -48,6 +48,8 @@ APP_DEBUG=false
 APP_URL=https://your-real-domain.example
 ```
 
+For a brand-new installation that will run `db:seed`, also set a strong one-time `INITIAL_ADMIN_PASSWORD` before seeding. Existing installations do not require this variable and reseeding does not reset the existing superadmin password.
+
 Configure the production `DB_*`, mail, queue, cache and session values for the host.
 
 ## Phase 3 — database
