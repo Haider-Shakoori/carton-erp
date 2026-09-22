@@ -16,7 +16,7 @@ class BOMGovernanceController extends Controller
             $revision = $governance->createRevision($bom, Auth::user());
 
             return redirect()
-                ->route('admin.bom.edit', $revision)
+                ->route('bom.edit', $revision)
                 ->with('success', "Draft revision {$revision->version} created. Edit and approve it when ready.");
         } catch (\Throwable $e) {
             return back()->with('error', $e->getMessage());
@@ -37,7 +37,7 @@ class BOMGovernanceController extends Controller
             );
 
             return redirect()
-                ->route('admin.bom.show', $revision)
+                ->route('bom.show', $revision)
                 ->with('success', "BOM {$revision->version} approved, effective and locked.");
         } catch (\Throwable $e) {
             return back()->withInput()->with('error', $e->getMessage());
