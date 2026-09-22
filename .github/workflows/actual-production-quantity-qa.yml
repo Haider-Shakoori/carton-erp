@@ -3,6 +3,7 @@ name: Actual Production Quantity QA
 on:
   push:
     branches:
+      - main
       - feat/actual-production-quantity-20260920
       - feat/production-completion-actuals-v2
       - feat/production-completion-consumption-ux
@@ -14,6 +15,9 @@ on:
       - feat/production-completion-workspace
       - feat/business-unit-switching
       - feat/enterprise-controls
+  pull_request:
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
