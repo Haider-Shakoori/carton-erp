@@ -123,6 +123,7 @@ class ProductionQuantityService
             $order->reversed_at = null;
             $order->save();
 
+            app(AccountingService::class)->postProductionMaterialIssue($order);
             app(ProductionControlService::class)->recordStarted($order);
 
             return [
@@ -245,6 +246,8 @@ class ProductionQuantityService
             }
 
             $plannedQty = (float) ($order->quantity_planned ?: $order->quantity_ordered);
+
+            app(AccountingService::class)->postProductionCompletion($order);
 
             app(ProductionControlService::class)->recordCompleted($order, [
                 'manufactured_quantity' => $manufacturedQuantity,
