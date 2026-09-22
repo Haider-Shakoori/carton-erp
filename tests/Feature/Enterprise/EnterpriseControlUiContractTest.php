@@ -7,13 +7,18 @@ it('exposes enterprise control centers without reintroducing excluded production
     $accounting = file_get_contents(resource_path('views/admin/accounting/index.blade.php'));
     $settings = file_get_contents(resource_path('views/admin/settings/index.blade.php'));
 
-    expect($routes)
-        ->toContain("name('admin.management-reporting.index')")
-        ->toContain("name('admin.accounting.index')")
-        ->toContain("name('admin.procurement.index')")
-        ->toContain("name('admin.warehouses.index')")
-        ->toContain("name('bom.revise')")
-        ->toContain("name('bom.approve-revision')");
+    $routeNames = collect(app('router')->getRoutes()->getRoutes())
+        ->map(fn ($route) => $route->getName())
+        ->filter()
+        ->values();
+
+    expect($routeNames)
+        ->toContain('admin.management-reporting.index')
+        ->toContain('admin.accounting.index')
+        ->toContain('admin.procurement.index')
+        ->toContain('admin.warehouses.index')
+        ->toContain('bom.revise')
+        ->toContain('bom.approve-revision');
 
     expect($layout)
         ->toContain('Enterprise Control')
