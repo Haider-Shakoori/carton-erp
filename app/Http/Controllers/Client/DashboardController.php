@@ -292,7 +292,7 @@ class DashboardController extends Controller
     {
         $user = Auth::user();
 
-        abort_unless($user && $user->hasRole('client'), 403);
+        abort_unless($user && ($user->hasRole('client') || $user->account_type === 'client'), 403);
 
         $accountId = $user->account_id
             ?? Account::query()->where('user_id', $user->id)->value('id');
