@@ -60,6 +60,7 @@ use App\Http\Controllers\Admin\HR\PayrollController;
 use App\Http\Controllers\Admin\HR\ReportController;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Route;
+use App\Http\Middleware\InitializeBusinessUnitContext;
 
 Route::get('/', function () {
     return auth()->check()
@@ -74,7 +75,7 @@ Route::get('/purchase-orders/datatable/', [PurchaseOrderController::class, 'data
 // ============================================================
 // MAIN ADMIN ROUTES - Authenticated access with route-level permissions
 // ============================================================
-Route::middleware(['auth'])->prefix('admin')->group(function () {
+Route::middleware(['auth', InitializeBusinessUnitContext::class])->prefix('admin')->group(function () {
 
     // Online Users
     Route::get('/online-users', [OnlineUsersController::class, 'index'])->name('admin.online-users')->middleware('permission.feedback:view users');
