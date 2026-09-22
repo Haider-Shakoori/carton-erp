@@ -97,6 +97,9 @@ it('imports 171 distinct finished goods with customer-free display names and ref
         expect($specification->product->name)->toStartWith('Carton')
             ->and($specification->product->name)
             ->not->toStartWith($specification->customer->name.' -');
+
+        expect(stripos($specification->product->name, 'pcs'))->toBeFalse()
+            ->and($specification->product->unit)->toBe('pcs');
     }
 });
 
@@ -123,6 +126,27 @@ it('keeps duplicate customer carton sizes as distinct neutral variants', functio
     foreach ($duplicateSizedVariants as $variant) {
         expect($variant->product->name)->toStartWith('Carton');
     }
+});
+
+it('removes pcs from previously generated neutral finished-good names without changing the inventory unit', function () {
+    $this->seed(CustomerCartonSizeSeeder::class);
+
+    $spec = FinishedGoodSpecification::query()
+        ->importedClientCartons()
+        ->where('source_row', 4)
+        ->with('product')
+        ->firstOrFail();
+
+    $spec->product->update([
+        'name' => 'Carton (44*40*31)cm - 200ml,70pcs',
+    ]);
+
+    $this->seed(CustomerCartonSizeSeeder::class);
+
+    $spec->refresh()->load('product');
+
+    expect($spec->product->name)->toBe('Carton (44*40*31)cm - 200ml,70')
+        ->and($spec->product->unit)->toBe('pcs');
 });
 
 it('creates one safe draft BOM for every imported finished good', function () {
