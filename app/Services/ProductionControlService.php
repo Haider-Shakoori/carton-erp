@@ -204,6 +204,12 @@ class ProductionControlService
             }
 
             $snapshotData = $snapshot->metadata ?? [];
+
+            app(AccountingService::class)->reverseProductionEntries(
+                $order,
+                'Production completion reversed: '.$reason
+            );
+
             $this->stockService->restoreStock($order->id);
 
             if ($sale && is_array($snapshotData['sale_item'] ?? null)) {
