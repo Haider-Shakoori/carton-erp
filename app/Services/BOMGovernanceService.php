@@ -107,7 +107,7 @@ class BOMGovernanceService
             $previousQuery = BOM::query()
                 ->withoutGlobalScope('business_unit')
                 ->where('product_id', $revision->product_id)
-                ->whereKeyNot($revision->id)
+                ->where('id', '!=', $revision->id)
                 ->where(function ($query) {
                     $query->where('status', 'active')
                         ->orWhere('is_active', true);
