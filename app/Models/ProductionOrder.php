@@ -35,6 +35,11 @@ class ProductionOrder extends Model
         'created_by',
         'approved_by',
         'approved_at',
+        'closed_by',
+        'closed_at',
+        'reversed_by',
+        'reversed_at',
+        'reopen_count',
         'notes',
     ];
 
@@ -51,6 +56,9 @@ class ProductionOrder extends Model
         'start_date' => 'date',
         'completion_date' => 'date',
         'approved_at' => 'datetime',
+        'closed_at' => 'datetime',
+        'reversed_at' => 'datetime',
+        'reopen_count' => 'integer',
     ];
 
     // Status constants
@@ -96,6 +104,38 @@ class ProductionOrder extends Model
     public function approvedBy()
     {
         return $this->belongsTo(User::class, 'approved_by');
+    }
+
+    public function closedBy()
+    {
+        return $this->belongsTo(User::class, 'closed_by');
+    }
+
+    public function reversedBy()
+    {
+        return $this->belongsTo(User::class, 'reversed_by');
+    }
+
+    public function events()
+    {
+        return $this->hasMany(ProductionOrderEvent::class)->latest('id');
+    }
+
+    public function getControlStatusAttribute(): string
+    {
+        if ($this->closed_at) {
+            return 'closed';
+        }
+
+        if ($this->reversed_at && $this->status === self::STATUS_PENDING) {
+            return 'reversed';
+        }
+
+        if ($this->status === self::STATUS_PENDING && $this->approved_at) {
+            return 'approved';
+        }
+
+        return $this->status;
     }
 
     public function materials()
