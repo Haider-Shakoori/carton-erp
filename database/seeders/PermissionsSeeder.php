@@ -40,7 +40,7 @@ class PermissionsSeeder extends Seeder
             // ============================================================
             'bom' => ['view', 'create', 'update', 'delete'],
             'production planning' => ['view'],
-            'production orders' => ['view', 'create', 'update', 'delete'],
+            'production orders' => ['view', 'create', 'update', 'delete', 'approve', 'close', 'reopen', 'reverse'],
             'work orders' => ['view', 'create', 'update', 'delete'],
             'quality' => ['view', 'create', 'update', 'delete'],
 
