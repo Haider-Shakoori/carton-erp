@@ -123,6 +123,9 @@ jobs:
           php -l app/Services/BOMGovernanceService.php
           php -l app/Services/ManagementReportingService.php
           php -l app/Services/StockControlNotificationService.php
+          php -l app/Helpers/WhatsAppHelper.php
+          php -l app/Http/Controllers/WhatsAppController.php
+          php -l config/services.php
           php -l app/Http/Controllers/Admin/StockNotificationController.php
           php -l app/Jobs/DeliverStockControlNotification.php
           php -l app/Models/StockNotificationDelivery.php
@@ -141,6 +144,20 @@ jobs:
       - name: Fresh MySQL install
         run: php artisan migrate:fresh --seed --force
 
+      - name: Production cache and strict readiness smoke
+        run: |
+          APP_ENV=production \
+          APP_DEBUG=false \
+          APP_URL=https://erp.example.invalid \
+          QUEUE_CONNECTION=database \
+          WASENDER_API_KEY=ci-cache-token \
+          WASENDER_API_URL=https://provider.example.invalid/messages \
+          php artisan config:cache
+          php artisan route:cache
+          php artisan view:cache
+          php artisan erp:readiness --strict
+          php artisan optimize:clear
+
       - name: Compile views
         run: php artisan view:cache
 
@@ -156,6 +173,7 @@ jobs:
           php artisan test tests/Feature/Inventory/ReelRemnantTrackingTest.php
           php artisan test tests/Feature/Inventory/StockControlNotificationTest.php
           php artisan test tests/Feature/Inventory/StockNotificationHardeningTest.php
+          php artisan test tests/Feature/Infrastructure/ProductionConfigCompatibilityTest.php
           php artisan test tests/Feature/GoldenPath/RealWorldCartonWorkflowRemediationTest.php
           php artisan test tests/Feature/Uat/RealClientCnpWorkflowTest.php
           php artisan test tests/Feature/ClientMaster/CustomerCartonMasterSeederTest.php
