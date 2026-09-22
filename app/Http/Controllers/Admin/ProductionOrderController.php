@@ -15,6 +15,7 @@ use App\Models\Sale;
 use App\Models\Transaction;
 use App\Services\SaleProfitService;
 use App\Services\StockDeductionService;
+use App\Services\ProductionControlService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
@@ -889,6 +890,94 @@ class ProductionOrderController extends Controller
             return redirect()->route('production-orders.show', $productionOrder)
                 ->withInput()
                 ->with('error', 'Failed to start production: ' . $e->getMessage());
+        }
+    }
+
+    public function approveProduction(
+        Request $request,
+        ProductionOrder $productionOrder,
+        ProductionControlService $control
+    ) {
+        $validated = $request->validate([
+            'reason' => 'nullable|string|max:1000',
+        ]);
+
+        try {
+            $control->approve(
+                $productionOrder,
+                Auth::user(),
+                $validated['reason'] ?? null
+            );
+
+            return back()->with('success', 'Production order approved successfully.');
+        } catch (\Throwable $e) {
+            Log::warning('Production approval failed', [
+                'production_order_id' => $productionOrder->id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return back()->with('error', $e->getMessage());
+        }
+    }
+
+    public function closeProduction(
+        Request $request,
+        ProductionOrder $productionOrder,
+        ProductionControlService $control
+    ) {
+        $validated = $request->validate([
+            'reason' => 'required|string|min:10|max:1000',
+        ]);
+
+        try {
+            $control->close($productionOrder, Auth::user(), $validated['reason']);
+
+            return back()->with('success', 'Production order closed. Further correction now requires an authorized reopen.');
+        } catch (\Throwable $e) {
+            return back()->with('error', $e->getMessage());
+        }
+    }
+
+    public function reopenProduction(
+        Request $request,
+        ProductionOrder $productionOrder,
+        ProductionControlService $control
+    ) {
+        $validated = $request->validate([
+            'reason' => 'required|string|min:10|max:1000',
+        ]);
+
+        try {
+            $control->reopen($productionOrder, Auth::user(), $validated['reason']);
+
+            return back()->with('success', 'Production order reopened for controlled correction.');
+        } catch (\Throwable $e) {
+            return back()->with('error', $e->getMessage());
+        }
+    }
+
+    public function reverseCompletion(
+        Request $request,
+        ProductionOrder $productionOrder,
+        ProductionControlService $control
+    ) {
+        $validated = $request->validate([
+            'reason' => 'required|string|min:10|max:1000',
+        ]);
+
+        try {
+            $control->reverseCompletion($productionOrder, Auth::user(), $validated['reason']);
+
+            return redirect()
+                ->route('production-orders.show', $productionOrder)
+                ->with('success', 'Production completion reversed. FIFO stock and the pre-completion commercial snapshot were restored.');
+        } catch (\Throwable $e) {
+            Log::warning('Production completion reversal failed', [
+                'production_order_id' => $productionOrder->id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return back()->with('error', $e->getMessage());
         }
     }
 
