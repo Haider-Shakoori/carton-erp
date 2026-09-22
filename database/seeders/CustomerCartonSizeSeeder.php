@@ -21,6 +21,7 @@ class CustomerCartonSizeSeeder extends Seeder
         $legacyNameCounts = collect($rows)
             ->countBy(fn (array $row) => mb_strtolower(trim((string) ($row['product_name'] ?? ''))))
             ->all();
+        $previousResolvedNames = $this->resolvedNeutralProductNames($rows, false);
         $resolvedNames = $this->resolvedNeutralProductNames($rows);
 
         $category = Category::firstOrCreate(
@@ -34,6 +35,11 @@ class CustomerCartonSizeSeeder extends Seeder
         // Existing imports from the first client-master release carried the
         // customer/company name in Product::name. Rename only those exact
         // generated names. If an operator already renamed a product, preserve it.
+        $this->syncPreviouslyGeneratedNeutralProductNames(
+            $rows,
+            $previousResolvedNames,
+            $resolvedNames
+        );
         $this->syncLegacyImportedProductNames($rows, $legacyNameCounts, $resolvedNames);
 
         $createdCustomers = 0;
@@ -188,14 +194,17 @@ class CustomerCartonSizeSeeder extends Seeder
      *
      * @return array<string,string> keyed by immutable source_key
      */
-    private function resolvedNeutralProductNames(array $rows): array
+    private function resolvedNeutralProductNames(
+        array $rows,
+        bool $stripPiecesUnit = true
+    ): array
     {
         $grouped = [];
 
         foreach ($rows as $row) {
             $customerName = trim((string) ($row['customer'] ?? ''));
             $sourceKey = $this->sourceKey($row, $customerName);
-            $baseName = $this->neutralBaseProductName($row);
+            $baseName = $this->neutralBaseProductName($row, $stripPiecesUnit);
             $groupKey = mb_strtolower($baseName);
 
             $grouped[$groupKey][] = [
@@ -223,10 +232,15 @@ class CustomerCartonSizeSeeder extends Seeder
         return $resolved;
     }
 
-    private function neutralBaseProductName(array $row): string
-    {
+    private function neutralBaseProductName(
+        array $row,
+        bool $stripPiecesUnit = true
+    ): string {
         $size = $this->nullableText($row['size_raw'] ?? null);
-        $pack = $this->nullableText($row['pcs_ml'] ?? null);
+        $pack = $this->finishedGoodPackLabel(
+            $row['pcs_ml'] ?? null,
+            $stripPiecesUnit
+        );
 
         $parts = [
             $size ? 'Carton '.$size : 'Carton - Size pending',
@@ -237,6 +251,64 @@ class CustomerCartonSizeSeeder extends Seeder
         }
 
         return implode(' - ', $parts);
+    }
+
+    private function finishedGoodPackLabel(
+        mixed $value,
+        bool $stripPiecesUnit
+    ): ?string {
+        $pack = $this->nullableText($value);
+
+        if (! $pack || ! $stripPiecesUnit) {
+            return $pack;
+        }
+
+        $pack = preg_replace('/\\s*pcs\\b/i', '', $pack);
+        $pack = trim((string) preg_replace('/\\s{2,}/', ' ', (string) $pack));
+
+        return $pack === '' ? null : $pack;
+    }
+
+    /**
+     * The previous neutral-name release retained the workbook's "pcs" token in
+     * Product::name. Rename only those exact generated names so re-seeding
+     * upgrades existing installs without overwriting operator-customized names.
+     */
+    private function syncPreviouslyGeneratedNeutralProductNames(
+        array $rows,
+        array $previousResolvedNames,
+        array $resolvedNames
+    ): void {
+        foreach ($rows as $row) {
+            $customerName = trim((string) ($row['customer'] ?? ''));
+
+            if ($customerName === '') {
+                continue;
+            }
+
+            $sourceKey = $this->sourceKey($row, $customerName);
+            $previousName = $previousResolvedNames[$sourceKey] ?? null;
+            $desiredName = $resolvedNames[$sourceKey] ?? null;
+
+            if (! $previousName || ! $desiredName || $previousName === $desiredName) {
+                continue;
+            }
+
+            $specification = FinishedGoodSpecification::query()
+                ->where('source_key', $sourceKey)
+                ->with('product')
+                ->first();
+
+            if (! $specification?->product) {
+                continue;
+            }
+
+            $currentName = trim((string) $specification->product->name);
+
+            if (mb_strtolower($currentName) === mb_strtolower($previousName)) {
+                $specification->product->update(['name' => $desiredName]);
+            }
+        }
     }
 
     private function syncLegacyImportedProductNames(
