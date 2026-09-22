@@ -179,6 +179,30 @@
         </div>
     </div>
 
+    <!-- Procurement Controls -->
+    <div class="col-12">
+        <div class="card border-0 shadow-sm rounded-4">
+            <div class="card-header bg-white border-bottom">
+                <h5 class="mb-1 fw-bold">🧾 Procure-to-Pay Controls</h5>
+                <div class="small text-muted">Maker-checker purchasing with receipts, supplier invoices and three-way matching.</div>
+            </div>
+            <div class="card-body">
+                <input type="hidden" name="purchase_approval_required" value="0">
+                <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" role="switch"
+                           id="purchaseApprovalRequired" name="purchase_approval_required" value="1"
+                           @checked(old('purchase_approval_required', $setting->purchase_approval_required))>
+                    <label class="form-check-label fw-semibold" for="purchaseApprovalRequired">
+                        Require purchase approval before Shipping / Arrival
+                    </label>
+                </div>
+                <div class="form-text mt-2">
+                    When enabled, purchase orders must be independently approved before progressing. Goods receipt and supplier invoice matching provide the operational audit trail.
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Logo Upload -->
     <div class="col-md-6">
         <div class="card border-0 shadow-sm rounded-4 h-100">
