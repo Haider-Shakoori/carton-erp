@@ -128,6 +128,12 @@ jobs:
           php -l app/Services/StockControlNotificationService.php
           php -l app/Helpers/WhatsAppHelper.php
           php -l app/Http/Controllers/WhatsAppController.php
+          php -l app/Http/Controllers/Client/DashboardController.php
+          php -l app/Http/Middleware/EnsureClientPortalAccess.php
+          php -l routes/auth.php
+          php -l routes/client.php
+          php -l routes/web.php
+          php -l bootstrap/app.php
           php -l config/services.php
           php -l app/Http/Controllers/Admin/StockNotificationController.php
           php -l app/Jobs/DeliverStockControlNotification.php
@@ -179,6 +185,9 @@ jobs:
           php artisan test tests/Feature/Infrastructure/ProductionConfigCompatibilityTest.php
           php artisan test tests/Feature/Infrastructure/NoEmbeddedCredentialsTest.php
           php artisan test tests/Feature/Infrastructure/SecureAdminBootstrapTest.php
+          php artisan test tests/Feature/Security/ClientPortalAuthorizationTest.php
+          php artisan test tests/Feature/Auth/RegistrationTest.php
+          php artisan test tests/Feature/ProfileTest.php
           php artisan test tests/Feature/GoldenPath/RealWorldCartonWorkflowRemediationTest.php
           php artisan test tests/Feature/Uat/RealClientCnpWorkflowTest.php
           php artisan test tests/Feature/ClientMaster/CustomerCartonMasterSeederTest.php
