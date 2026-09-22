@@ -38,7 +38,21 @@ class BusinessUnitContext
             return $this->availableCache = collect();
         }
 
-        return $this->availableCache = BusinessUnit::query()->active()->get();
+        $query = BusinessUnit::query()->active();
+
+        if (auth()->check()) {
+            $user = auth()->user();
+            $assignedIds = $user->businessUnits()->pluck('business_units.id');
+
+            // Existing users remain backward-compatible until an administrator
+            // explicitly assigns business access. Once assigned, the allow-list
+            // becomes authoritative.
+            if ($assignedIds->isNotEmpty()) {
+                $query->whereIn('id', $assignedIds);
+            }
+        }
+
+        return $this->availableCache = $query->get();
     }
 
     public function current(): ?BusinessUnit
@@ -93,6 +107,10 @@ class BusinessUnitContext
 
         if (! $businessUnit->is_active) {
             throw new \RuntimeException('The selected business unit is inactive.');
+        }
+
+        if (! $this->available()->contains('id', $businessUnit->id)) {
+            throw new \RuntimeException('You do not have access to the selected business unit.');
         }
 
         session()->put(self::SESSION_KEY, $businessUnit->id);
