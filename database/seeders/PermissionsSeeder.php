@@ -49,7 +49,9 @@ class PermissionsSeeder extends Seeder
             // ============================================================
             'suppliers' => ['view', 'create', 'update', 'delete', 'print', 'send-whatsapp'],
             'purchase orders' => ['view', 'create', 'update', 'delete', 'print', 'send-whatsapp'],
-            'stock' => ['view', 'create', 'update', 'delete'],
+            'stock' => ['view', 'create', 'update', 'delete', 'condition'],
+            'warehouses' => ['view', 'create', 'update'],
+            'stock transfers' => ['view', 'create', 'approve'],
             'products' => ['view', 'create', 'update', 'delete', 'print', 'send-whatsapp'],
             'stock movements' => ['view'], // NEW
             'stock reconciliations' => ['view', 'create', 'update', 'submit', 'approve', 'post', 'cancel', 'investigate', 'resolve', 'escalate', 'review'],
