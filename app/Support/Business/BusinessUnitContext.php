@@ -82,7 +82,21 @@ class BusinessUnitContext
             return $this->currentCache = $current;
         }
 
-        $defaultId = (int) (Setting::query()->value('default_business_unit_id') ?? 0);
+        $defaultId = 0;
+
+        if (auth()->check() && method_exists(auth()->user(), 'businessUnits')) {
+            $defaultId = (int) (
+                auth()->user()
+                    ->businessUnits()
+                    ->wherePivot('is_default', true)
+                    ->value('business_units.id') ?? 0
+            );
+        }
+
+        if ($defaultId <= 0) {
+            $defaultId = (int) (Setting::query()->value('default_business_unit_id') ?? 0);
+        }
+
         $current = $available->firstWhere('id', $defaultId) ?? $available->first();
 
         session()->put(self::SESSION_KEY, $current->id);
