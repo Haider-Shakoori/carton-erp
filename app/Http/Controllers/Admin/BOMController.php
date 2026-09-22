@@ -949,7 +949,7 @@ class BOMController extends Controller
      */
     public function show(BOM $bom)
     {
-        $bom->load(['product', 'items.material', 'createdBy', 'updatedBy']);
+        $bom->load(['product', 'items.material', 'createdBy', 'updatedBy', 'approvedBy', 'lockedBy', 'supersedes']);
 
         // Approved/effective BOM revisions are immutable. Historical totals
         // must remain exactly as approved instead of being recalculated from
