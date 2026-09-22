@@ -91,6 +91,28 @@
             background: #6b7280;
         }
 
+        .status-badge.approved {
+            background: #ede9fe;
+            color: #5b21b6;
+            border: 1px solid #c4b5fd;
+        }
+        .status-badge.approved .pulse-dot { background: #7c3aed; }
+        .status-badge.closed {
+            background: #e2e8f0;
+            color: #334155;
+            border: 1px solid #94a3b8;
+        }
+        .status-badge.closed .pulse-dot {
+            background: #475569;
+            animation: none;
+        }
+        .status-badge.reversed {
+            background: #fee2e2;
+            color: #991b1b;
+            border: 1px solid #fca5a5;
+        }
+        .status-badge.reversed .pulse-dot { background: #dc2626; }
+
         /* ─── Currency Badge ─── */
         .currency-badge {
             display: inline-flex;
@@ -871,9 +893,9 @@
                         <span><i class="bi bi-box me-1"></i> {{ $productionOrder->product->name ?? 'N/A' }}</span>
                         <span class="text-muted">·</span>
                         <span><i class="bi bi-file-text me-1"></i> {{ $productionOrder->bom->name ?? 'N/A' }}</span>
-                        <span class="status-badge {{ $productionOrder->status }} ms-2">
+                        <span class="status-badge {{ $productionOrder->control_status }} ms-2">
                             <span class="pulse-dot"></span>
-                            {{ $productionOrder->status_label }}
+                            {{ ucfirst(str_replace('_', ' ', $productionOrder->control_status)) }}
                         </span>
                         @if(isset($currencyCode))
                             <span class="currency-badge {{ $currencyCode === 'USD' ? 'usd' : 'afn' }}">
@@ -884,7 +906,18 @@
                     </p>
                 </div>
                 <div class="action-btn-group">
-                    @if($productionOrder->status === 'pending')
+                    @if($productionOrder->status === 'pending' && !$productionOrder->approved_at)
+                        @can('approve production orders')
+                            <form action="{{ route('production-orders.approve', $productionOrder) }}" method="POST" class="d-inline">
+                                @csrf
+                                <button type="submit" class="action-btn action-btn-primary">
+                                    <i class="bi bi-shield-check"></i> Approve
+                                </button>
+                            </form>
+                        @endcan
+                    @endif
+
+                    @if($productionOrder->status === 'pending' && (!($setting->production_approval_required ?? false) || $productionOrder->approved_at))
                         <button type="button"
                                 class="action-btn action-btn-success"
                                 data-bs-toggle="modal"
@@ -902,7 +935,28 @@
                         </button>
                     @endif
 
-                    @if(in_array($productionOrder->status, ['pending', 'in_progress']))
+                    @if($productionOrder->status === 'completed' && !$productionOrder->closed_at)
+                        @can('close production orders')
+                            <button type="button" class="action-btn action-btn-primary" data-bs-toggle="modal" data-bs-target="#closeProductionModal">
+                                <i class="bi bi-lock"></i> Close
+                            </button>
+                        @endcan
+                        @can('reverse production orders')
+                            <button type="button" class="action-btn action-btn-danger" data-bs-toggle="modal" data-bs-target="#reverseProductionModal">
+                                <i class="bi bi-arrow-counterclockwise"></i> Reverse Completion
+                            </button>
+                        @endcan
+                    @endif
+
+                    @if($productionOrder->closed_at)
+                        @can('reopen production orders')
+                            <button type="button" class="action-btn action-btn-primary" data-bs-toggle="modal" data-bs-target="#reopenProductionModal">
+                                <i class="bi bi-unlock"></i> Reopen
+                            </button>
+                        @endcan
+                    @endif
+
+                    @if(in_array($productionOrder->status, ['pending', 'in_progress']) && !$productionOrder->closed_at)
                         <form action="{{ route('production-orders.cancel', $productionOrder) }}" method="POST" class="d-inline">
                             @csrf
                             <button type="submit" class="action-btn action-btn-danger" onclick="return confirm('Cancel production? This will restore materials to inventory.')">
@@ -918,7 +972,14 @@
             </div>
         </div>
 
-        @if($productionOrder->status === 'pending')
+        @if($productionOrder->status === 'pending' && ($setting->production_approval_required ?? false) && !$productionOrder->approved_at)
+            <div class="alert alert-warning border-0 shadow-sm">
+                <i class="bi bi-shield-lock me-1"></i>
+                <strong>Approval required:</strong> this work order cannot consume inventory until a supervisor approves it.
+            </div>
+        @endif
+
+        @if($productionOrder->status === 'pending' && (!($setting->production_approval_required ?? false) || $productionOrder->approved_at))
             <div class="modal fade" id="startProductionModal" tabindex="-1" aria-labelledby="startProductionModalLabel" aria-hidden="true">
                 <div class="modal-dialog modal-dialog-centered">
                     <div class="modal-content border-0 shadow-lg">
@@ -976,6 +1037,69 @@
                     </div>
                 </div>
             </div>
+        @endif
+
+        @if($productionOrder->status === 'completed' && !$productionOrder->closed_at)
+            @can('close production orders')
+                <div class="modal fade" id="closeProductionModal" tabindex="-1" aria-hidden="true">
+                    <div class="modal-dialog modal-dialog-centered">
+                        <div class="modal-content border-0 shadow-lg">
+                            <form action="{{ route('production-orders.close', $productionOrder) }}" method="POST">
+                                @csrf
+                                <div class="modal-header"><h5 class="modal-title fw-bold">Close Production Order</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+                                <div class="modal-body">
+                                    <p class="small text-muted">Closing locks normal correction. Reopening requires a separate authorized action and audit reason.</p>
+                                    <label class="form-label fw-semibold">Closure reason <span class="text-danger">*</span></label>
+                                    <textarea name="reason" class="form-control" rows="3" minlength="10" maxlength="1000" required></textarea>
+                                </div>
+                                <div class="modal-footer"><button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button><button type="submit" class="btn btn-primary">Close Order</button></div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            @endcan
+
+            @can('reverse production orders')
+                <div class="modal fade" id="reverseProductionModal" tabindex="-1" aria-hidden="true">
+                    <div class="modal-dialog modal-dialog-centered">
+                        <div class="modal-content border-0 shadow-lg">
+                            <form action="{{ route('production-orders.reverse-completion', $productionOrder) }}" method="POST">
+                                @csrf
+                                <div class="modal-header"><h5 class="modal-title fw-bold text-danger">Reverse Production Completion</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+                                <div class="modal-body">
+                                    <div class="alert alert-danger small">
+                                        This restores the exact FIFO material consumption and the captured pre-completion sale/invoice snapshot. Delivered sales cannot be reversed here.
+                                    </div>
+                                    <label class="form-label fw-semibold">Reversal reason <span class="text-danger">*</span></label>
+                                    <textarea name="reason" class="form-control" rows="4" minlength="10" maxlength="1000" required></textarea>
+                                </div>
+                                <div class="modal-footer"><button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button><button type="submit" class="btn btn-danger">Reverse Completion</button></div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            @endcan
+        @endif
+
+        @if($productionOrder->closed_at)
+            @can('reopen production orders')
+                <div class="modal fade" id="reopenProductionModal" tabindex="-1" aria-hidden="true">
+                    <div class="modal-dialog modal-dialog-centered">
+                        <div class="modal-content border-0 shadow-lg">
+                            <form action="{{ route('production-orders.reopen', $productionOrder) }}" method="POST">
+                                @csrf
+                                <div class="modal-header"><h5 class="modal-title fw-bold">Reopen Production Order</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+                                <div class="modal-body">
+                                    <p class="small text-muted">The reason becomes part of the immutable production control history.</p>
+                                    <label class="form-label fw-semibold">Reopen reason <span class="text-danger">*</span></label>
+                                    <textarea name="reason" class="form-control" rows="3" minlength="10" maxlength="1000" required></textarea>
+                                </div>
+                                <div class="modal-footer"><button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button><button type="submit" class="btn btn-primary">Reopen Order</button></div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            @endcan
         @endif
 
         @if($productionOrder->status === 'in_progress')
