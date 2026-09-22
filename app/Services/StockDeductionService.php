@@ -512,6 +512,7 @@ class StockDeductionService
 
             $records = collect();
             $plannedRemaining = max($plannedQuantity, 0);
+            $locationInventory = app(InventoryLocationService::class);
 
             foreach ($prepared as $selection) {
                 /** @var PurchaseItem $batch */
