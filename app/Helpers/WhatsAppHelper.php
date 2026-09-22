@@ -14,21 +14,33 @@ class WhatsAppHelper
                 'recipient' => self::maskRecipient($to),
                 'message_length' => is_string($message) ? strlen($message) : 0,
             ]);
+
             return false;
         }
 
-        $response = retry(3, function () use ($to, $message) {
-            return Http::timeout(15)->withHeaders([
-                'Authorization' => 'Bearer ' . env('WASENDER_API_KEY'),
-                'Content-Type'  => 'application/json',
-            ])->post(env('WASENDER_API_URL'), [
-                'to'   => $to,
-                'text' => $message,
+        $apiKey = trim((string) config('services.wasender.api_key'));
+        $apiUrl = trim((string) config('services.wasender.api_url'));
+
+        if ($apiKey === '' || $apiUrl === '') {
+            Log::warning('WhatsApp message not sent: provider configuration is incomplete.', [
+                'recipient' => self::maskRecipient($to),
+                'message_length' => is_string($message) ? strlen($message) : 0,
             ]);
-        }, 500); // retry 3 times, wait 500ms between tries
 
+            return false;
+        }
 
-        if (!$response->successful()) {
+        $response = retry(3, function () use ($to, $message, $apiKey, $apiUrl) {
+            return Http::timeout(15)
+                ->withToken($apiKey)
+                ->acceptJson()
+                ->post($apiUrl, [
+                    'to' => $to,
+                    'text' => $message,
+                ]);
+        }, 500);
+
+        if (! $response->successful()) {
             Log::error('WhatsApp provider rejected a message.', [
                 'recipient' => self::maskRecipient($to),
                 'status' => $response->status(),
@@ -46,7 +58,7 @@ class WhatsAppHelper
 
     private static function maskRecipient(mixed $recipient): ?string
     {
-        $value = preg_replace('/\s+/', '', (string) $recipient);
+        $value = preg_replace('/\\s+/', '', (string) $recipient);
 
         if ($value === '') {
             return null;
@@ -55,7 +67,6 @@ class WhatsAppHelper
         $visible = min(strlen($value), 4);
 
         return str_repeat('*', max(strlen($value) - $visible, 0))
-            .substr($value, -$visible);
+            . substr($value, -$visible);
     }
 }
-
