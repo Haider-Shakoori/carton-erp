@@ -544,6 +544,7 @@ Route::middleware(['auth'])->prefix('admin')->group(function () {
         Route::put('/{id}/update-password', [UsersController::class, 'updatePassword'])->name('update-password')->middleware('permission.feedback:update users');
         Route::post('/{id}/assign-permissions', [UsersController::class, 'assignPermissions'])->name('assign-permissions')->middleware('permission.feedback:update users');
         Route::post('/{id}/update-permissions', [UsersController::class, 'updatePermissions'])->name('update-permissions')->middleware('permission.feedback:update users');
+        Route::post('/{id}/business-units', [UsersController::class, 'updateBusinessUnits'])->name('business-units')->middleware('permission.feedback:update users');
     });
 
     // ==================== ROLES ====================
