@@ -133,7 +133,14 @@ class InventoryLocationService
             return $batch->availableInventoryQuantity();
         }
 
-        return max($sum, 0.0);
+        // Purchase-batch counters remain the authoritative physical ceiling.
+        // Location balances classify that stock by warehouse/condition, but a stale
+        // location balance must never make more stock available than the batch
+        // itself currently contains.
+        return min(
+            max($sum, 0.0),
+            max($batch->availableInventoryQuantity(), 0.0)
+        );
     }
 
     public function syncAfterBatchChange(PurchaseItem $batch): void
