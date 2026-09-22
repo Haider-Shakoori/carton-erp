@@ -46,6 +46,7 @@ use App\Http\Controllers\Admin\BOMController;
 use App\Http\Controllers\Admin\BusinessUnitSwitchController;
 use App\Http\Controllers\Admin\CartonQuotationController;
 use App\Http\Controllers\Admin\ProductionOrderController;
+use App\Http\Controllers\Admin\ProcurementController;
 use App\Http\Controllers\Admin\WorkOrderController;
 use App\Http\Controllers\Admin\WarehouseController;
 use App\Http\Controllers\Admin\ShareholderWithdrawalController;
@@ -160,6 +161,55 @@ Route::middleware(['auth'])->prefix('admin')->group(function () {
     Route::get('products/{product}', [App\Http\Controllers\Admin\StockController::class, 'show'])->name('admin.products.show')->middleware('permission.feedback:view stock');
     Route::get('/fetch', [AccountsController::class, 'fetchAccounts'])->name('fetch')->middleware('permission.feedback:view customers');
     Route::get('/products/low-stock', [App\Http\Controllers\Admin\ProductController::class, 'getLowStockProducts'])->name('admin.products.low-stock')->middleware('permission.feedback:view stock');
+
+    // Procure-to-Pay
+    Route::prefix('procurement')->name('admin.procurement.')->group(function () {
+        Route::get('/', [ProcurementController::class, 'index'])
+            ->name('index')->middleware('permission.feedback:view purchase requests');
+
+        Route::get('/requests/create', [ProcurementController::class, 'createRequest'])
+            ->name('requests.create')->middleware('permission.feedback:create purchase requests');
+        Route::post('/requests', [ProcurementController::class, 'storeRequest'])
+            ->name('requests.store')->middleware('permission.feedback:create purchase requests');
+        Route::post('/requests/{purchaseRequest}/submit', [ProcurementController::class, 'submitRequest'])
+            ->name('requests.submit')->middleware('permission.feedback:submit purchase requests');
+        Route::post('/requests/{purchaseRequest}/approve', [ProcurementController::class, 'approveRequest'])
+            ->name('requests.approve')->middleware('permission.feedback:approve purchase requests');
+
+        Route::get('/requests/{purchaseRequest}/rfq/create', [ProcurementController::class, 'createRfq'])
+            ->name('rfqs.create')->middleware('permission.feedback:create rfq');
+        Route::post('/requests/{purchaseRequest}/rfq', [ProcurementController::class, 'storeRfq'])
+            ->name('rfqs.store')->middleware('permission.feedback:create rfq');
+        Route::get('/rfqs/{rfq}', [ProcurementController::class, 'showRfq'])
+            ->name('rfqs.show')->middleware('permission.feedback:view rfq');
+        Route::post('/rfqs/{rfq}/open', [ProcurementController::class, 'openRfq'])
+            ->name('rfqs.open')->middleware('permission.feedback:update rfq');
+        Route::post('/rfqs/{rfq}/quotes', [ProcurementController::class, 'storeQuote'])
+            ->name('rfqs.quotes.store')->middleware('permission.feedback:update rfq');
+        Route::post('/quotes/{quote}/select', [ProcurementController::class, 'selectQuote'])
+            ->name('quotes.select')->middleware('permission.feedback:award rfq');
+
+        Route::get('/purchases/{purchase}/receipts/create', [ProcurementController::class, 'createReceipt'])
+            ->name('receipts.create')->middleware('permission.feedback:create goods receipts');
+        Route::post('/purchases/{purchase}/receipts', [ProcurementController::class, 'storeReceipt'])
+            ->name('receipts.store')->middleware('permission.feedback:create goods receipts');
+        Route::post('/receipts/{receipt}/post', [ProcurementController::class, 'postReceipt'])
+            ->name('receipts.post')->middleware('permission.feedback:post goods receipts');
+
+        Route::get('/purchases/{purchase}/invoices/create', [ProcurementController::class, 'createInvoice'])
+            ->name('invoices.create')->middleware('permission.feedback:create supplier invoices');
+        Route::post('/purchases/{purchase}/invoices', [ProcurementController::class, 'storeInvoice'])
+            ->name('invoices.store')->middleware('permission.feedback:create supplier invoices');
+        Route::post('/invoices/{invoice}/match', [ProcurementController::class, 'rematchInvoice'])
+            ->name('invoices.match')->middleware('permission.feedback:match supplier invoices');
+        Route::post('/invoices/{invoice}/approve', [ProcurementController::class, 'approveInvoice'])
+            ->name('invoices.approve')->middleware('permission.feedback:approve supplier invoices');
+        Route::post('/invoices/{invoice}/pay', [ProcurementController::class, 'payInvoice'])
+            ->name('invoices.pay')->middleware('permission.feedback:pay supplier invoices');
+    });
+
+    Route::post('purchase-orders/{id}/approve', [PurchaseOrderController::class, 'approve'])
+        ->name('admin.purchase-orders.approve')->middleware('permission.feedback:approve purchase orders');
 
     // Stock Reconciliation / Cycle Counts
     Route::prefix('stock-reconciliations')->name('admin.stock-reconciliations.')->group(function () {
