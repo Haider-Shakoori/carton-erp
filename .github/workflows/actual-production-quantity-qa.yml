@@ -118,6 +118,7 @@ jobs:
           php -l app/Http/Controllers/Admin/AccountingController.php
           php -l app/Http/Controllers/Admin/ManagementReportingController.php
           php -l app/Http/Middleware/InitializeBusinessUnitContext.php
+          php -l app/Console/Commands/EnterpriseReadinessCheck.php
           php -l database/migrations/2026_09_22_080000_add_production_control_and_audit.php
           php -l database/migrations/2026_09_22_083000_create_financial_accounting_controls.php
           php -l database/migrations/2026_09_22_084000_create_business_unit_user_access.php
@@ -143,6 +144,8 @@ jobs:
           php artisan test tests/Feature/Enterprise/AccountingControlTest.php
           php artisan test tests/Feature/Enterprise/ProductionCostVarianceTest.php
           php artisan test tests/Feature/Enterprise/EnterpriseControlUiContractTest.php
+          php artisan test tests/Feature/Enterprise/EnterpriseReadinessTest.php
+          php artisan erp:readiness
 
       - name: Complete PHP test suite
         run: php artisan test
