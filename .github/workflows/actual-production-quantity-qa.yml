@@ -122,6 +122,12 @@ jobs:
           php -l app/Services/AccountingService.php
           php -l app/Services/BOMGovernanceService.php
           php -l app/Services/ManagementReportingService.php
+          php -l app/Services/StockControlNotificationService.php
+          php -l app/Http/Controllers/Admin/StockNotificationController.php
+          php -l app/Jobs/DeliverStockControlNotification.php
+          php -l app/Models/StockNotificationDelivery.php
+          php -l app/Models/StockNotificationPreference.php
+          php -l app/Models/User.php
           php -l app/Http/Controllers/Admin/AccountingController.php
           php -l app/Http/Controllers/Admin/ManagementReportingController.php
           php -l app/Http/Middleware/InitializeBusinessUnitContext.php
@@ -130,6 +136,7 @@ jobs:
           php -l database/migrations/2026_09_22_083000_create_financial_accounting_controls.php
           php -l database/migrations/2026_09_22_084000_create_business_unit_user_access.php
           php -l database/migrations/2026_09_22_085000_add_bom_revision_governance.php
+          php -l database/migrations/2026_09_22_091000_add_assignment_stock_notification_preference.php
 
       - name: Fresh MySQL install
         run: php artisan migrate:fresh --seed --force
@@ -147,6 +154,7 @@ jobs:
           php artisan test tests/Feature/CartonSpecification/CartonSpecificationServiceTest.php
           php artisan test tests/Feature/CartonSpecification/CartonQuotationTest.php
           php artisan test tests/Feature/Inventory/ReelRemnantTrackingTest.php
+          php artisan test tests/Feature/Inventory/StockNotificationHardeningTest.php
           php artisan test tests/Feature/GoldenPath/RealWorldCartonWorkflowRemediationTest.php
           php artisan test tests/Feature/Uat/RealClientCnpWorkflowTest.php
           php artisan test tests/Feature/ClientMaster/CustomerCartonMasterSeederTest.php
