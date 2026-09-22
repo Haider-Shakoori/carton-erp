@@ -1480,7 +1480,7 @@
                                             </div>
                                             <div class="completion-inventory-note">
                                                 <div class="fw-bold text-dark mb-1"><i class="bi bi-box-arrow-down me-1"></i> Inventory impact</div>
-                                                Actual Consumed is authoritative. Higher actual usage deducts additional FIFO stock; lower actual usage restores the unused provisional allocation. Actual FIFO landed cost becomes the production material cost.
+                                                Actual Consumed is authoritative. Higher actual usage deducts additional FIFO stock; lower actual usage restores the unused provisional allocation. Actual FIFO landed cost becomes the production material cost, and the linked sale's realized profit is recalculated from that actual cost.
                                             </div>
                                         </div>
                                     </aside>
