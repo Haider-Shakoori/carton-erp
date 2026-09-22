@@ -109,6 +109,7 @@ jobs:
           php -l database/seeders/DatabaseSeeder.php
           php -l database/seeders/CurrencySeeder.php
           php -l database/seeders/ClientCartonOpeningStockSeeder.php
+          php -l database/seeders/TransactionsSeeder.php
           php -l app/Services/BOMCostingService.php
           php -l app/Services/CartonSpecificationService.php
           php -l app/Models/ProductionOrder.php
@@ -174,6 +175,7 @@ jobs:
           php artisan test tests/Feature/Inventory/StockControlNotificationTest.php
           php artisan test tests/Feature/Inventory/StockNotificationHardeningTest.php
           php artisan test tests/Feature/Infrastructure/ProductionConfigCompatibilityTest.php
+          php artisan test tests/Feature/Infrastructure/NoEmbeddedCredentialsTest.php
           php artisan test tests/Feature/GoldenPath/RealWorldCartonWorkflowRemediationTest.php
           php artisan test tests/Feature/Uat/RealClientCnpWorkflowTest.php
           php artisan test tests/Feature/ClientMaster/CustomerCartonMasterSeederTest.php
