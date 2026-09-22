@@ -178,6 +178,7 @@ jobs:
           php artisan test tests/Feature/Inventory/StockNotificationHardeningTest.php
           php artisan test tests/Feature/Infrastructure/ProductionConfigCompatibilityTest.php
           php artisan test tests/Feature/Infrastructure/NoEmbeddedCredentialsTest.php
+          php artisan test tests/Feature/Infrastructure/SecureAdminBootstrapTest.php
           php artisan test tests/Feature/GoldenPath/RealWorldCartonWorkflowRemediationTest.php
           php artisan test tests/Feature/Uat/RealClientCnpWorkflowTest.php
           php artisan test tests/Feature/ClientMaster/CustomerCartonMasterSeederTest.php
