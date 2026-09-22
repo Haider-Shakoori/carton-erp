@@ -11,16 +11,21 @@ class BusinessUnitContext
 {
     public const SESSION_KEY = 'active_business_unit_id';
 
+    private ?bool $enabledCache = null;
     private ?Collection $availableCache = null;
     private ?BusinessUnit $currentCache = null;
 
     public function enabled(): bool
     {
-        if (! Schema::hasTable('settings') || ! Schema::hasColumn('settings', 'separate_business_units_enabled')) {
-            return false;
+        if ($this->enabledCache !== null) {
+            return $this->enabledCache;
         }
 
-        return (bool) (Setting::query()->value('separate_business_units_enabled') ?? false);
+        if (! Schema::hasTable('settings') || ! Schema::hasColumn('settings', 'separate_business_units_enabled')) {
+            return $this->enabledCache = false;
+        }
+
+        return $this->enabledCache = (bool) (Setting::query()->value('separate_business_units_enabled') ?? false);
     }
 
     public function available(): Collection
@@ -69,6 +74,13 @@ class BusinessUnitContext
         session()->put(self::SESSION_KEY, $current->id);
 
         return $this->currentCache = $current;
+    }
+
+    public function reset(): void
+    {
+        $this->enabledCache = null;
+        $this->availableCache = null;
+        $this->currentCache = null;
     }
 
     public function switchTo(BusinessUnit $businessUnit): BusinessUnit
