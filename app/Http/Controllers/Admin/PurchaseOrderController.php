@@ -13,6 +13,7 @@ use App\Models\Transaction;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use App\Services\InventoryLocationService;
 use Yajra\DataTables\Facades\DataTables;
 
 class PurchaseOrderController extends Controller
@@ -332,6 +333,15 @@ class PurchaseOrderController extends Controller
             }
 
             $purchase->save();
+
+            if ($newStatus === 'arrived') {
+                $purchase->loadMissing('items');
+                $warehouseInventory = app(InventoryLocationService::class);
+
+                foreach ($purchase->items as $item) {
+                    $warehouseInventory->ensureBatch($item);
+                }
+            }
 
             DB::commit();
 
