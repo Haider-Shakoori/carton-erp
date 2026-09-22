@@ -43,6 +43,7 @@ use App\Http\Controllers\Admin\TransactionsController;
 use App\Http\Controllers\Admin\UsersController;
 use App\Http\Controllers\WhatsAppController;
 use App\Http\Controllers\Admin\BOMController;
+use App\Http\Controllers\Admin\BOMGovernanceController;
 use App\Http\Controllers\Admin\BusinessUnitSwitchController;
 use App\Http\Controllers\Admin\CartonQuotationController;
 use App\Http\Controllers\Admin\ProductionOrderController;
@@ -665,6 +666,8 @@ Route::middleware(['auth'])->prefix('admin')->group(function () {
     Route::delete('/bom/{bom}', [BOMController::class, 'destroy'])->name('bom.destroy')->middleware('permission.feedback:delete bom');
     Route::post('/bom/{bom}/clone', [BOMController::class, 'clone'])->name('bom.clone')->middleware('permission.feedback:create bom');
     Route::post('/bom/{bom}/toggle-status', [BOMController::class, 'toggleStatus'])->name('bom.toggle-status')->middleware('permission.feedback:update bom');
+    Route::post('/bom/{bom}/revise', [BOMGovernanceController::class, 'revise'])->name('bom.revise')->middleware('permission.feedback:revise bom');
+    Route::post('/bom/{bom}/approve-revision', [BOMGovernanceController::class, 'approve'])->name('bom.approve-revision')->middleware('permission.feedback:approve bom');
     Route::post('/bom/calculate', [BOMController::class, 'calculate'])->name('bom.calculate')->middleware('permission.feedback:create bom');
     Route::get('bom/get-material-cost/{material_id}', [BOMController::class, 'getMaterialCost'])->name('bom.get-material-cost')->middleware('permission.feedback:view bom');
 
