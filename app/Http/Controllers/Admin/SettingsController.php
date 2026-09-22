@@ -38,10 +38,12 @@ class SettingsController extends Controller
             'separate_business_units_enabled' => 'nullable|boolean',
             'default_business_unit_id' => 'nullable|required_if:separate_business_units_enabled,1|exists:business_units,id',
             'production_approval_required' => 'nullable|boolean',
+            'purchase_approval_required' => 'nullable|boolean',
         ]);
 
         $data['separate_business_units_enabled'] = $request->boolean('separate_business_units_enabled');
         $data['production_approval_required'] = $request->boolean('production_approval_required');
+        $data['purchase_approval_required'] = $request->boolean('purchase_approval_required');
 
         if (! $data['separate_business_units_enabled']) {
             session()->forget(\App\Support\Business\BusinessUnitContext::SESSION_KEY);
