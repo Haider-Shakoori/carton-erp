@@ -48,7 +48,11 @@ class PermissionsSeeder extends Seeder
             // INVENTORY & PURCHASING
             // ============================================================
             'suppliers' => ['view', 'create', 'update', 'delete', 'print', 'send-whatsapp'],
-            'purchase orders' => ['view', 'create', 'update', 'delete', 'print', 'send-whatsapp'],
+            'purchase orders' => ['view', 'create', 'update', 'delete', 'approve', 'print', 'send-whatsapp'],
+            'purchase requests' => ['view', 'create', 'submit', 'approve'],
+            'rfq' => ['view', 'create', 'update', 'award'],
+            'goods receipts' => ['view', 'create', 'post'],
+            'supplier invoices' => ['view', 'create', 'match', 'approve', 'pay'],
             'stock' => ['view', 'create', 'update', 'delete', 'condition'],
             'warehouses' => ['view', 'create', 'update'],
             'stock transfers' => ['view', 'create', 'approve'],
