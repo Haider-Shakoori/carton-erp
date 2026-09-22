@@ -84,6 +84,72 @@
         </div>
     </div>
 
+    <!-- Business Units -->
+    <div class="col-12">
+        <div class="card border-0 shadow-sm rounded-4">
+            <div class="card-header bg-white border-bottom d-flex justify-content-between align-items-center">
+                <div>
+                    <h5 class="mb-1 fw-bold">🏭 Business Unit Separation</h5>
+                    <div class="small text-muted">Keep customers and employees shared while separating operational dashboards by business.</div>
+                </div>
+                <span class="badge {{ $setting->separate_business_units_enabled ? 'bg-success' : 'bg-secondary' }}">
+                    {{ $setting->separate_business_units_enabled ? 'Enabled' : 'Unified Mode' }}
+                </span>
+            </div>
+            <div class="card-body">
+                <div class="row g-4 align-items-start">
+                    <div class="col-lg-7">
+                        <input type="hidden" name="separate_business_units_enabled" value="0">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input"
+                                   type="checkbox"
+                                   role="switch"
+                                   id="separateBusinessUnitsEnabled"
+                                   name="separate_business_units_enabled"
+                                   value="1"
+                                   @checked(old('separate_business_units_enabled', $setting->separate_business_units_enabled))>
+                            <label class="form-check-label fw-semibold" for="separateBusinessUnitsEnabled">
+                                Enable separate business units
+                            </label>
+                        </div>
+                        <div class="form-text mt-2">
+                            When disabled, the ERP behaves as one unified business. When enabled, users can switch between
+                            <strong>3D Carton</strong> and <strong>Syrup Pack</strong> from the top navigation.
+                            Customers and employees remain shared master data.
+                        </div>
+                        @error('separate_business_units_enabled')
+                            <div class="text-danger small mt-2">{{ $message }}</div>
+                        @enderror
+                    </div>
+
+                    <div class="col-lg-5">
+                        <label for="defaultBusinessUnitId" class="form-label fw-semibold">Default Business Unit</label>
+                        <select class="form-select @error('default_business_unit_id') is-invalid @enderror"
+                                id="defaultBusinessUnitId"
+                                name="default_business_unit_id">
+                            @foreach($businessUnits as $businessUnit)
+                                <option value="{{ $businessUnit->id }}"
+                                    @selected((int) old('default_business_unit_id', $setting->default_business_unit_id) === (int) $businessUnit->id)>
+                                    {{ $businessUnit->name }}
+                                </option>
+                            @endforeach
+                        </select>
+                        @error('default_business_unit_id')
+                            <div class="invalid-feedback">{{ $message }}</div>
+                        @enderror
+                        <div class="form-text">Used when business separation is first enabled or a user has not selected a business yet.</div>
+                    </div>
+                </div>
+
+                <div class="alert alert-info mt-4 mb-0 small">
+                    <i class="bi bi-diagram-3 me-1"></i>
+                    This switch controls whether business-unit context is active. Shared customers and HR records are not duplicated.
+                    Operational records will be separated by business unit as the business-unit rollout is applied.
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Logo Upload -->
     <div class="col-md-6">
         <div class="card border-0 shadow-sm rounded-4 h-100">
@@ -114,4 +180,24 @@
 
     </form>
 </div>
+@endsection
+
+@section('js')
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const toggle = document.getElementById('separateBusinessUnitsEnabled');
+    const defaultSelect = document.getElementById('defaultBusinessUnitId');
+
+    const syncBusinessUnitSettings = function () {
+        if (!toggle || !defaultSelect) return;
+        defaultSelect.disabled = !toggle.checked;
+    };
+
+    if (toggle) {
+        toggle.addEventListener('change', syncBusinessUnitSettings);
+    }
+
+    syncBusinessUnitSettings();
+});
+</script>
 @endsection

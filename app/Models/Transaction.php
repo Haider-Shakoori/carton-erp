@@ -2,13 +2,15 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToBusinessUnit;
+
 use Illuminate\Database\Eloquent\Model;
 use Spatie\Activitylog\LogOptions;
 use Spatie\Activitylog\Traits\LogsActivity;
 
 class Transaction extends Model
 {
-    use LogsActivity;
+    use LogsActivity, BelongsToBusinessUnit;
 
     protected static $logName = 'transaction';
     protected static $logOnlyDirty = true;

@@ -879,6 +879,15 @@
                     {{ __('ui.dashboard_subtitle') }}
                     <span class="text-muted" id="lastUpdated"></span>
                 </p>
+                @if(($businessUnitModeEnabled ?? false) && $activeBusinessUnit)
+                    <div class="mt-2">
+                        <span class="badge rounded-pill text-bg-light border">
+                            <i class="bi {{ $activeBusinessUnit->icon ?: 'bi-building' }} me-1"></i>
+                            {{ $activeBusinessUnit->name }} workspace
+                        </span>
+                        <span class="small text-muted ms-2">Customers and employees are shared.</span>
+                    </div>
+                @endif
             </div>
 
             <div class="db-controls">

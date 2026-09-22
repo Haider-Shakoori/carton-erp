@@ -43,6 +43,7 @@ use App\Http\Controllers\Admin\TransactionsController;
 use App\Http\Controllers\Admin\UsersController;
 use App\Http\Controllers\WhatsAppController;
 use App\Http\Controllers\Admin\BOMController;
+use App\Http\Controllers\Admin\BusinessUnitSwitchController;
 use App\Http\Controllers\Admin\CartonQuotationController;
 use App\Http\Controllers\Admin\ProductionOrderController;
 use App\Http\Controllers\Admin\WorkOrderController;
@@ -59,6 +60,7 @@ use App\Http\Controllers\Admin\HR\PayrollController;
 use App\Http\Controllers\Admin\HR\ReportController;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Route;
+use App\Http\Middleware\InitializeBusinessUnitContext;
 
 Route::get('/', function () {
     return auth()->check()
@@ -73,7 +75,7 @@ Route::get('/purchase-orders/datatable/', [PurchaseOrderController::class, 'data
 // ============================================================
 // MAIN ADMIN ROUTES - Authenticated access with route-level permissions
 // ============================================================
-Route::middleware(['auth'])->prefix('admin')->group(function () {
+Route::middleware(['auth', InitializeBusinessUnitContext::class])->prefix('admin')->group(function () {
 
     // Online Users
     Route::get('/online-users', [OnlineUsersController::class, 'index'])->name('admin.online-users')->middleware('permission.feedback:view users');
@@ -86,6 +88,9 @@ Route::middleware(['auth'])->prefix('admin')->group(function () {
     })->middleware('permission.feedback:update transactions');
 
     // Dashboard
+    Route::post('/business-unit/switch/{businessUnit}', BusinessUnitSwitchController::class)
+        ->name('admin.business-units.switch');
+
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('admin.dashboard')->middleware('permission.feedback:view dashboard');
     Route::get('/dashboard/stats', [DashboardController::class, 'getStats'])->name('admin.dashboard.stats')->middleware('permission.feedback:view dashboard');
     Route::get('/dashboard/charts', [DashboardController::class, 'getChartData'])->name('admin.dashboard.charts')->middleware('permission.feedback:view dashboard');

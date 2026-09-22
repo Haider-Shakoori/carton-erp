@@ -19,6 +19,7 @@ use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use App\Support\Business\BusinessUnitContext;
 
 class DashboardController extends Controller
 {
@@ -574,11 +575,23 @@ class DashboardController extends Controller
         $result = [];
 
         foreach ($accountTypes as $type) {
+            $businessContext = app(BusinessUnitContext::class);
+            $activeBusinessUnit = $businessContext->enabled()
+                ? $businessContext->current()
+                : null;
+
             $balances = DB::table('transactions')
                 ->join('accounts', 'transactions.account_id', '=', 'accounts.id')
                 ->join('currencies', 'transactions.currency_id', '=', 'currencies.id')
                 ->where('accounts.account_type', $type)
                 ->where('transactions.status', 'active')
+                ->when($activeBusinessUnit, function ($query) use ($activeBusinessUnit) {
+                    $query->where(function ($businessQuery) use ($activeBusinessUnit) {
+                        $businessQuery
+                            ->where('transactions.business_unit_id', $activeBusinessUnit->id)
+                            ->orWhereNull('transactions.business_unit_id');
+                    });
+                })
                 ->select(
                     'currencies.id as currency_id',
                     'currencies.code as currency_code',
@@ -1309,6 +1322,20 @@ class DashboardController extends Controller
                 'error' => $e->getMessage()
             ], 500);
         }
+    }
+
+    protected function businessUnitMeta(): array
+    {
+        $context = app(BusinessUnitContext::class);
+        $enabled = $context->enabled();
+        $current = $enabled ? $context->current() : null;
+
+        return [
+            'separate_mode' => $enabled,
+            'id' => $current?->id,
+            'code' => $current?->code,
+            'name' => $current?->name,
+        ];
     }
 
     // ─── HELPER: Get Status Color ───

@@ -3,13 +3,15 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToBusinessUnit;
+
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Str;
 
 class WorkOrder extends Model
 {
-    use HasFactory;
+    use HasFactory, BelongsToBusinessUnit;
 
     protected $table = 'work_orders';
 

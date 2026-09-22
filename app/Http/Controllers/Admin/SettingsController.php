@@ -3,8 +3,10 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\BusinessUnit;
 use App\Models\Currency;
 use App\Models\Setting;
+use App\Support\Business\BusinessUnitContext;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 
@@ -14,14 +16,15 @@ class SettingsController extends Controller
     public function index()
     {
         $setting = Setting::firstOrCreate([]);
-    $currencies = Currency::all(); // Assuming you already have this model
+        $currencies = Currency::all();
+        $businessUnits = BusinessUnit::query()->active()->get();
 
-    return view('admin.settings.index', compact('setting', 'currencies'));
+        return view('admin.settings.index', compact('setting', 'currencies', 'businessUnits'));
     }
 
     public function update(Request $request)
     {
-        $setting = Setting::first();
+        $setting = Setting::firstOrCreate([]);
         $data = $request->validate([
             'company_name' => 'nullable|string',
             'contact' => 'nullable|string',
@@ -33,7 +36,15 @@ class SettingsController extends Controller
             'note_en' => 'nullable|string',
             'note_fa' => 'nullable|string',
             'note_ps' => 'nullable|string',
+            'separate_business_units_enabled' => 'nullable|boolean',
+            'default_business_unit_id' => 'nullable|required_if:separate_business_units_enabled,1|exists:business_units,id',
         ]);
+
+        $data['separate_business_units_enabled'] = $request->boolean('separate_business_units_enabled');
+
+        if (! $data['separate_business_units_enabled']) {
+            session()->forget(\App\Support\Business\BusinessUnitContext::SESSION_KEY);
+        }
 
         if ($request->hasFile('logo')) {
             $logo = $request->file('logo');
@@ -49,6 +60,9 @@ class SettingsController extends Controller
         }
 
         $setting->update($data);
+
+        app(BusinessUnitContext::class)->reset();
+
         return back()->with('success', 'Settings updated successfully!');
     }
 }
