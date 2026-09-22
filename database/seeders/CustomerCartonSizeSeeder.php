@@ -21,7 +21,7 @@ class CustomerCartonSizeSeeder extends Seeder
         $legacyNameCounts = collect($rows)
             ->countBy(fn (array $row) => mb_strtolower(trim((string) ($row['product_name'] ?? ''))))
             ->all();
-        $previousResolvedNames = $this->resolvedNeutralProductNames($rows, false);
+        $previousResolvedNames = $this->resolvedNeutralProductNames($rows, true);
         $resolvedNames = $this->resolvedNeutralProductNames($rows);
 
         $category = Category::firstOrCreate(
@@ -188,15 +188,15 @@ class CustomerCartonSizeSeeder extends Seeder
     }
 
     /**
-     * Finished-good display names intentionally contain no customer/company or
-     * print-brand names. Size + pack information identifies the carton; neutral
-     * Variant N suffixes keep otherwise identical rows distinct.
+     * Finished-good display names intentionally contain no customer/company,
+     * print-brand or pack-size text. Physical carton size identifies the product;
+     * neutral Variant N suffixes keep otherwise identical sizes distinct.
      *
      * @return array<string,string> keyed by immutable source_key
      */
     private function resolvedNeutralProductNames(
         array $rows,
-        bool $stripPiecesUnit = true
+        bool $includePack = false
     ): array
     {
         $grouped = [];
@@ -204,7 +204,7 @@ class CustomerCartonSizeSeeder extends Seeder
         foreach ($rows as $row) {
             $customerName = trim((string) ($row['customer'] ?? ''));
             $sourceKey = $this->sourceKey($row, $customerName);
-            $baseName = $this->neutralBaseProductName($row, $stripPiecesUnit);
+            $baseName = $this->neutralBaseProductName($row, $includePack);
             $groupKey = mb_strtolower($baseName);
 
             $grouped[$groupKey][] = [
@@ -234,45 +234,27 @@ class CustomerCartonSizeSeeder extends Seeder
 
     private function neutralBaseProductName(
         array $row,
-        bool $stripPiecesUnit = true
+        bool $includePack = false
     ): string {
         $size = $this->nullableText($row['size_raw'] ?? null);
-        $pack = $this->finishedGoodPackLabel(
-            $row['pcs_ml'] ?? null,
-            $stripPiecesUnit
-        );
+        $name = $size ? 'Carton '.$size : 'Carton - Size pending';
 
-        $parts = [
-            $size ? 'Carton '.$size : 'Carton - Size pending',
-        ];
+        if ($includePack) {
+            $pack = $this->nullableText($row['pcs_ml'] ?? null);
 
-        if ($pack) {
-            $parts[] = $pack;
+            if ($pack) {
+                $name .= ' - '.$pack;
+            }
         }
 
-        return implode(' - ', $parts);
-    }
-
-    private function finishedGoodPackLabel(
-        mixed $value,
-        bool $stripPiecesUnit
-    ): ?string {
-        $pack = $this->nullableText($value);
-
-        if (! $pack || ! $stripPiecesUnit) {
-            return $pack;
-        }
-
-        $pack = preg_replace('/\\s*pcs\\b/i', '', $pack);
-        $pack = trim((string) preg_replace('/\\s{2,}/', ' ', (string) $pack));
-
-        return $pack === '' ? null : $pack;
+        return $name;
     }
 
     /**
-     * The previous neutral-name release retained the workbook's "pcs" token in
-     * Product::name. Rename only those exact generated names so re-seeding
-     * upgrades existing installs without overwriting operator-customized names.
+     * The previous neutral-name release retained the workbook pack text
+     * (for example "200ml,70pcs") in Product::name. Rename only those exact
+     * generated names so re-seeding upgrades existing installs without
+     * overwriting operator-customized names.
      */
     private function syncPreviouslyGeneratedNeutralProductNames(
         array $rows,
