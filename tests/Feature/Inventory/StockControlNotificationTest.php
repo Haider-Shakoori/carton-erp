@@ -117,7 +117,13 @@ it('queues enabled email delivery and records missing WhatsApp as skipped withou
     $whatsapp = StockNotificationDelivery::where('channel', 'whatsapp')->firstOrFail();
 
     expect($email->status)->toBe(StockNotificationDelivery::STATUS_QUEUED)
-        ->and($email->recipient)->toBe('manager@example.test')
+        ->and($email->recipient)->toBe(
+            StockNotificationDelivery::maskRecipient(
+                'manager@example.test',
+                'email'
+            )
+        )
+        ->and($email->recipient)->not->toBe('manager@example.test')
         ->and($whatsapp->status)->toBe(StockNotificationDelivery::STATUS_SKIPPED)
         ->and($whatsapp->last_error)->toContain('No recipient configured');
 

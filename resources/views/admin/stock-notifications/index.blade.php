@@ -98,6 +98,7 @@
                                 <th>Status</th>
                                 <th>Recipient</th>
                                 <th class="text-end">Attempts</th>
+                                <th></th>
                             </tr>
                         </thead>
                         <tbody>
@@ -121,11 +122,19 @@
                                 </td>
                                 <td>{{ ucfirst($delivery->channel) }}</td>
                                 <td><span class="badge bg-{{ $statusBadge }}">{{ ucfirst($delivery->status) }}</span></td>
-                                <td>{{ $delivery->recipient ?: 'Not configured' }}</td>
+                                <td>{{ \App\Models\StockNotificationDelivery::maskRecipient($delivery->recipient, $delivery->channel) ?: 'Not configured' }}</td>
                                 <td class="text-end">{{ $delivery->attempts }}</td>
+                                <td class="text-end">
+                                    @if(in_array($delivery->status, ['failed', 'skipped'], true))
+                                        <form method="POST" action="{{ route('admin.stock-notifications.deliveries.retry', $delivery) }}">
+                                            @csrf
+                                            <button class="btn btn-sm btn-outline-secondary">Retry</button>
+                                        </form>
+                                    @endif
+                                </td>
                             </tr>
                         @empty
-                            <tr><td colspan="6" class="text-center py-4 text-muted">No external delivery attempts yet.</td></tr>
+                            <tr><td colspan="7" class="text-center py-4 text-muted">No external delivery attempts yet.</td></tr>
                         @endforelse
                         </tbody>
                     </table>
@@ -175,6 +184,13 @@
                         <hr>
 
                         <div class="form-check form-switch mb-3">
+                            <input type="checkbox" class="form-check-input" name="assignment_alerts_enabled" value="1" id="assignmentEnabled"
+                                   @checked($preference->assignment_alerts_enabled)>
+                            <label class="form-check-label" for="assignmentEnabled">Assignment alerts</label>
+                            <div class="small text-muted">Notify me when a stock-control escalation or variance investigation is assigned to me.</div>
+                        </div>
+
+                        <div class="form-check form-switch mb-3">
                             <input type="checkbox" class="form-check-input" name="overdue_reminders_enabled" value="1" id="overdueEnabled"
                                    @checked($preference->overdue_reminders_enabled)>
                             <label class="form-check-label" for="overdueEnabled">Overdue reminders</label>
@@ -204,11 +220,11 @@
                 <div class="card-body small">
                     <div class="mb-3">
                         <div class="text-muted">Email</div>
-                        <div>{{ auth()->user()->email ?: auth()->user()->account?->email ?: 'Not configured' }}</div>
+                        <div>{{ auth()->user()->maskedNotificationEmail() ?: 'Not configured' }}</div>
                     </div>
                     <div>
                         <div class="text-muted">WhatsApp</div>
-                        <div>{{ auth()->user()->account?->whatsapp ?: auth()->user()->account?->contact ?: 'Not configured' }}</div>
+                        <div>{{ auth()->user()->maskedNotificationPhone() ?: 'Not configured' }}</div>
                     </div>
                     <div class="text-muted mt-3">
                         These addresses come from the user/account profile. Notification settings do not alter contact master data.
