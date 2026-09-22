@@ -3,11 +3,12 @@
 namespace Database\Seeders;
 
 use App\Models\Setting;
-use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
 use App\Models\User;
 use Spatie\Permission\Models\Role;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
+use RuntimeException;
 use Spatie\Permission\Models\Permission;
 
 class PermissionsSeeder extends Seeder
@@ -143,17 +144,41 @@ class PermissionsSeeder extends Seeder
             }
         }
 
-        // Create admin user
-        $admin = User::updateOrCreate(
-            ['username' => 'superadmin'],
-            [
+        // Create the first administrator without embedding or resetting credentials.
+        $admin = User::query()->where('username', 'superadmin')->first();
+
+        if (! $admin) {
+            $initialPassword = trim((string) config('bootstrap.initial_admin_password'));
+
+            if ($initialPassword === '') {
+                if (app()->environment('production')) {
+                    throw new RuntimeException(
+                        'INITIAL_ADMIN_PASSWORD is required when seeding a brand-new production database.'
+                    );
+                }
+
+                $initialPassword = Str::random(32);
+
+                if ($this->command) {
+                    $this->command->warn(
+                        'Generated an ephemeral non-production superadmin password: '.$initialPassword
+                    );
+                }
+            }
+
+            if (strlen($initialPassword) < 12) {
+                throw new RuntimeException('INITIAL_ADMIN_PASSWORD must contain at least 12 characters.');
+            }
+
+            $admin = User::create([
                 'id' => 1,
+                'username' => 'superadmin',
                 'name' => 'Hasibullah',
                 'account_type' => 'admin',
                 'created_by' => 1,
-                'password' => Hash::make('password123'), // change in prod
-            ]
-        );
+                'password' => Hash::make($initialPassword),
+            ]);
+        }
 
         $admin->assignRole($adminRole);
         $user = User::find(1);
