@@ -1821,6 +1821,49 @@ SIDEBAR
                 @endcan
 
                 {{-- ============================================================ --}}
+                {{-- ENTERPRISE CONTROL --}}
+                {{-- ============================================================ --}}
+                @canany(['view management reporting', 'view financial accounting', 'view purchase requests', 'view warehouses'])
+                    <li class="nav-section">Enterprise Control</li>
+                @endcanany
+
+                @can('view management reporting')
+                    <li class="nav-item-custom {{ request()->routeIs('admin.management-reporting.*') ? 'active' : '' }}">
+                        <a href="{{ route('admin.management-reporting.index') }}">
+                            <i class="bi bi-graph-up-arrow"></i>
+                            <span>Management Reporting</span>
+                        </a>
+                    </li>
+                @endcan
+
+                @can('view financial accounting')
+                    <li class="nav-item-custom {{ request()->routeIs('admin.accounting.*') ? 'active' : '' }}">
+                        <a href="{{ route('admin.accounting.index') }}">
+                            <i class="bi bi-journal-check"></i>
+                            <span>Financial Accounting</span>
+                        </a>
+                    </li>
+                @endcan
+
+                @can('view purchase requests')
+                    <li class="nav-item-custom {{ request()->routeIs('admin.procurement.*') ? 'active' : '' }}">
+                        <a href="{{ route('admin.procurement.index') }}">
+                            <i class="bi bi-cart-check"></i>
+                            <span>Procure to Pay</span>
+                        </a>
+                    </li>
+                @endcan
+
+                @can('view warehouses')
+                    <li class="nav-item-custom {{ request()->routeIs('admin.warehouses.*') ? 'active' : '' }}">
+                        <a href="{{ route('admin.warehouses.index') }}">
+                            <i class="bi bi-buildings"></i>
+                            <span>Warehouses</span>
+                        </a>
+                    </li>
+                @endcan
+
+                {{-- ============================================================ --}}
                 {{-- 6. PARTNERS --}}
                 {{-- ============================================================ --}}
                 <li class="nav-section">{{ __('ui.partners') }}</li>
