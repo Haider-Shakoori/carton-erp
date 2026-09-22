@@ -15,41 +15,29 @@ trait BelongsToBusinessUnit
                 return;
             }
 
-            try {
-                $context = app(BusinessUnitContext::class);
-                $current = $context->current();
+            $activeBusinessUnitId = (int) session(BusinessUnitContext::SESSION_KEY, 0);
 
-                if ($context->enabled() && $current) {
-                    $model->business_unit_id = $current->id;
-                }
-            } catch (\Throwable $e) {
-                // Keep legacy/unified mode non-blocking during migrations,
-                // console commands, and bootstrap before the feature is ready.
+            if ($activeBusinessUnitId > 0) {
+                $model->business_unit_id = $activeBusinessUnitId;
             }
         });
 
         static::addGlobalScope('business_unit', function (Builder $builder): void {
-            try {
-                $context = app(BusinessUnitContext::class);
+            // Admin HTTP middleware resolves Settings once and initializes this
+            // session key before controllers execute. Reading the session here
+            // keeps every model query free of extra Settings/schema queries.
+            $activeBusinessUnitId = (int) session(BusinessUnitContext::SESSION_KEY, 0);
 
-                if (! $context->enabled()) {
-                    return;
-                }
-
-                $current = $context->current();
-                if (! $current) {
-                    return;
-                }
-
-                $qualifiedColumn = $builder->getModel()->qualifyColumn('business_unit_id');
-
-                $builder->where(function (Builder $query) use ($qualifiedColumn, $current): void {
-                    $query->where($qualifiedColumn, $current->id)
-                        ->orWhereNull($qualifiedColumn);
-                });
-            } catch (\Throwable $e) {
-                // Unified behavior is the safe fallback.
+            if ($activeBusinessUnitId <= 0) {
+                return;
             }
+
+            $qualifiedColumn = $builder->getModel()->qualifyColumn('business_unit_id');
+
+            $builder->where(function (Builder $query) use ($qualifiedColumn, $activeBusinessUnitId): void {
+                $query->where($qualifiedColumn, $activeBusinessUnitId)
+                    ->orWhereNull($qualifiedColumn);
+            });
         });
     }
 
