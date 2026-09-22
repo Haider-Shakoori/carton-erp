@@ -1,86 +1,109 @@
-# DEPLOYMENT COMMANDS — Carton ERP (Qadir)
+# DEPLOYMENT COMMANDS — Carton ERP
 
-Annotated runbook for a fresh production deploy. Companion docs: `FINAL_DEPLOYMENT_CHECKLIST.md`, `ROLLBACK_GUIDE.md`.
+Use this runbook only after the exact release commit has passed the enterprise GitHub Actions QA gate.
 
-## Phase 0 — Pre-flight (on the app host)
+## Phase 0 — pre-flight and backup
+
 ```bash
-php -v                      # 8.2+; PHP intl recommended but not required
-composer --version           # 2.x
-npm --version                # 10.x
+php -v
+composer --version
+node --version
+npm --version
+
+# Take an external pre-deploy database backup using your production DB credentials.
+# Example only:
+mysqldump -u <user> -p <database> | gzip > /backup/carton_erp_predeploy_$(date +%F_%H%M).sql.gz
 ```
 
-## Phase 1 — Code
+Verify that the backup exists and is non-empty before continuing.
+
+## Phase 1 — code and dependencies
+
 ```bash
-git pull origin main                    # bring the release
-composer install --no-dev --optimize-autoloader
+git fetch origin
+git checkout main
+git pull --ff-only origin main
+
+composer install --no-dev --optimize-autoloader --no-interaction
+composer audit --no-interaction
+
 npm ci
+npm audit --audit-level=high
 npm run build
 ```
 
-## Phase 2 — Environment
-```bash
-cp .env.example .env                    # template already ships APP_ENV=production + APP_DEBUG=false (safe)
-# then edit .env:
-#   APP_KEY                                 # run php artisan key:generate
-#   APP_URL=https://<your-domain>           # REQUIRED — replace the placeholder; keep APP_DEBUG=false
-#   DB_* / default mailer
-php artisan key:generate
+Do not use `composer update` or `npm audit fix` interactively on the production host. Dependency changes belong in a reviewed, CI-tested commit.
+
+## Phase 2 — environment
+
+For a new installation only, create `.env` from `.env.example`, set real production values and generate the key once.
+
+For an existing installation, preserve the existing `APP_KEY`.
+
+Required production values include:
+
+```dotenv
+APP_ENV=production
+APP_DEBUG=false
+APP_URL=https://your-real-domain.example
 ```
 
-## Phase 3 — Database (two allowed paths)
-**A. Existing production DB (normal upgrades):**
+Configure the production `DB_*`, mail, queue, cache and session values for the host.
+
+## Phase 3 — database
+
+Existing production database:
+
 ```bash
 php artisan migrate --force
-php artisan db:seed --class=HRPermissionSeeder        # idempotent backfill (41 HR perms)
-php artisan db:seed --class=ShareholderPermissionSeeder # idempotent backfill (16 perms)
-```
-**B. Brand-new empty DB:**
-```bash
-php artisan migrate --force                            # 94 migrations, GREEN (fixed in this release)
-php artisan db:seed --force                            # all permission seeders (incl. HR + shareholder)
-# (the two per-class backfills on the left are only needed to upgrade an already-seeded DB)
-```
-> NEVER run `migrate:fresh` against a live DB. On a brand-new install you may use `--fresh` once before go-live, then proceed with B.
-
-## Phase 4 — Storage + optional queue worker
-```bash
-php artisan storage:link
-php artisan queue:restart                              # if a worker is already running
-# long-running host:
-nohup php artisan queue:work --tries=3 --timeout=60 > storage/logs/queue.log 2>&1 &
-# shared hosting / limited: use cron below instead
 ```
 
-## Phase 5 — Caches
+Brand-new empty database:
+
 ```bash
+php artisan migrate --force
+php artisan db:seed --force
+```
+
+Never run `php artisan migrate:fresh` against live data.
+
+## Phase 4 — storage and caches
+
+```bash
+php artisan storage:link || true
+php artisan optimize:clear
 php artisan config:cache
-php artisan route:cache          # VERIFIED OK on this app (Laravel 12 serializes its closures)
+php artisan route:cache
 php artisan view:cache
-php artisan event:cache          # optional
 php artisan optimize
 ```
 
-## Phase 6 — Cron (optional but recommended)
+## Phase 5 — queue and scheduler
+
+Restart supervised workers after the new code is active:
+
+```bash
+php artisan queue:restart
 ```
+
+Run a persistent `queue:work` process under Supervisor/systemd where possible.
+
+The server must execute:
+
+```cron
 * * * * * cd /path/to/app && php artisan schedule:run >> /dev/null 2>&1
-* * * * * cd /path/to/app && php artisan queue:run-once >> /dev/null 2>&1   # if no persistent worker
-0 3 * * *  mysqldump -u <user> -p<pass> product | gzip > /backup/product_$(date +\%F_\%H\%M).sql.gz
-```
-If you do not use `schedule:run`, run the monthly profit / recalc commands manually:
-```bash
-php artisan distribute:monthly-profit
-php artisan distribute:profit-loss
-php artisan recalculate:balances
 ```
 
-## Phase 7 — Post-deploy smoke
+This scheduler drives the current stock-control review/synchronization and stock-notification jobs defined in `routes/console.php`.
+
+## Phase 6 — production readiness and smoke
+
 ```bash
-curl -I https://<domain>/up
+php artisan erp:readiness --strict
 php artisan about
-php artisan test               # on a staging DB / CI; never against live data
+curl -fsS https://<domain>/up
 ```
-Then walk the golden path from checklist §7 (login, sale confirm/deliver/delete, production start/complete, purchase arrive, return, HR + shareholder screens).
 
-## Known release advisories
-- Routes: fixed in this release — 0 broken routes remain; `admin/admin/...` double prefixes removed (see checklist §3). Confirm with `php artisan route:list` after deploy.
-- `composer audit` reports advisories (dompdf, framework 12.35.1, guzzle). Plan a dependency bump cycle post-deploy.
+Then perform the functional smoke in `docs/FINAL_DEPLOYMENT_CHECKLIST.md`, including unified/separate business mode, 3D Carton/Syrup Pack switching, shared customer/HR data, business-unit isolation, BOM/FIFO/actual-consumption production flow, warehouse controls, P2P and accounting.
+
+Run the full automated suite on CI/staging, not against live production data.

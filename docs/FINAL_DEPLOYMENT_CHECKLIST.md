@@ -1,93 +1,91 @@
-# FINAL DEPLOYMENT CHECKLIST — Carton ERP (Qadir)
+# FINAL DEPLOYMENT CHECKLIST — Carton ERP
 
-> Companion docs: `DEPLOYMENT_COMMANDS.md`, `ROLLBACK_GUIDE.md`.
-> Scope: release-readiness QA verified on this codebase. See the final report for the A–Q verdict.
+This checklist is the production handoff for the current Carton ERP release. The automated GitHub Actions enterprise QA workflow is the source of truth for code-level release gates.
 
-## 0. Preconditions (verified in QA)
+## 1. Mandatory CI release gate
 
-| Item | Status |
-|---|---|
-| `php artisan migrate:fresh --seed` on clean install | GREEN (94 migrations; 6 defective migrations were fixed — see §2) |
-| `php artisan migrate` idempotency | PASS ("Nothing to migrate") |
-| Full test suite | 52 passed / 463 assertions / 0 failures |
-| `npm run build` | OK |
-| `view:cache`, `config:cache`, `route:cache` | OK (route cache compiles in this Laravel 12 app) |
-| `public/storage` symlink | Present |
-| Uploads (employee/product/shareholder images, receipts, logos) | Write to `storage/app/public` — no filesystem config needed |
+Do not deploy a revision unless its exact commit passes all of these checks:
 
-## 1. Blocker-level items to address before/at deploy
+- PHP dependency installation
+- `npm ci`
+- `npm run build`
+- `npm audit --audit-level=high`
+- PHP syntax checks for release-critical services, controllers, seeders and migrations
+- fresh MySQL 8 install with `php artisan migrate:fresh --seed --force` in CI only
+- `php artisan view:cache`
+- `php artisan erp:readiness`
+- focused production, FIFO, carton, reel, sale-order, business-unit and enterprise regression suites
+- complete `php artisan test` suite
+- `composer audit --no-interaction`
 
-### 1.1 `.env` settings (FIXED in this release)
-- `APP_DEBUG=false` is now set in `.env` (and in the `.env.example` template), so debug stack traces can no longer leak on 500s. **Leave it false.**
-- `APP_URL` is still `http://localhost` in `.env` — **REQUIRED at deploy**: set the real production URL (used by `artisan` command URLs, signed URLs). Cannot be pre-filled, so it is the one remaining deploy-time edit.
-- `.env.example` now ships `APP_ENV=production`, `APP_DEBUG=false`, `APP_URL=https://your-domain.example.com` — safe to `cp` and fill in real values; contains no secrets.
+Never run `migrate:fresh` against production.
 
-### 1.2 Fresh-install permissions (FIXED in this release — was REQUIRED)
-Previously `DatabaseSeeder` ran only `PermissionsSeeder` + `CategorySeeder` (fresh install = 164 of 308 permissions). Now fixed:
+## 2. Production environment
 
-1. `database/seeders/HRPermissionSeeder.php` had its `module` payload removed — Spatie Permission v6 has no `$fillable`, which caused `SQLSTATE[42S22]` on fresh seed. It is idempotent and wired into `DatabaseSeeder`.
-2. New `database/seeders/ShareholderPermissionSeeder.php` adds the 16 shareholder / profit-distribution permissions and is wired into `DatabaseSeeder`.
-3. `view quality control` and `view saraf` permissions are also seeded so those screens work for non-admin roles.
+Before enabling traffic, verify:
 
-`php artisan db:seed --force` on a fresh install now yields the full set (verified on a clean DB: fresh seed = 234 permission rows, 0 missing, no fresh-seed errors).
+- `APP_ENV=production`
+- `APP_DEBUG=false`
+- `APP_URL` is the real HTTPS production URL
+- `APP_KEY` is stable and already provisioned
+- production database credentials are correct
+- `QUEUE_CONNECTION` is a persistent production-capable driver (the supplied example uses `database`)
+- session/cache configuration is appropriate for the host
+- storage is writable and `public/storage` is linked
+- TLS/HTTPS is enforced by the web server or reverse proxy
 
-## 2. Migration fixes shipped in this release (fresh-install was broken)
-These were the cause of `migrate:fresh` failing with SQLSTATE 1146 / errno 150 before this QA pass:
+Run `php artisan erp:readiness --strict` against the production environment after deployment. Resolve every failure before enabling traffic.
 
-1. `2026_07_07_123342_create_work_orders_table.php` — removed inline `constrained('machines')` (table created later); FK moved into `2026_07_07_123403_create_machines_table.php` (+ its `down()` drops the FK first).
-2. `2026_08_02_175859_add_stock_consumption_fields_to_bom_items.php` — removed `->after('rate_base_units')` (column added 2 days later in a separate migration).
-3. `2026_08_04_111812_update_bom_items_table.php` — removed `->after('height_inch')`; guarded reel-dimension backfill with `Schema::hasColumn`.
-4. `2026_08_04_112950_add_missing_columns_to_bom_items_table.php` — removed `->after('print')`; guarded reel-dimension backfill with `Schema::hasColumn`.
+## 3. Data protection
 
-## 3. Routes (FIXED in this release)
-- All admin routes pointing to non-existent controller methods were fixed: dead routes with no UI/JS caller were removed, and the ~13 UI-linked ones were implemented (AgentController `fetchAgents`/`updateStats`, AppSettings company/units/invoice-templates, HR department/designation/leave-balance, ProfitDistribution edit/update, ProductionOrder edit/update, Sale `getSaleCurrency`). Route inventory now reports **0 broken routes** (only closures/invokables remain, which are outside the audit scope).
-- Double-prefix `admin/admin/...` URIs eliminated for: `exchange/get-latest`, `products/{product}`, `sales/{id}/currency`, `sales/add-calculated-item`, `sales/create-bom-from-calculator`, `sales/get-material-stock-cost` (names + middleware unchanged).
-- `admin/production-orders/get-bom-details` (shadowed by the `{productionOrder}` wildcard) removed — no UI/JS caller exists; `production-orders.destroy` also removed (no caller).
-- `client/notifications` route removed — the client portal renders notifications as an in-page tab, the route had no caller and pointed at an empty stub controller.
-- Verified: `route:cache` PASS, `view:cache` + `config:cache` PASS, `npm run build` OK, full suite 52 tests / 463 assertions / 0 failures.
+Take and verify a database backup immediately before every production migration. Store backups outside the application directory and test restore procedures periodically.
 
-## 4. Dependency / runtime notices
-- `composer audit`: 48 advisories / 14 packages — incl. `dompdf 3.1.1 < 3.1.6` (CVE-2026-59941), `laravel/framework 12.35.1` outdated (latest 12.69.x), guzzle. **Update after deploy with review** (needs approval; not done here).
-- PHP `intl` extension is NOT installed (recommended for locale-aware formatting; not in composer require).
-- Runtime: PHP 8.2.12, MariaDB (server), dev DB name `product`.
+For an existing database, the only normal schema command is:
 
-## 5. Scheduling / queue
-- Queue driver: `database` (jobs tables migrate fine).
-- No Laravel scheduler wiring (`bootstrap/app.php` has no `withSchedule`, `routes/console.php` has no `Schedule::command`). Run the console commands manually or via cron:
-  - `php artisan distribute:monthly-profit`
-  - `php artisan distribute:profit-loss`
-  - `php artisan recalculate:balances`
-  - `php artisan queue:run-once` (shared-hosting friendly) or the standard `queue:work`.
-
-## 6. Backups (REQUIRED — no in-app mechanism)
-Add an out-of-band DB dump cron, e.g.:
 ```bash
-mysqldump -u <user> -p<pass> product > /backup/product_$(date +%F_%H%M).sql
-```
-(Never run `migrate:fresh` against the production DB; the sensible deploy path is `php artisan migrate --force` on an up-to-date DB.)
-
-## 7. Post-deploy verification (golden path)
-1. Log in as an admin → `admin.dashboard` renders; charts + profit numbers show (realized-cost basis).
-2. Create a customer → sale (add item linked to an arrived purchase batch) → confirm → deliver → delete the sale. Verify stock `qty_available` restored, ledger/balances re-run via `recalculate:balances`.
-3. Production order → start (material consumption via FIFO batches) → complete/cancel.
-4. Purchase order → add items + expense → mark arrived → edit → cancel.
-5. Sale return (partial + full) → verify stock restore + balances.
-6. HR: employees/departments/designations/leave/payroll screens accessible (permissions now seeded by default).
-7. Shareholders + profit distribution run (permissions now seeded by default).
-8. `php artisan test`, `npm run build`, then `php artisan view:cache config:cache`.
-
-## 8. Final commands (in order)
-```bash
-composer install --no-dev --optimize-autoloader
-npm ci && npm run build
 php artisan migrate --force
-php artisan db:seed --force                               # fresh install: seeds all permissions (incl. HR + shareholder)
-php artisan db:seed --class=HRPermissionSeeder            # existing DB backfill, idempotent
-php artisan db:seed --class=ShareholderPermissionSeeder   # existing DB backfill, idempotent
-php artisan storage:link                                   # if not present
-php artisan config:cache
-php artisan view:cache
-# optional: php artisan route:cache   (verified: compiles OK on this app)
-php artisan optimize
 ```
-See `DEPLOYMENT_COMMANDS.md` for the full annotated sequence.
+
+Do not regenerate `APP_KEY` on an existing production installation.
+
+## 4. Scheduler and queue
+
+Laravel scheduling is active in `routes/console.php`. Current scheduled controls include:
+
+- stock-control synchronization daily (default 08:15)
+- stock-control weekly review (default Monday 08:30)
+- stock-notification synchronization every 15 minutes
+- queued stock-notification drain every minute when enabled and a persistent queue driver is configured
+
+The host must execute Laravel's scheduler every minute:
+
+```cron
+* * * * * cd /path/to/app && php artisan schedule:run >> /dev/null 2>&1
+```
+
+Use a supervised `php artisan queue:work` process where possible. On constrained/shared hosting, the application's scheduled queue-drain command provides the supported fallback.
+
+## 5. Functional post-deploy smoke
+
+Verify the following with controlled test records or staging data:
+
+1. Authentication, admin dashboard, navigation and permissions.
+2. Settings can switch business separation off (one unified company) or on.
+3. With separation enabled, the top navigation switches between **3D Carton** and **Syrup Pack**.
+4. Customers and employees/HR remain shared, while operational records and dashboards remain separated by active business unit.
+5. Per-user business-unit access restricts users to 3D Carton, Syrup Pack or both as configured; authorized management reporting can consolidate allowed units.
+6. Purchase/order/receipt flow updates inventory correctly and preserves landed-cost/FIFO behavior.
+7. Sale order, quotation/BOM breakdown, confirmation, delivery and returns work without changing BOM cost semantics.
+8. Production start/completion accepts actual produced quantity and actual material consumption, updates inventory, and preserves FIFO costing and reel/remnant controls.
+9. Production approval/close/reopen/reversal controls and immutable event history work as authorized.
+10. Warehouse/location/bin balances and stock transfers reconcile with authoritative batch stock.
+11. Procure-to-Pay controls (request, RFQ/comparison, PO, receipt, supplier invoice/payment) enforce approvals and matching.
+12. Accounting postings balance, fiscal-period controls work, and management financial reports render.
+13. BOM revisions, effective dates, approval and locked-history governance operate correctly.
+14. `GET /up` returns healthy after caches are rebuilt.
+
+Production scheduling/machine planning and QC/quality-control modules are intentionally outside this release scope.
+
+## 6. Release commands
+
+Use the annotated sequence in `docs/DEPLOYMENT_COMMANDS.md`. Keep `docs/ROLLBACK_GUIDE.md` available before starting the deploy.
