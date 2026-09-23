@@ -268,16 +268,29 @@ class PurchaseOrderController extends Controller
 
             DB::commit();
 
-            return response()->json([
-                'success' => true,
-                'message' => 'Purchase order deleted successfully'
-            ]);
+            if (request()->expectsJson() || request()->ajax()) {
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Purchase order deleted successfully'
+                ]);
+            }
+
+            return redirect()
+                ->route('admin.purchase-orders.index')
+                ->with('success', 'Purchase order deleted successfully.');
         } catch (\Exception $e) {
             DB::rollBack();
-            return response()->json([
-                'success' => false,
-                'message' => 'Error deleting purchase order: ' . $e->getMessage()
-            ], 500);
+
+            if (request()->expectsJson() || request()->ajax()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Error deleting purchase order: ' . $e->getMessage()
+                ], 500);
+            }
+
+            return redirect()
+                ->route('admin.purchase-orders.index')
+                ->with('error', 'Error deleting purchase order: ' . $e->getMessage());
         }
     }
 
