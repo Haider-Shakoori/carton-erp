@@ -797,10 +797,6 @@
             color: var(--primary);
         }
 
-        .catalog-action-btn.dropdown-toggle::after {
-            display: none;
-        }
-
         .modal-header.raw-materials .btn-close,
         .modal-header.finished-goods .btn-close {
             filter: invert(1);
@@ -1266,42 +1262,31 @@
                                             @endif
                                         </td>
                                         <td>
-                                            <div class="dropdown text-end">
-                                                <button class="catalog-action-btn dropdown-toggle"
+                                            <div class="d-flex justify-content-end gap-1">
+                                                <button class="catalog-action-btn edit-product"
                                                         type="button"
-                                                        data-bs-toggle="dropdown"
-                                                        aria-expanded="false"
-                                                        title="Product actions">
-                                                    <i class="bi bi-three-dots"></i>
+                                                        data-id="{{ $product->id }}"
+                                                        data-name="{{ $product->name }}"
+                                                        data-category_id="{{ $product->category_id }}"
+                                                        data-unit="{{ $product->unit }}"
+                                                        data-default_kg_per_roll="{{ $product->default_kg_per_roll ?? '' }}"
+                                                        data-min_stock_alert="{{ $product->min_stock_alert ?? 0 }}"
+                                                        data-description="{{ $product->description }}"
+                                                        data-is_active="{{ $product->is_active }}"
+                                                        data-image="{{ $product->image }}"
+                                                        title="Edit raw material"
+                                                        aria-label="Edit {{ $product->name }}">
+                                                    <i class="bi bi-pencil"></i>
                                                 </button>
-                                                <ul class="dropdown-menu dropdown-menu-end catalog-action-menu">
-                                                    <li>
-                                                        <button class="dropdown-item edit-product"
-                                                                type="button"
-                                                                data-id="{{ $product->id }}"
-                                                                data-name="{{ $product->name }}"
-                                                                data-category_id="{{ $product->category_id }}"
-                                                                data-unit="{{ $product->unit }}"
-                                                                data-default_kg_per_roll="{{ $product->default_kg_per_roll ?? '' }}"
-                                                                data-min_stock_alert="{{ $product->min_stock_alert ?? 0 }}"
-                                                                data-description="{{ $product->description }}"
-                                                                data-is_active="{{ $product->is_active }}"
-                                                                data-image="{{ $product->image }}">
-                                                            <i class="bi bi-pencil"></i> Edit material
-                                                        </button>
-                                                    </li>
-                                                    <li><hr class="dropdown-divider my-1"></li>
-                                                    <li>
-                                                        <button class="dropdown-item text-danger delete-product"
-                                                                type="button"
-                                                                data-id="{{ $product->id }}"
-                                                                data-name="{{ $product->name }}">
-                                                            <i class="bi bi-trash"></i> Delete
-                                                        </button>
-                                                    </li>
-                                                </ul>
-                                            </div>
-                                        </td>
+                                                <button class="catalog-action-btn text-danger delete-product"
+                                                        type="button"
+                                                        data-id="{{ $product->id }}"
+                                                        data-name="{{ $product->name }}"
+                                                        title="Delete product"
+                                                        aria-label="Delete {{ $product->name }}">
+                                                    <i class="bi bi-trash"></i>
+                                                </button>
+                                            </div>                                        </td>
                                     </tr>
                                 @endforeach
                                 </tbody>
@@ -1384,40 +1369,29 @@
                                             @endif
                                         </td>
                                         <td>
-                                            <div class="dropdown text-end">
-                                                <button class="catalog-action-btn dropdown-toggle"
+                                            <div class="d-flex justify-content-end gap-1">
+                                                <button class="catalog-action-btn edit-finished-good"
                                                         type="button"
-                                                        data-bs-toggle="dropdown"
-                                                        aria-expanded="false"
-                                                        title="Product actions">
-                                                    <i class="bi bi-three-dots"></i>
+                                                        data-id="{{ $product->id }}"
+                                                        data-name="{{ $product->name }}"
+                                                        data-category_id="{{ $product->category_id }}"
+                                                        data-unit="{{ $product->unit }}"
+                                                        data-description="{{ $product->description }}"
+                                                        data-is_active="{{ $product->is_active }}"
+                                                        data-image="{{ $product->image }}"
+                                                        title="Edit finished good"
+                                                        aria-label="Edit {{ $product->name }}">
+                                                    <i class="bi bi-pencil"></i>
                                                 </button>
-                                                <ul class="dropdown-menu dropdown-menu-end catalog-action-menu">
-                                                    <li>
-                                                        <button class="dropdown-item edit-finished-good"
-                                                                type="button"
-                                                                data-id="{{ $product->id }}"
-                                                                data-name="{{ $product->name }}"
-                                                                data-category_id="{{ $product->category_id }}"
-                                                                data-unit="{{ $product->unit }}"
-                                                                data-description="{{ $product->description }}"
-                                                                data-is_active="{{ $product->is_active }}"
-                                                                data-image="{{ $product->image }}">
-                                                            <i class="bi bi-pencil"></i> Edit finished good
-                                                        </button>
-                                                    </li>
-                                                    <li><hr class="dropdown-divider my-1"></li>
-                                                    <li>
-                                                        <button class="dropdown-item text-danger delete-product"
-                                                                type="button"
-                                                                data-id="{{ $product->id }}"
-                                                                data-name="{{ $product->name }}">
-                                                            <i class="bi bi-trash"></i> Delete
-                                                        </button>
-                                                    </li>
-                                                </ul>
-                                            </div>
-                                        </td>
+                                                <button class="catalog-action-btn text-danger delete-product"
+                                                        type="button"
+                                                        data-id="{{ $product->id }}"
+                                                        data-name="{{ $product->name }}"
+                                                        title="Delete product"
+                                                        aria-label="Delete {{ $product->name }}">
+                                                    <i class="bi bi-trash"></i>
+                                                </button>
+                                            </div>                                        </td>
                                     </tr>
                                 @endforeach
                                 </tbody>
@@ -1471,38 +1445,27 @@
                                             @endif
                                         </td>
                                         <td>
-                                            <div class="dropdown text-end">
-                                                <button class="catalog-action-btn dropdown-toggle"
+                                            <div class="d-flex justify-content-end gap-1">
+                                                <button class="catalog-action-btn edit-category"
                                                         type="button"
-                                                        data-bs-toggle="dropdown"
-                                                        aria-expanded="false"
-                                                        title="Category actions">
-                                                    <i class="bi bi-three-dots"></i>
+                                                        data-id="{{ $category->id }}"
+                                                        data-name="{{ $category->name }}"
+                                                        data-description="{{ $category->description }}"
+                                                        data-is_active="{{ $category->is_active }}"
+                                                        title="Edit category"
+                                                        aria-label="Edit {{ $category->name }}">
+                                                    <i class="bi bi-pencil"></i>
                                                 </button>
-                                                <ul class="dropdown-menu dropdown-menu-end catalog-action-menu">
-                                                    <li>
-                                                        <button class="dropdown-item edit-category"
-                                                                type="button"
-                                                                data-id="{{ $category->id }}"
-                                                                data-name="{{ $category->name }}"
-                                                                data-description="{{ $category->description }}"
-                                                                data-is_active="{{ $category->is_active }}">
-                                                            <i class="bi bi-pencil"></i> Edit category
-                                                        </button>
-                                                    </li>
-                                                    <li><hr class="dropdown-divider my-1"></li>
-                                                    <li>
-                                                        <button class="dropdown-item text-danger delete-category"
-                                                                type="button"
-                                                                data-id="{{ $category->id }}"
-                                                                data-name="{{ $category->name }}"
-                                                                data-products-count="{{ $category->products_count ?? 0 }}">
-                                                            <i class="bi bi-trash"></i> Delete
-                                                        </button>
-                                                    </li>
-                                                </ul>
-                                            </div>
-                                        </td>
+                                                <button class="catalog-action-btn text-danger delete-category"
+                                                        type="button"
+                                                        data-id="{{ $category->id }}"
+                                                        data-name="{{ $category->name }}"
+                                                        data-products-count="{{ $category->products_count ?? 0 }}"
+                                                        title="Delete category"
+                                                        aria-label="Delete {{ $category->name }}">
+                                                    <i class="bi bi-trash"></i>
+                                                </button>
+                                            </div>                                        </td>
                                     </tr>
                                 @endforeach
                                 </tbody>
