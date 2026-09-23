@@ -51,7 +51,7 @@ class SaleController extends Controller
             });
         }
 
-        $sales = $query->latest()->paginate(15);
+        $sales = $query->latest()->paginate(15)->withQueryString();
 
         // Report ACTUAL FIFO production cost for production sales that already
         // have material consumption (consistent with SaleProfitService) so the
