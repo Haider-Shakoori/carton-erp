@@ -2,6 +2,9 @@
 
 use App\Http\Middleware\CheckPermissionWithFeedback;
 use App\Models\BusinessUnit;
+use App\Models\BOM;
+use App\Models\Category;
+use App\Models\Product;
 use App\Models\Setting;
 use App\Models\Purchase;
 use App\Models\User;
@@ -10,6 +13,7 @@ use App\Services\BusinessUnitProvisioningService;
 use Database\Seeders\BusinessUnitSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\DB;
 
 uses(RefreshDatabase::class);
 
@@ -220,6 +224,120 @@ it('automatically tags and scopes new operational records to the active business
     expect(Purchase::query()->pluck('purchase_no')->all())->toBe(['BU-CARTON-001']);
 });
 
+it('classifies legacy BOMs and strictly isolates BOM/product choices by active business', function () {
+    $user = User::factory()->create();
+    $carton = BusinessUnit::query()->where('code', '3d_carton')->firstOrFail();
+    $syrup = BusinessUnit::query()->where('code', 'syrup_pack')->firstOrFail();
+
+    $syrupCategory = Category::firstOrCreate(
+        ['name' => 'Syrup Boxes'],
+        ['description' => 'Syrup packaging', 'is_active' => true]
+    );
+    $cartonCategory = Category::firstOrCreate(
+        ['name' => 'Custom Cartons'],
+        ['description' => '3D cartons', 'is_active' => true]
+    );
+
+    $syrupProduct = Product::create([
+        'name' => '250ml Syrup Box',
+        'unit' => 'piece',
+        'category_id' => $syrupCategory->id,
+        'type' => Product::TYPE_FINISHED_GOOD,
+        'is_active' => true,
+    ]);
+    $cartonProduct = Product::create([
+        'name' => 'Custom Shipping Carton',
+        'unit' => 'piece',
+        'category_id' => $cartonCategory->id,
+        'type' => Product::TYPE_FINISHED_GOOD,
+        'is_active' => true,
+    ]);
+
+    $now = now();
+    DB::table('boms')->insert([
+        [
+            'name' => 'Legacy Syrup BOM',
+            'code' => 'BOM-LEGACY-SYRUP',
+            'product_id' => $syrupProduct->id,
+            'status' => 'active',
+            'is_active' => true,
+            'created_by' => $user->id,
+            'business_unit_id' => null,
+            'created_at' => $now,
+            'updated_at' => $now,
+        ],
+        [
+            'name' => 'Legacy Carton BOM',
+            'code' => 'BOM-LEGACY-CARTON',
+            'product_id' => $cartonProduct->id,
+            'status' => 'active',
+            'is_active' => true,
+            'created_by' => $user->id,
+            'business_unit_id' => null,
+            'created_at' => $now,
+            'updated_at' => $now,
+        ],
+    ]);
+
+    $migration = require database_path('migrations/2026_09_23_103000_classify_legacy_business_unit_records.php');
+    $migration->up();
+
+    expect((int) DB::table('boms')->where('code', 'BOM-LEGACY-SYRUP')->value('business_unit_id'))
+        ->toBe($syrup->id)
+        ->and((int) DB::table('boms')->where('code', 'BOM-LEGACY-CARTON')->value('business_unit_id'))
+        ->toBe($carton->id);
+
+    Setting::firstOrCreate([])->update([
+        'separate_business_units_enabled' => true,
+        'default_business_unit_id' => $carton->id,
+    ]);
+
+    $this->actingAs($user);
+    $context = app(BusinessUnitContext::class);
+
+    $context->switchTo($syrup);
+
+    expect(BOM::query()->pluck('code')->all())
+        ->toContain('BOM-LEGACY-SYRUP')
+        ->not->toContain('BOM-LEGACY-CARTON')
+        ->and(Product::finishedGoods()->forActiveBusiness()->pluck('id')->all())
+        ->toContain($syrupProduct->id)
+        ->not->toContain($cartonProduct->id);
+
+    $context->switchTo($carton);
+
+    expect(BOM::query()->pluck('code')->all())
+        ->toContain('BOM-LEGACY-CARTON')
+        ->not->toContain('BOM-LEGACY-SYRUP')
+        ->and(Product::finishedGoods()->forActiveBusiness()->pluck('id')->all())
+        ->toContain($cartonProduct->id)
+        ->not->toContain($syrupProduct->id);
+});
+
+it('does not expose unassigned operational rows inside an active business workspace', function () {
+    $user = User::factory()->create();
+    $carton = BusinessUnit::query()->where('code', '3d_carton')->firstOrFail();
+
+    Setting::firstOrCreate([])->update([
+        'separate_business_units_enabled' => true,
+        'default_business_unit_id' => $carton->id,
+    ]);
+
+    DB::table('purchases')->insert([
+        'purchase_no' => 'BU-NULL-LEGACY',
+        'status' => 'draft',
+        'business_unit_id' => null,
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+
+    $this->actingAs($user);
+    app(BusinessUnitContext::class)->switchTo($carton);
+
+    expect(Purchase::query()->where('purchase_no', 'BU-NULL-LEGACY')->exists())->toBeFalse()
+        ->and(Purchase::query()->withoutGlobalScope('business_unit')->where('purchase_no', 'BU-NULL-LEGACY')->exists())->toBeTrue();
+});
+
 it('exposes the setting toggle and top navigation business switcher contract', function () {
     $settings = file_get_contents(resource_path('views/admin/settings/index.blade.php'));
     $layout = file_get_contents(resource_path('views/layouts/admin/base.blade.php'));
@@ -232,7 +350,8 @@ it('exposes the setting toggle and top navigation business switcher contract', f
 
     expect($layout)
         ->toContain('id="businessUnitSwitcher"')
+        ->toContain('businessUnitSwitchForm')
+        ->toContain('data-switch-url')
         ->toContain("route('admin.business-units.switch', \$businessUnit)")
-        ->toContain('Switch business workspace')
-        ->toContain('Business unit settings');
+        ->toContain('Switch business workspace');
 });

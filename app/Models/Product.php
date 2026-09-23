@@ -5,6 +5,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Str;
 
 class Product extends Model
@@ -259,6 +260,44 @@ class Product extends Model
         return $query->where('type', self::TYPE_FINISHED_GOOD);
     }
 
+    /**
+     * Limit finished-good choices to the active production business while
+     * keeping the underlying Product master shared.
+     */
+    public function scopeForActiveBusiness(Builder $query): Builder
+    {
+        $activeBusinessUnitId = (int) session(
+            \App\Support\Business\BusinessUnitContext::SESSION_KEY,
+            0
+        );
+
+        if ($activeBusinessUnitId <= 0) {
+            return $query;
+        }
+
+        $businessCode = BusinessUnit::query()
+            ->whereKey($activeBusinessUnitId)
+            ->value('code');
+
+        if ($businessCode === 'syrup_pack') {
+            return $query->where(function (Builder $productQuery): void {
+                $productQuery
+                    ->whereHas('category', fn (Builder $categoryQuery) => $categoryQuery->where('name', 'Syrup Boxes'))
+                    ->orWhere('name', 'like', '%syrup%');
+            });
+        }
+
+        if ($businessCode === '3d_carton') {
+            return $query->where(function (Builder $productQuery): void {
+                $productQuery
+                    ->whereDoesntHave('category', fn (Builder $categoryQuery) => $categoryQuery->where('name', 'Syrup Boxes'))
+                    ->where('name', 'not like', '%syrup%');
+            });
+        }
+
+        return $query;
+    }
+
     public function scopeActive($query)
     {
         return $query->where('is_active', true);
@@ -276,6 +315,24 @@ class Product extends Model
     public function isFinishedGood()
     {
         return $this->type === self::TYPE_FINISHED_GOOD;
+    }
+
+    public function intendedBusinessUnitCode(): ?string
+    {
+        if (! $this->isFinishedGood()) {
+            return null;
+        }
+
+        $this->loadMissing('category');
+
+        if (
+            $this->category?->name === 'Syrup Boxes'
+            || str_contains(strtolower((string) $this->name), 'syrup')
+        ) {
+            return 'syrup_pack';
+        }
+
+        return '3d_carton';
     }
 
     public function getTypeLabelAttribute()
