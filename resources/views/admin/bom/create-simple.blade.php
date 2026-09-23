@@ -430,9 +430,19 @@ document.addEventListener('DOMContentLoaded', function () {
     form.addEventListener('submit', async function (event) {
         if (previewValid) return;
 
+        const submitter = event.submitter || null;
         event.preventDefault();
+
         const valid = await calculate();
-        if (valid) form.submit();
+        if (!valid) return;
+
+        // Re-submit through the same button so its save_action value
+        // (save vs another size) is preserved after the async preview.
+        if (submitter && typeof form.requestSubmit === 'function') {
+            form.requestSubmit(submitter);
+        } else {
+            form.submit();
+        }
     });
 
     updateProfileHelp();
