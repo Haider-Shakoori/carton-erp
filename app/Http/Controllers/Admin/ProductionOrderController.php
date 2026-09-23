@@ -572,6 +572,7 @@ class ProductionOrderController extends Controller
                             'material_name' => $row['material_name'] ?? ('Material #' . $materialId),
                             'unit' => $row['unit'] ?? 'unit',
                             'planned_quantity' => (float) ($row['quantity'] ?? 0),
+                            'planned_wastage_quantity' => (float) ($row['wastage_quantity'] ?? 0),
                             'current_actual_quantity' => (float) ($current->actual_quantity ?? 0),
                             'current_wastage_quantity' => (float) ($current->wastage_quantity ?? 0),
                             'is_roll_based' => $isRollBased,
