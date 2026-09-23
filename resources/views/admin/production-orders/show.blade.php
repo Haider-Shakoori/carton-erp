@@ -2166,19 +2166,28 @@
             }
             @endif
 
-            // ─── LIVE BOM VS ACTUAL MATERIAL VARIANCE ───
+            // ─── LIVE CALCULATED / MANUAL MATERIAL RECONCILIATION ───
+            const plannedRunQuantity = Number(@json((float) ($productionOrder->quantity_planned ?: $productionOrder->quantity_ordered))) || 1;
+
             const syncCompletionSummary = function() {
                 let over = 0;
                 let below = 0;
                 let onPlan = 0;
+                let calculated = 0;
                 const epsilon = 0.000001;
 
-                document.querySelectorAll('.actual-consumption-input').forEach(function(input) {
+                document.querySelectorAll('[data-material-row]').forEach(function(row) {
+                    const mode = row.querySelector('.consumption-mode-select');
+                    if (mode && mode.value === 'calculated') {
+                        calculated++;
+                    }
+
+                    const input = row.querySelector('.actual-consumption-input');
+                    if (!input) return;
+
                     const planned = Number(input.dataset.planned || 0);
                     const actual = Number(input.value);
-                    if (!Number.isFinite(actual)) {
-                        return;
-                    }
+                    if (!Number.isFinite(actual)) return;
 
                     const difference = actual - planned;
                     if (difference > epsilon) {
@@ -2190,13 +2199,17 @@
                     }
                 });
 
-                const overTarget = document.getElementById('completionOverCount');
-                const belowTarget = document.getElementById('completionBelowCount');
-                const onPlanTarget = document.getElementById('completionOnPlanCount');
+                const targets = {
+                    completionOverCount: over,
+                    completionBelowCount: below,
+                    completionOnPlanCount: onPlan,
+                    completionCalculatedCount: calculated
+                };
 
-                if (overTarget) overTarget.textContent = String(over);
-                if (belowTarget) belowTarget.textContent = String(below);
-                if (onPlanTarget) onPlanTarget.textContent = String(onPlan);
+                Object.keys(targets).forEach(function(id) {
+                    const target = document.getElementById(id);
+                    if (target) target.textContent = String(targets[id]);
+                });
             };
 
             const syncMaterialVariance = function(input) {
@@ -2204,9 +2217,7 @@
                 const status = document.getElementById(input.dataset.varianceStatusTarget);
                 const row = input.closest('[data-material-row]');
 
-                if (!target || !status) {
-                    return;
-                }
+                if (!target || !status) return;
 
                 const planned = Number(input.dataset.planned || 0);
                 const actual = Number(input.value);
@@ -2233,17 +2244,126 @@
 
                 if (difference > epsilon) {
                     target.classList.add('text-danger');
-                    status.textContent = 'Over BOM plan';
+                    status.textContent = 'Above planned run';
                     if (row) row.classList.add('is-over-plan');
                 } else if (difference < -epsilon) {
                     target.classList.add('text-success');
-                    status.textContent = 'Below BOM plan';
+                    status.textContent = 'Below planned run';
                     if (row) row.classList.add('is-below-plan');
                 } else {
                     target.classList.add('text-muted');
-                    status.textContent = 'On BOM plan';
+                    status.textContent = 'On planned run';
                     if (row) row.classList.add('is-on-plan');
                 }
+
+                syncCompletionSummary();
+            };
+
+            const calculatedQuantityForRow = function(row) {
+                const input = row.querySelector('.actual-consumption-input');
+                const manufactured = Number(document.getElementById('quantity_manufactured')?.value || 0);
+                const planned = Number(input?.dataset.planned || 0);
+
+                if (!Number.isFinite(manufactured) || manufactured <= 0 || !input) {
+                    return null;
+                }
+
+                return planned * (manufactured / Math.max(plannedRunQuantity, 0.000001));
+            };
+
+            const syncReelMode = function(row) {
+                const reelMode = row.querySelector('.reel-mode-select');
+                if (!reelMode) return;
+
+                const simplePanel = row.querySelector('.simple-reel-selection');
+                const advancedPanel = row.querySelector('.advanced-reel-selection');
+                const advancedEnabled = row.parentElement?.querySelector('.advanced-reel-enabled')
+                    || document.querySelector(
+                        '#reelDetails' + row.dataset.materialIndex + ' .advanced-reel-enabled'
+                    );
+                const selectedReel = row.querySelector('.selected-reel-select');
+                const actualInput = row.querySelector('.actual-consumption-input');
+                const wasteInput = row.querySelector('.wastage-consumption-input');
+                const mode = row.querySelector('.consumption-mode-select');
+                const help = row.querySelector('.consumption-help');
+
+                const simple = reelMode.value === 'continue' || reelMode.value === 'finished';
+                if (simplePanel) simplePanel.style.display = simple ? '' : 'none';
+                if (advancedPanel) advancedPanel.style.display = reelMode.value === 'advanced' ? '' : 'none';
+                if (advancedEnabled) advancedEnabled.value = reelMode.value === 'advanced' ? '1' : '0';
+
+                const details = document.getElementById('reelDetails' + row.dataset.materialIndex);
+                if (details && window.bootstrap) {
+                    const collapse = bootstrap.Collapse.getOrCreateInstance(details, { toggle: false });
+                    if (reelMode.value === 'advanced') collapse.show();
+                    else collapse.hide();
+                }
+
+                if (reelMode.value === 'finished' && selectedReel && selectedReel.value) {
+                    const option = selectedReel.options[selectedReel.selectedIndex];
+                    const available = Number(option?.dataset.available || 0);
+                    if (actualInput && Number.isFinite(available) && available > 0) {
+                        actualInput.value = available.toFixed(6);
+                        actualInput.readOnly = true;
+                        if (wasteInput) {
+                            wasteInput.value = '0';
+                            wasteInput.readOnly = true;
+                        }
+                        if (help) {
+                            help.textContent = 'Reel finished: the ERP will consume this reel’s full remaining balance and reconcile it to zero.';
+                        }
+                        syncMaterialVariance(actualInput);
+                    }
+                    return;
+                }
+
+                if (mode) {
+                    const calculated = mode.value === 'calculated';
+                    if (actualInput) actualInput.readOnly = calculated;
+                    if (wasteInput) wasteInput.readOnly = calculated;
+                    if (help) {
+                        help.textContent = calculated
+                            ? 'Calculated automatically from actual manufactured quantity.'
+                            : 'Enter the quantity that physically left inventory.';
+                    }
+                }
+            };
+
+            const syncCalculatedMaterialRows = function() {
+                document.querySelectorAll('[data-material-row]').forEach(function(row) {
+                    const mode = row.querySelector('.consumption-mode-select');
+                    const reelMode = row.querySelector('.reel-mode-select');
+                    const actualInput = row.querySelector('.actual-consumption-input');
+                    const wasteInput = row.querySelector('.wastage-consumption-input');
+
+                    if (!mode || !actualInput) return;
+
+                    if (reelMode && reelMode.value === 'finished') {
+                        syncReelMode(row);
+                        return;
+                    }
+
+                    if (mode.value === 'calculated') {
+                        const calculated = calculatedQuantityForRow(row);
+                        const manufactured = Number(document.getElementById('quantity_manufactured')?.value || 0);
+                        const plannedWaste = Number(actualInput.dataset.plannedWaste || 0);
+
+                        if (calculated !== null) {
+                            actualInput.value = calculated.toFixed(6);
+                        }
+
+                        if (wasteInput && Number.isFinite(manufactured) && manufactured > 0) {
+                            wasteInput.value = (
+                                plannedWaste * (manufactured / Math.max(plannedRunQuantity, 0.000001))
+                            ).toFixed(6);
+                        }
+
+                        actualInput.readOnly = true;
+                        if (wasteInput) wasteInput.readOnly = true;
+                    }
+
+                    syncMaterialVariance(actualInput);
+                });
 
                 syncCompletionSummary();
             };
@@ -2252,18 +2372,39 @@
                 input.addEventListener('input', function() {
                     syncMaterialVariance(input);
                 });
-                syncMaterialVariance(input);
             });
 
-            document.querySelectorAll('.use-bom-plan').forEach(function(button) {
-                button.addEventListener('click', function() {
-                    const row = button.closest('[data-material-row]');
-                    const input = row ? row.querySelector('.actual-consumption-input') : null;
-                    if (!input) return;
+            document.querySelectorAll('.consumption-mode-select').forEach(function(select) {
+                select.addEventListener('change', function() {
+                    const row = select.closest('[data-material-row]');
+                    if (!row) return;
 
-                    input.value = input.dataset.planned || '0';
-                    input.dispatchEvent(new Event('input', { bubbles: true }));
-                    input.focus();
+                    const actualInput = row.querySelector('.actual-consumption-input');
+                    const wasteInput = row.querySelector('.wastage-consumption-input');
+                    const calculated = select.value === 'calculated';
+
+                    if (actualInput) actualInput.readOnly = calculated;
+                    if (wasteInput) wasteInput.readOnly = calculated;
+
+                    syncCalculatedMaterialRows();
+                    syncReelMode(row);
+                });
+            });
+
+            document.querySelectorAll('.reel-mode-select').forEach(function(select) {
+                select.addEventListener('change', function() {
+                    const row = select.closest('[data-material-row]');
+                    if (row) {
+                        syncReelMode(row);
+                        syncCalculatedMaterialRows();
+                    }
+                });
+            });
+
+            document.querySelectorAll('.selected-reel-select').forEach(function(select) {
+                select.addEventListener('change', function() {
+                    const row = select.closest('[data-material-row]');
+                    if (row) syncReelMode(row);
                 });
             });
 
@@ -2295,8 +2436,18 @@
 
             ['quantity_manufactured', 'quantity_produced', 'quantity_rejected'].forEach(function(id) {
                 const input = document.getElementById(id);
-                if (input) input.addEventListener('input', syncOutputCheck);
+                if (!input) return;
+
+                input.addEventListener('input', function() {
+                    syncOutputCheck();
+                    if (id === 'quantity_manufactured') {
+                        syncCalculatedMaterialRows();
+                    }
+                });
             });
+
+            document.querySelectorAll('[data-material-row]').forEach(syncReelMode);
+            syncCalculatedMaterialRows();
             syncOutputCheck();
 
             const productionCompletionForm = document.getElementById('productionCompletionForm');
@@ -2309,19 +2460,6 @@
                     }
                 });
             }
-
-            // ─── OPTIONAL PHYSICAL REEL DECLARATION ───
-            document.querySelectorAll('.reel-selection-toggle').forEach(function(toggle) {
-                const panel = document.getElementById(toggle.dataset.target);
-                const syncPanel = function() {
-                    if (panel) {
-                        panel.style.display = toggle.checked ? '' : 'none';
-                    }
-                };
-
-                toggle.addEventListener('change', syncPanel);
-                syncPanel();
-            });
 
             // ─── CONFIRM DIALOG FOR START PRODUCTION ───
             const startForm = document.getElementById('startProductionForm');
