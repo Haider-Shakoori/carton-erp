@@ -596,7 +596,7 @@
                     <button type="submit" class="btn btn-primary btn-sm" style="font-weight: 600; padding: 0.4rem 1.25rem;">
                         <i class="bi bi-filter me-1"></i> Filter
                     </button>
-                    @if(request()->anyFilled(['search', 'status']) && request('status') != 'all')
+                    @if(request()->filled('search') || (request()->filled('status') && request('status') !== 'all'))
                         <a href="{{ route('production-orders.index') }}" class="btn btn-outline-secondary btn-sm" style="font-weight: 600;">
                             <i class="bi bi-arrow-counterclockwise me-1"></i> {{ __('ui.reset') }}
                         </a>
