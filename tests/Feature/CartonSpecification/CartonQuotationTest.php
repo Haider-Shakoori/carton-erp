@@ -481,6 +481,18 @@ it('updates the correct invoice line and sale total from actual quantity on a mu
 
     expect((float) $invoiceTransaction->amount)
         ->toEqualWithDelta($expectedGrandTotal, 0.01);
+
+    // The remaining line is still pending, so the sale is not fully produced.
+    // Cancelling it makes every directly linked production order terminal and
+    // must therefore finalize the sale-level produced state consistently.
+    $cancel = app(\App\Http\Controllers\Admin\ProductionOrderController::class)
+        ->cancelProduction($orders[0]->fresh());
+
+    expect($cancel->getSession()->get('success'))->toContain('cancelled');
+
+    $sale->refresh();
+
+    expect((bool) $sale->is_produced)->toBeTrue();
 });
 
 it('freezes the accepted specification at confirmation and ignores later profile and rate changes', function () {
