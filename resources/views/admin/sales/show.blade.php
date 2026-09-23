@@ -2255,6 +2255,81 @@
                         </div>
                     </div>
 
+                    <div class="mt-3 pt-3 border-top">
+                        <div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-2">
+                            <div>
+                                <div class="fw-semibold text-dark">
+                                    <i class="bi bi-grid-3x3-gap me-1 text-primary"></i> Multiple Sizes
+                                </div>
+                                <div class="small text-muted">
+                                    Use one board/printing specification for several customer dimensions. Each size gets its own BOM, quantity and optional customer price.
+                                </div>
+                            </div>
+                            <button type="button" class="btn btn-sm btn-outline-primary" id="csToggleMultiSize">
+                                <i class="bi bi-plus-square me-1"></i> Quote Multiple Sizes
+                            </button>
+                        </div>
+
+                        <div id="csMultiSizePanel" class="mt-3" style="display:none;">
+                            <div class="alert alert-light border py-2 px-3 small">
+                                The Product, Box Style, Unit, Board Profile, Flute, Printing and Wastage selected above are shared.
+                                Enter only the size-specific values below.
+                            </div>
+                            <div id="csMultiSizeRows"></div>
+                            <template id="csMultiSizeTemplate">
+                                <div class="border rounded-3 p-3 mb-2 cs-multi-size-row bg-light">
+                                    <div class="row g-2 align-items-end">
+                                        <div class="col-lg-2 col-md-4">
+                                            <label class="form-label">Size Name</label>
+                                            <input type="text" class="form-control form-control-sm cs-ms-name" placeholder="e.g. 200ml">
+                                        </div>
+                                        <div class="col-lg-1 col-md-2">
+                                            <label class="form-label">Length</label>
+                                            <input type="number" class="form-control form-control-sm cs-ms-length" min="0.01" step="0.01">
+                                        </div>
+                                        <div class="col-lg-1 col-md-2">
+                                            <label class="form-label">Width</label>
+                                            <input type="number" class="form-control form-control-sm cs-ms-width" min="0.01" step="0.01">
+                                        </div>
+                                        <div class="col-lg-1 col-md-2">
+                                            <label class="form-label">Height</label>
+                                            <input type="number" class="form-control form-control-sm cs-ms-height" min="0.01" step="0.01">
+                                        </div>
+                                        <div class="col-lg-2 col-md-3">
+                                            <label class="form-label">Quantity</label>
+                                            <input type="number" class="form-control form-control-sm cs-ms-quantity" min="1" step="1" value="1">
+                                        </div>
+                                        <div class="col-lg-2 col-md-3">
+                                            <label class="form-label">Customer Price ({{ $currencyCode }})</label>
+                                            <input type="number" class="form-control form-control-sm cs-ms-price" min="0" step="0.0001" placeholder="Standard">
+                                        </div>
+                                        <div class="col-lg-2 col-md-4">
+                                            <label class="form-label">Description</label>
+                                            <input type="text" class="form-control form-control-sm cs-ms-description" maxlength="2000" placeholder="Optional">
+                                        </div>
+                                        <div class="col-lg-1 col-md-2">
+                                            <button type="button" class="btn btn-sm btn-outline-danger w-100 cs-ms-remove" title="Remove size">
+                                                <i class="bi bi-trash"></i>
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </template>
+                            <div class="d-flex flex-wrap gap-2 mt-2">
+                                <button type="button" class="btn btn-sm btn-outline-secondary" id="csAddMultiSizeRow">
+                                    <i class="bi bi-plus-lg me-1"></i> Add Size
+                                </button>
+                                <button type="button" class="btn btn-sm btn-outline-primary" id="csCalculateManyBtn">
+                                    <i class="bi bi-calculator me-1"></i> Calculate All
+                                </button>
+                                <button type="button" class="btn btn-sm btn-success" id="csAddManyBtn" disabled>
+                                    <i class="bi bi-cart-plus me-1"></i> Add All to Sale
+                                </button>
+                            </div>
+                            <div id="csMultiPreview" class="mt-3" style="display:none;"></div>
+                        </div>
+                    </div>
+
                     <div id="csError" class="alert alert-danger mt-3 mb-0 py-2 px-3" style="display:none; font-size:.8rem;"></div>
 
                     <div id="csSummary" class="mt-3" style="display:none;">
@@ -6159,10 +6234,13 @@
             var csCurrency = @json($currencyCode);
             var csOptionsUrl = @json(route('admin.sales.carton-spec.options'));
             var csCalculateUrl = @json(route('admin.sales.carton-spec.calculate', $sale->id));
+            var csCalculateManyUrl = @json(route('admin.sales.carton-spec.calculate-many', $sale->id));
             var csAddUrl = @json(route('admin.sales.carton-spec.add', $sale->id));
+            var csAddManyUrl = @json(route('admin.sales.carton-spec.add-many', $sale->id));
             var csToken = @json(csrf_token());
             var csOptions = null;
             var csPreview = null;
+            var csMultiPreview = null;
 
             if (!document.getElementById('cartonSpecSection')) {
                 return;
@@ -6286,6 +6364,173 @@
                 document.getElementById('csAddBtn').disabled = false;
             }
 
+            function csAddMultiSizeRow(values) {
+                var template = document.getElementById('csMultiSizeTemplate');
+                var target = document.getElementById('csMultiSizeRows');
+                if (!template || !target) return;
+
+                var fragment = template.content.cloneNode(true);
+                var row = fragment.querySelector('.cs-multi-size-row');
+                values = values || {};
+                row.querySelector('.cs-ms-name').value = values.name || '';
+                row.querySelector('.cs-ms-length').value = values.length || '';
+                row.querySelector('.cs-ms-width').value = values.width || '';
+                row.querySelector('.cs-ms-height').value = values.height || '';
+                row.querySelector('.cs-ms-quantity').value = values.quantity || 1;
+                row.querySelector('.cs-ms-price').value = values.quoted_unit_price || '';
+                row.querySelector('.cs-ms-description').value = values.description || '';
+                target.appendChild(fragment);
+            }
+
+            function csMultiPayload() {
+                var sizes = [];
+                document.querySelectorAll('#csMultiSizeRows .cs-multi-size-row').forEach(function (row) {
+                    sizes.push({
+                        name: row.querySelector('.cs-ms-name').value.trim() || null,
+                        length: row.querySelector('.cs-ms-length').value,
+                        width: row.querySelector('.cs-ms-width').value,
+                        height: row.querySelector('.cs-ms-height').value,
+                        quantity: row.querySelector('.cs-ms-quantity').value,
+                        quoted_unit_price: row.querySelector('.cs-ms-price').value || null,
+                        description: row.querySelector('.cs-ms-description').value.trim() || null
+                    });
+                });
+
+                return {
+                    _token: csToken,
+                    product_id: document.getElementById('csProduct').value,
+                    box_style: document.getElementById('csBoxStyle').value,
+                    dimension_unit: document.getElementById('csUnit').value,
+                    board_profile_id: document.getElementById('csBoardProfile').value,
+                    ply: document.getElementById('csPly').value || null,
+                    flute_type: document.getElementById('csFlute').value || null,
+                    printing_option: document.getElementById('csPrinting').value,
+                    wastage_percentage: document.getElementById('csWastage').value,
+                    work_percentage: 40,
+                    profit_margin_percentage: 0,
+                    sizes: sizes
+                };
+            }
+
+            function csValidateMultiPayload(payload) {
+                if (!payload.product_id) return 'Select a finished carton product.';
+                if (!payload.board_profile_id) return 'Select a board profile.';
+                if (!payload.sizes.length) return 'Add at least one size.';
+                for (var i = 0; i < payload.sizes.length; i++) {
+                    var size = payload.sizes[i];
+                    if (!(Number(size.length) > 0) || !(Number(size.width) > 0) || !(Number(size.height) > 0)) {
+                        return 'Size ' + (i + 1) + ' needs valid Length, Width and Height.';
+                    }
+                    if (!(Number(size.quantity) > 0)) {
+                        return 'Size ' + (i + 1) + ' needs a quantity greater than zero.';
+                    }
+                }
+                return null;
+            }
+
+            function csRenderMultiPreview(previews) {
+                csMultiPreview = previews || [];
+                var host = document.getElementById('csMultiPreview');
+                if (!host) return;
+
+                var currency = csCurrency;
+                var total = 0;
+                var rows = csMultiPreview.map(function (preview, index) {
+                    var standard = Number(preview.standard_unit_price || 0);
+                    var effective = Number(preview.effective_unit_price || standard);
+                    var override = Number(preview.price_override || 0);
+                    var qty = Number(preview.quantity || 0);
+                    total += effective * qty;
+
+                    var overrideText = Math.abs(override) > 0.000001
+                        ? (override > 0 ? '+' : '') + csNumber(override, 4)
+                        : '—';
+
+                    return '<tr>'
+                        + '<td><strong>' + (preview.size_name || ('Size ' + (index + 1))) + '</strong><div class="small text-muted">'
+                        + preview.dimensions.length + ' × ' + preview.dimensions.width + ' × ' + preview.dimensions.height + ' ' + String(preview.dimensions.unit).toUpperCase()
+                        + '</div></td>'
+                        + '<td class="text-end">' + csNumber(qty, 2) + '</td>'
+                        + '<td class="text-end">' + csNumber(standard, 4) + '</td>'
+                        + '<td class="text-end ' + (override < 0 ? 'text-danger' : (override > 0 ? 'text-success' : 'text-muted')) + '">' + overrideText + '</td>'
+                        + '<td class="text-end fw-bold text-primary">' + csNumber(effective, 4) + '</td>'
+                        + '<td class="text-end">' + csNumber(effective * qty, 2) + '</td>'
+                        + '</tr>';
+                }).join('');
+
+                host.innerHTML =
+                    '<div class="table-responsive"><table class="table table-sm align-middle mb-0">'
+                    + '<thead><tr><th>Size</th><th class="text-end">Qty</th><th class="text-end">Standard Price</th>'
+                    + '<th class="text-end">Price Override</th><th class="text-end">Customer Price</th><th class="text-end">Line Total</th></tr></thead>'
+                    + '<tbody>' + rows + '</tbody>'
+                    + '<tfoot><tr><th colspan="5" class="text-end">Quotation Total (' + currency + ')</th><th class="text-end">' + csNumber(total, 2) + '</th></tr></tfoot>'
+                    + '</table></div>';
+                host.style.display = 'block';
+                document.getElementById('csAddManyBtn').disabled = csMultiPreview.length === 0;
+            }
+
+            function csCalculateMany() {
+                csShowError('');
+                var payload = csMultiPayload();
+                var error = csValidateMultiPayload(payload);
+                if (error) {
+                    csShowError(error);
+                    return;
+                }
+
+                document.getElementById('csAddManyBtn').disabled = true;
+                $.ajax({
+                    url: csCalculateManyUrl,
+                    type: 'POST',
+                    data: payload,
+                    success: function (response) {
+                        if (response.success) {
+                            csRenderMultiPreview(response.data.previews || []);
+                        } else {
+                            csShowError(response.message || 'Could not calculate multiple sizes.');
+                        }
+                    },
+                    error: function (xhr) {
+                        csShowError(xhr.responseJSON?.message
+                            || (xhr.responseJSON?.errors ? Object.values(xhr.responseJSON.errors).flat().join(' ') : 'Could not calculate multiple sizes.'));
+                    }
+                });
+            }
+
+            function csAddMany() {
+                if (!csMultiPreview || !csMultiPreview.length) {
+                    csShowError('Calculate all sizes before adding them to the sale.');
+                    return;
+                }
+
+                var payload = csMultiPayload();
+                document.getElementById('csAddManyBtn').disabled = true;
+                $.ajax({
+                    url: csAddManyUrl,
+                    type: 'POST',
+                    data: payload,
+                    success: function (response) {
+                        if (response.success) {
+                            Swal.fire({
+                                icon: 'success',
+                                title: 'Carton sizes added',
+                                text: response.message,
+                                timer: 1600,
+                                showConfirmButton: false
+                            }).then(function () { location.reload(); });
+                        } else {
+                            document.getElementById('csAddManyBtn').disabled = false;
+                            csShowError(response.message || 'Could not add carton sizes.');
+                        }
+                    },
+                    error: function (xhr) {
+                        document.getElementById('csAddManyBtn').disabled = false;
+                        csShowError(xhr.responseJSON?.message
+                            || (xhr.responseJSON?.errors ? Object.values(xhr.responseJSON.errors).flat().join(' ') : 'Could not add carton sizes.'));
+                    }
+                });
+            }
+
             function csCalculate() {
                 csShowError('');
                 document.getElementById('csAddBtn').disabled = true;
@@ -6392,6 +6637,46 @@
             });
             document.getElementById('csCalculateBtn').addEventListener('click', csCalculate);
             document.getElementById('csAddBtn').addEventListener('click', csAdd);
+
+            document.getElementById('csToggleMultiSize')?.addEventListener('click', function () {
+                var panel = document.getElementById('csMultiSizePanel');
+                var showing = panel.style.display !== 'none';
+                panel.style.display = showing ? 'none' : '';
+                this.innerHTML = showing
+                    ? '<i class="bi bi-plus-square me-1"></i> Quote Multiple Sizes'
+                    : '<i class="bi bi-chevron-up me-1"></i> Hide Multiple Sizes';
+                if (!showing && !document.querySelector('#csMultiSizeRows .cs-multi-size-row')) {
+                    csAddMultiSizeRow({
+                        name: document.getElementById('csDescription').value || '',
+                        length: document.getElementById('csLength').value,
+                        width: document.getElementById('csWidth').value,
+                        height: document.getElementById('csHeight').value,
+                        quantity: document.getElementById('csQuantity').value,
+                        quoted_unit_price: document.getElementById('csQuotedPrice').value
+                    });
+                }
+            });
+
+            document.getElementById('csAddMultiSizeRow')?.addEventListener('click', function () {
+                csAddMultiSizeRow();
+                csMultiPreview = null;
+                document.getElementById('csAddManyBtn').disabled = true;
+            });
+            document.getElementById('csCalculateManyBtn')?.addEventListener('click', csCalculateMany);
+            document.getElementById('csAddManyBtn')?.addEventListener('click', csAddMany);
+            document.addEventListener('click', function (event) {
+                var button = event.target.closest('.cs-ms-remove');
+                if (!button) return;
+                var rows = document.querySelectorAll('#csMultiSizeRows .cs-multi-size-row');
+                if (rows.length <= 1) {
+                    csShowError('At least one size is required.');
+                    return;
+                }
+                button.closest('.cs-multi-size-row').remove();
+                csMultiPreview = null;
+                document.getElementById('csAddManyBtn').disabled = true;
+                document.getElementById('csMultiPreview').style.display = 'none';
+            });
 
             $.get(csOptionsUrl, function (response) {
                 if (!response.success) { return; }
