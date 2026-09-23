@@ -64,7 +64,6 @@ class ProductionOrderController extends Controller
     public function create()
     {
         $products = Product::finishedGoods()
-            ->forActiveBusiness()
             ->where('is_active', true)
             ->with('category')
             ->get();
@@ -398,7 +397,6 @@ class ProductionOrderController extends Controller
         $productionOrder->load(['bom', 'materials.product']);
 
         $products = Product::finishedGoods()
-            ->forActiveBusiness()
             ->where('is_active', true)
             ->with('category')
             ->get();

@@ -189,6 +189,24 @@ it('switches the active business only when separate business mode is enabled', f
         ->and(session()->has(BusinessUnitContext::SESSION_KEY))->toBeFalse();
 });
 
+it('defaults operational writes without an active browser workspace to 3D Carton', function () {
+    $carton = BusinessUnit::query()->where('code', '3d_carton')->firstOrFail();
+
+    Setting::firstOrCreate([])->update([
+        'separate_business_units_enabled' => false,
+        'default_business_unit_id' => $carton->id,
+    ]);
+
+    session()->forget(BusinessUnitContext::SESSION_KEY);
+
+    $purchase = Purchase::create([
+        'purchase_no' => 'BU-DEFAULT-CARTON',
+        'status' => 'draft',
+    ]);
+
+    expect((int) $purchase->business_unit_id)->toBe($carton->id);
+});
+
 it('automatically tags and scopes new operational records to the active business', function () {
     $carton = BusinessUnit::query()->where('code', '3d_carton')->firstOrFail();
     $syrup = BusinessUnit::query()->where('code', 'syrup_pack')->firstOrFail();
@@ -224,67 +242,58 @@ it('automatically tags and scopes new operational records to the active business
     expect(Purchase::query()->pluck('purchase_no')->all())->toBe(['BU-CARTON-001']);
 });
 
-it('classifies legacy BOMs and strictly isolates BOM/product choices by active business', function () {
+it('keeps all pre-separation operational history in 3D Carton and starts Syrup Pack empty', function () {
     $user = User::factory()->create();
     $carton = BusinessUnit::query()->where('code', '3d_carton')->firstOrFail();
     $syrup = BusinessUnit::query()->where('code', 'syrup_pack')->firstOrFail();
 
-    $syrupCategory = Category::firstOrCreate(
+    Setting::firstOrCreate([])->update([
+        'default_business_unit_id' => $syrup->id,
+    ]);
+
+    $category = Category::firstOrCreate(
         ['name' => 'Syrup Boxes'],
-        ['description' => 'Syrup packaging', 'is_active' => true]
-    );
-    $cartonCategory = Category::firstOrCreate(
-        ['name' => 'Custom Cartons'],
-        ['description' => '3D cartons', 'is_active' => true]
+        ['description' => 'Existing 3D carton customer products', 'is_active' => true]
     );
 
-    $syrupProduct = Product::create([
+    $product = Product::create([
         'name' => '250ml Syrup Box',
         'unit' => 'piece',
-        'category_id' => $syrupCategory->id,
-        'type' => Product::TYPE_FINISHED_GOOD,
-        'is_active' => true,
-    ]);
-    $cartonProduct = Product::create([
-        'name' => 'Custom Shipping Carton',
-        'unit' => 'piece',
-        'category_id' => $cartonCategory->id,
+        'category_id' => $category->id,
         'type' => Product::TYPE_FINISHED_GOOD,
         'is_active' => true,
     ]);
 
     $now = now();
-    DB::table('boms')->insert([
-        [
-            'name' => 'Legacy Syrup BOM',
-            'code' => 'BOM-LEGACY-SYRUP',
-            'product_id' => $syrupProduct->id,
-            'status' => 'active',
-            'is_active' => true,
-            'created_by' => $user->id,
-            'business_unit_id' => null,
-            'created_at' => $now,
-            'updated_at' => $now,
-        ],
-        [
-            'name' => 'Legacy Carton BOM',
-            'code' => 'BOM-LEGACY-CARTON',
-            'product_id' => $cartonProduct->id,
-            'status' => 'active',
-            'is_active' => true,
-            'created_by' => $user->id,
-            'business_unit_id' => null,
-            'created_at' => $now,
-            'updated_at' => $now,
-        ],
+    $bomId = DB::table('boms')->insertGetId([
+        'name' => 'Existing Customer BOM',
+        'code' => 'BOM-EXISTING-3D',
+        'product_id' => $product->id,
+        'status' => 'active',
+        'is_active' => true,
+        'created_by' => $user->id,
+        // Simulate the previous incorrect heuristic assignment.
+        'business_unit_id' => $syrup->id,
+        'created_at' => $now,
+        'updated_at' => $now,
     ]);
 
-    $migration = require database_path('migrations/2026_09_23_103000_classify_legacy_business_unit_records.php');
+    DB::table('purchases')->insert([
+        'purchase_no' => 'PO-EXISTING-3D',
+        'status' => 'draft',
+        'business_unit_id' => $syrup->id,
+        'created_at' => $now,
+        'updated_at' => $now,
+    ]);
+
+    $migration = require database_path('migrations/2026_09_23_104500_rebase_existing_operational_data_to_3d_carton.php');
     $migration->up();
 
-    expect((int) DB::table('boms')->where('code', 'BOM-LEGACY-SYRUP')->value('business_unit_id'))
-        ->toBe($syrup->id)
-        ->and((int) DB::table('boms')->where('code', 'BOM-LEGACY-CARTON')->value('business_unit_id'))
+    expect((int) DB::table('boms')->where('id', $bomId)->value('business_unit_id'))
+        ->toBe($carton->id)
+        ->and((int) DB::table('purchases')->where('purchase_no', 'PO-EXISTING-3D')->value('business_unit_id'))
+        ->toBe($carton->id)
+        ->and((int) Setting::firstOrCreate([])->fresh()->default_business_unit_id)
         ->toBe($carton->id);
 
     Setting::firstOrCreate([])->update([
@@ -296,22 +305,14 @@ it('classifies legacy BOMs and strictly isolates BOM/product choices by active b
     $context = app(BusinessUnitContext::class);
 
     $context->switchTo($syrup);
-
-    expect(BOM::query()->pluck('code')->all())
-        ->toContain('BOM-LEGACY-SYRUP')
-        ->not->toContain('BOM-LEGACY-CARTON')
-        ->and(Product::finishedGoods()->forActiveBusiness()->pluck('id')->all())
-        ->toContain($syrupProduct->id)
-        ->not->toContain($cartonProduct->id);
+    expect(BOM::query()->count())->toBe(0)
+        ->and(Purchase::query()->count())->toBe(0);
 
     $context->switchTo($carton);
-
-    expect(BOM::query()->pluck('code')->all())
-        ->toContain('BOM-LEGACY-CARTON')
-        ->not->toContain('BOM-LEGACY-SYRUP')
-        ->and(Product::finishedGoods()->forActiveBusiness()->pluck('id')->all())
-        ->toContain($cartonProduct->id)
-        ->not->toContain($syrupProduct->id);
+    expect(BOM::query()->pluck('code')->all())->toContain('BOM-EXISTING-3D')
+        ->and(Purchase::query()->pluck('purchase_no')->all())->toContain('PO-EXISTING-3D')
+        // Product is shared master data; business ownership starts at BOM/operations.
+        ->and(Product::finishedGoods()->pluck('id')->all())->toContain($product->id);
 });
 
 it('does not expose unassigned operational rows inside an active business workspace', function () {
@@ -336,6 +337,14 @@ it('does not expose unassigned operational rows inside an active business worksp
 
     expect(Purchase::query()->where('purchase_no', 'BU-NULL-LEGACY')->exists())->toBeFalse()
         ->and(Purchase::query()->withoutGlobalScope('business_unit')->where('purchase_no', 'BU-NULL-LEGACY')->exists())->toBeTrue();
+});
+
+it('does not initialize DataTables against the empty BOM placeholder row', function () {
+    $view = file_get_contents(resource_path('views/admin/bom/index.blade.php'));
+
+    expect($view)
+        ->toContain('@if($boms->count() > 0)')
+        ->toContain("$('#bom-table').DataTable({");
 });
 
 it('exposes the setting toggle and top navigation business switcher contract', function () {

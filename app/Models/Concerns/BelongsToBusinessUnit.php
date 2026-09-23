@@ -3,6 +3,7 @@
 namespace App\Models\Concerns;
 
 use App\Models\BusinessUnit;
+use App\Models\Setting;
 use App\Support\Business\BusinessUnitContext;
 use Illuminate\Database\Eloquent\Builder;
 
@@ -19,6 +20,23 @@ trait BelongsToBusinessUnit
 
             if ($activeBusinessUnitId > 0) {
                 $model->business_unit_id = $activeBusinessUnitId;
+                return;
+            }
+
+            // The ERP existed as the 3D Carton business before workspace
+            // separation. Seeders/imports/background flows may not have a
+            // browser session, so persist them in the configured default
+            // workspace rather than leaving business_unit_id NULL.
+            $defaultBusinessUnitId = (int) (Setting::query()->value('default_business_unit_id') ?? 0);
+
+            if ($defaultBusinessUnitId <= 0) {
+                $defaultBusinessUnitId = (int) (BusinessUnit::query()
+                    ->where('code', '3d_carton')
+                    ->value('id') ?? 0);
+            }
+
+            if ($defaultBusinessUnitId > 0) {
+                $model->business_unit_id = $defaultBusinessUnitId;
             }
         });
 

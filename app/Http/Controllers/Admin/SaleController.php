@@ -88,7 +88,6 @@ class SaleController extends Controller
 
         // ONLY finished goods for sales
         $products = Product::finishedGoods()
-            ->forActiveBusiness()
             ->where('is_active', true)
             ->get();
 
@@ -271,7 +270,6 @@ class SaleController extends Controller
 
         // ─── ONLY FINISHED GOODS FOR SALES ───
         $products = Product::finishedGoods()
-            ->forActiveBusiness()
             ->where('is_active', true)
             ->with(['category'])
             ->get();
