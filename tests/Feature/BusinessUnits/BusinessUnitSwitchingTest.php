@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Middleware\CheckPermissionWithFeedback;
 use App\Models\BusinessUnit;
 use App\Models\Setting;
 use App\Models\Purchase;
@@ -77,6 +78,61 @@ it('self-heals missing business units for settings and the topbar context', func
     expect($context->available()->pluck('code')->all())
         ->toBe(['3d_carton', 'syrup_pack'])
         ->and($context->current()?->code)->toBe('3d_carton');
+});
+
+it('renders and persists business-unit settings through the real settings HTTP flow', function () {
+    $user = User::factory()->create();
+    $setting = Setting::firstOrCreate([]);
+    $setting->update([
+        'separate_business_units_enabled' => false,
+        'default_business_unit_id' => null,
+    ]);
+
+    BusinessUnit::query()->delete();
+
+    $response = $this
+        ->withoutMiddleware(CheckPermissionWithFeedback::class)
+        ->actingAs($user)
+        ->get(route('admin.settings.index'));
+
+    $response
+        ->assertOk()
+        ->assertSee('3D Carton')
+        ->assertSee('Syrup Pack');
+
+    $carton = BusinessUnit::query()->where('code', '3d_carton')->firstOrFail();
+    $syrup = BusinessUnit::query()->where('code', 'syrup_pack')->firstOrFail();
+
+    expect(BusinessUnit::query()->count())->toBe(2)
+        ->and((int) $setting->fresh()->default_business_unit_id)->toBe($carton->id);
+
+    $settingsView = file_get_contents(resource_path('views/admin/settings/index.blade.php'));
+    $formStart = strpos($settingsView, '<form action="{{ route(\'admin.settings.update\') }}"');
+    $defaultSelect = strpos($settingsView, 'name="default_business_unit_id"');
+    $formEnd = strpos($settingsView, '</form>', $formStart);
+
+    expect($formStart)->not->toBeFalse()
+        ->and($defaultSelect)->toBeGreaterThan($formStart)
+        ->and($formEnd)->toBeGreaterThan($defaultSelect);
+
+    $update = $this
+        ->withoutMiddleware(CheckPermissionWithFeedback::class)
+        ->actingAs($user)
+        ->post(route('admin.settings.update'), [
+            'default_language' => 'en',
+            'currency' => 'USD',
+            'separate_business_units_enabled' => '1',
+            'default_business_unit_id' => $syrup->id,
+            'production_approval_required' => '0',
+            'purchase_approval_required' => '0',
+        ]);
+
+    $update
+        ->assertRedirect()
+        ->assertSessionHasNoErrors();
+
+    expect((bool) $setting->fresh()->separate_business_units_enabled)->toBeTrue()
+        ->and((int) $setting->fresh()->default_business_unit_id)->toBe($syrup->id);
 });
 
 it('switches the active business only when separate business mode is enabled', function () {
