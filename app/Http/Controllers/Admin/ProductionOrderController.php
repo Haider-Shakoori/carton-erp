@@ -1402,6 +1402,7 @@ class ProductionOrderController extends Controller
 
         $sp = new SaleProfitService();
         $requirements = $sp->productionMaterialRequirements($sale, $quantity);
+        $commercialProfit = $sp->calculate($sale);
 
         $totalMaterialCostAfn = 0.0;
         $totalMaterialCostUsd = 0.0;
@@ -1415,8 +1416,7 @@ class ProductionOrderController extends Controller
             }
         }
 
-        $firstBom = $sale->items->first()->bom ?? null;
-        $workPercentage = $firstBom ? (float) ($firstBom->work_percentage ?? 40) : 40;
+        $workPercentage = (float) ($commercialProfit['standard_profit_on_material_percentage'] ?? 40);
 
         return response()->json([
             'success' => true,
@@ -1432,6 +1432,19 @@ class ProductionOrderController extends Controller
                 'cost_per_unit_afn' => $quantity > 0 ? $totalMaterialCostAfn / $quantity : 0,
                 'cost_per_unit_usd' => $quantity > 0 ? $totalMaterialCostUsd / $quantity : 0,
                 'work_percentage' => $workPercentage,
+
+                // Commercial profit is kept separate from production cost.
+                // Standard Work / Profit is the client's configured commercial
+                // percentage. Manual price changes are an additional profit
+                // adjustment and are labelled separately in the create preview.
+                'standard_work_profit_afn' => (float) ($commercialProfit['standard_work_profit_afn'] ?? 0),
+                'standard_work_profit_usd' => (float) ($commercialProfit['standard_work_profit_usd'] ?? 0),
+                'has_manual_price_override' => (bool) ($commercialProfit['has_manual_price_override'] ?? false),
+                'price_override_afn' => (float) ($commercialProfit['price_override_afn'] ?? 0),
+                'price_override_usd' => (float) ($commercialProfit['price_override_usd'] ?? 0),
+                'commercial_profit_afn' => (float) ($commercialProfit['commercial_profit_afn'] ?? 0),
+                'commercial_profit_usd' => (float) ($commercialProfit['commercial_profit_usd'] ?? 0),
+
                 'exchange_rate' => $sale->exchange_rate ?? 66,
             ],
         ]);
