@@ -2277,10 +2277,7 @@
 
                 const simplePanel = row.querySelector('.simple-reel-selection');
                 const advancedPanel = row.querySelector('.advanced-reel-selection');
-                const advancedEnabled = row.parentElement?.querySelector('.advanced-reel-enabled')
-                    || document.querySelector(
-                        '#reelDetails' + row.dataset.materialIndex + ' .advanced-reel-enabled'
-                    );
+                const advancedEnabled = row.querySelector('.advanced-reel-enabled');
                 const selectedReel = row.querySelector('.selected-reel-select');
                 const actualInput = row.querySelector('.actual-consumption-input');
                 const wasteInput = row.querySelector('.wastage-consumption-input');
