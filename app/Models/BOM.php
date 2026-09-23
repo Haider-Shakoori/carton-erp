@@ -72,18 +72,13 @@ class BOM extends Model
 
         static::creating(function ($bom) {
             // In normal separated-mode requests the shared trait assigns the
-            // active workspace first. During seed/import/unified flows there is
-            // no active session, so classify finished-good BOMs by product to
-            // prevent NULL BOMs leaking when separation is later enabled.
-            if (empty($bom->business_unit_id) && $bom->product_id) {
-                $product = Product::with('category')->find($bom->product_id);
-                $businessCode = $product?->intendedBusinessUnitCode();
+            // active workspace first. Seed/import/unified flows belong to the
+            // existing 3D Carton business unless an explicit business was set.
+            if (empty($bom->business_unit_id)) {
+                $configuredDefault = Setting::query()->value('default_business_unit_id');
 
-                if ($businessCode) {
-                    $bom->business_unit_id = BusinessUnit::query()
-                        ->where('code', $businessCode)
-                        ->value('id');
-                }
+                $bom->business_unit_id = $configuredDefault
+                    ?: BusinessUnit::query()->where('code', '3d_carton')->value('id');
             }
 
             if (empty($bom->code)) {
