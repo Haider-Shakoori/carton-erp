@@ -370,6 +370,9 @@
             </div>
         </div>
 
+        @include('admin.bom.partials.simple-builder')
+
+        <div id="advancedBomBuilder" class="d-none">
         <form action="{{ route('bom.store') }}" method="POST" id="bomForm">
             @csrf
 
@@ -601,6 +604,7 @@
                 </div>
             </div>
         </form>
+        </div>
     </div>
 @endsection
 
@@ -611,6 +615,260 @@
 
     <script>
         $(document).ready(function() {
+            // ─── QUICK BOM BUILDER ───
+            const simplePreviewUrl = @json(route('bom.simple-preview'));
+            const simpleStoreUrl = @json(route('bom.simple-store'));
+            let simpleSizeCounter = 0;
+
+            function addSimpleSize(values = {}) {
+                const template = document.getElementById('simpleSizeTemplate');
+                const target = document.getElementById('simpleSizeRows');
+                if (!template || !target) return;
+
+                const fragment = template.content.cloneNode(true);
+                const row = fragment.querySelector('.simple-size-row');
+                const index = simpleSizeCounter++;
+
+                row.dataset.index = index;
+                row.querySelector('.size-name').name = `sizes[${index}][name]`;
+                row.querySelector('.size-length').name = `sizes[${index}][length]`;
+                row.querySelector('.size-width').name = `sizes[${index}][width]`;
+                row.querySelector('.size-height').name = `sizes[${index}][height]`;
+
+                row.querySelector('.size-name').value = values.name || '';
+                row.querySelector('.size-length').value = values.length || '';
+                row.querySelector('.size-width').value = values.width || '';
+                row.querySelector('.size-height').value = values.height || '';
+
+                target.appendChild(fragment);
+            }
+
+            function collectSimplePayload() {
+                const form = document.getElementById('simpleBomForm');
+                if (!form) return null;
+
+                const data = new FormData(form);
+                const sizes = [];
+
+                document.querySelectorAll('#simpleSizeRows .simple-size-row').forEach((row) => {
+                    sizes.push({
+                        name: row.querySelector('.size-name').value.trim(),
+                        length: row.querySelector('.size-length').value,
+                        width: row.querySelector('.size-width').value,
+                        height: row.querySelector('.size-height').value,
+                    });
+                });
+
+                return {
+                    _token: data.get('_token'),
+                    product_id: data.get('product_id'),
+                    board_profile_id: data.get('board_profile_id'),
+                    box_style: data.get('box_style'),
+                    dimension_unit: data.get('dimension_unit'),
+                    printing_option: data.get('printing_option'),
+                    print_cost_afn: data.get('print_cost_afn'),
+                    wastage_percentage: data.get('wastage_percentage'),
+                    work_percentage: data.get('work_percentage'),
+                    profit_margin_percentage: data.get('profit_margin_percentage'),
+                    exchange_rate: data.get('exchange_rate'),
+                    sizes,
+                };
+            }
+
+            function validateSimplePayload(payload) {
+                if (!payload.product_id) return 'Select a finished product.';
+                if (!payload.board_profile_id) return 'Select a board preset.';
+                if (!payload.sizes.length) return 'Add at least one carton size.';
+
+                for (let i = 0; i < payload.sizes.length; i++) {
+                    const row = payload.sizes[i];
+                    if (!(Number(row.length) > 0) || !(Number(row.width) > 0) || !(Number(row.height) > 0)) {
+                        return `Size ${i + 1} requires valid Length, Width and Height.`;
+                    }
+                }
+
+                return null;
+            }
+
+            function renderSimplePreview(previews) {
+                const resultTarget = document.getElementById('simplePreviewResults');
+                const advancedTarget = document.getElementById('simplePreviewAdvanced');
+                const previewSection = document.getElementById('simplePreviewSection');
+                if (!resultTarget || !advancedTarget || !previewSection) return;
+
+                resultTarget.innerHTML = previews.map((preview, index) => {
+                    const dims = preview.dimensions;
+                    const missingCost = preview.has_missing_landed_cost
+                        ? '<span class="badge bg-warning text-dark ms-2">Missing landed cost</span>'
+                        : '';
+                    const shortage = preview.has_shortage
+                        ? '<span class="badge bg-danger ms-2">Stock shortage</span>'
+                        : '';
+
+                    return `
+                        <div class="border rounded-3 p-3 mb-3">
+                            <div class="d-flex justify-content-between flex-wrap gap-2 mb-3">
+                                <div>
+                                    <div class="fw-bold">${preview.name || ('Size ' + (index + 1))}</div>
+                                    <div class="small text-muted">
+                                        ${dims.length} × ${dims.width} × ${dims.height} ${String(dims.unit).toUpperCase()}
+                                        · ${preview.profile.name}
+                                    </div>
+                                </div>
+                                <div>${missingCost}${shortage}</div>
+                            </div>
+                            <div class="row g-2 text-center">
+                                <div class="col-6 col-md-3">
+                                    <div class="small text-muted">Paper + Wastage</div>
+                                    <div class="fw-semibold">${Number(preview.material_kg_per_unit).toFixed(4)} kg</div>
+                                </div>
+                                <div class="col-6 col-md-3">
+                                    <div class="small text-muted">Physical Material Cost</div>
+                                    <div class="fw-semibold">؋${Number(preview.physical_material_cost_afn).toFixed(2)}</div>
+                                </div>
+                                <div class="col-6 col-md-3">
+                                    <div class="small text-muted">Standard Work ${Number(preview.work_percentage).toFixed(0)}%</div>
+                                    <div class="fw-semibold text-success">؋${Number(preview.standard_work_profit_afn).toFixed(2)}</div>
+                                </div>
+                                <div class="col-6 col-md-3">
+                                    <div class="small text-muted">Standard Customer Rate</div>
+                                    <div class="fw-bold text-primary fs-5">؋${Number(preview.standard_rate_afn).toFixed(2)}</div>
+                                </div>
+                            </div>
+                            <div class="small text-muted mt-2">
+                                Print: ؋${Number(preview.print_cost_afn).toFixed(2)}
+                                · Adhesive: ${Number(preview.adhesive_kg_per_unit).toFixed(4)} kg/carton
+                                · Reel: ${Number(dims.reel_length_inch).toFixed(2)} × ${Number(dims.reel_height_inch).toFixed(2)} in
+                            </div>
+                        </div>`;
+                }).join('');
+
+                advancedTarget.innerHTML = previews.map((preview, index) => {
+                    const rows = (preview.rows || []).map(row => `
+                        <tr>
+                            <td>${row.material_name || '-'}</td>
+                            <td>${row.component_type || '-'}</td>
+                            <td class="text-end">${row.gsm || '-'}</td>
+                            <td class="text-end">${Number(row.kg_per_unit || 0).toFixed(6)}</td>
+                            <td class="text-end">؋${Number(row.landed_cost_afn || 0).toFixed(4)}</td>
+                        </tr>`).join('');
+
+                    return `
+                        <div class="mb-3">
+                            <div class="fw-semibold mb-1">${preview.name || ('Size ' + (index + 1))}</div>
+                            <div class="table-responsive">
+                                <table class="table table-sm align-middle mb-0">
+                                    <thead>
+                                        <tr>
+                                            <th>Material</th>
+                                            <th>Type</th>
+                                            <th class="text-end">GSM</th>
+                                            <th class="text-end">kg / carton</th>
+                                            <th class="text-end">Landed AFN/kg</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>${rows}</tbody>
+                                </table>
+                            </div>
+                        </div>`;
+                }).join('');
+
+                previewSection.classList.remove('d-none');
+                previewSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+
+            async function submitSimpleBuilder(url, save = false) {
+                const payload = collectSimplePayload();
+                const error = validateSimplePayload(payload);
+                if (error) {
+                    Swal.fire({ icon: 'warning', title: 'Complete the BOM details', text: error });
+                    return;
+                }
+
+                const button = save ? $('#saveSimpleBom') : $('#previewSimpleBom');
+                const original = button.html();
+                button.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-1"></span> Calculating...');
+
+                try {
+                    const response = await fetch(url, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json',
+                            'X-CSRF-TOKEN': payload._token,
+                        },
+                        body: JSON.stringify(payload),
+                    });
+
+                    const result = await response.json();
+
+                    if (!response.ok || !result.success) {
+                        throw new Error(result.message || 'Could not calculate the BOM.');
+                    }
+
+                    if (save) {
+                        const boms = result.data && result.data.boms ? result.data.boms : [];
+                        await Swal.fire({
+                            icon: 'success',
+                            title: boms.length > 1 ? 'BOMs created' : 'BOM created',
+                            text: result.message,
+                            confirmButtonText: 'View BOM List',
+                        });
+                        window.location.href = @json(route('bom.index'));
+                        return;
+                    }
+
+                    renderSimplePreview(result.data.previews || []);
+                } catch (error) {
+                    Swal.fire({ icon: 'error', title: 'BOM calculation failed', text: error.message });
+                } finally {
+                    button.prop('disabled', false).html(original);
+                }
+            }
+
+            $('#addSimpleSize').on('click', () => addSimpleSize());
+            $(document).on('click', '.remove-simple-size', function() {
+                const rows = $('#simpleSizeRows .simple-size-row');
+                if (rows.length <= 1) {
+                    Swal.fire({ icon: 'info', title: 'One size is required', text: 'A BOM needs at least one carton size.' });
+                    return;
+                }
+                $(this).closest('.simple-size-row').remove();
+            });
+
+            $('#simpleBoardProfile').on('change', function() {
+                const wastage = $(this).find('option:selected').data('wastage');
+                if (wastage !== undefined && wastage !== null && wastage !== '') {
+                    $('#simpleWastage').val(wastage);
+                }
+            });
+
+            $('#simplePrintingOption').on('change', function() {
+                const cost = $(this).find('option:selected').data('default-cost');
+                $('#simplePrintCost').val(Number(cost || 0).toFixed(2));
+            });
+
+            $('#previewSimpleBom').on('click', () => submitSimpleBuilder(simplePreviewUrl, false));
+            $('#saveSimpleBom').on('click', () => submitSimpleBuilder(simpleStoreUrl, true));
+
+            $('#toggleAdvancedBom').on('click', function() {
+                const advanced = $('#advancedBomBuilder');
+                advanced.toggleClass('d-none');
+                $(this).html(
+                    advanced.hasClass('d-none')
+                        ? '<i class="bi bi-sliders me-1"></i> Advanced BOM Builder'
+                        : '<i class="bi bi-chevron-up me-1"></i> Hide Advanced Builder'
+                );
+                if (!advanced.hasClass('d-none')) {
+                    advanced[0].scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+            });
+
+            if (document.getElementById('simpleSizeTemplate')) {
+                addSimpleSize();
+            }
+
+            // ─── EXISTING ADVANCED BOM BUILDER ───
             // ─── SELECT2 ───
             $('.select2-product').select2({
                 placeholder: 'Search product...',
