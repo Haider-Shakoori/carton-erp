@@ -189,6 +189,24 @@ it('switches the active business only when separate business mode is enabled', f
         ->and(session()->has(BusinessUnitContext::SESSION_KEY))->toBeFalse();
 });
 
+it('defaults operational writes without an active browser workspace to 3D Carton', function () {
+    $carton = BusinessUnit::query()->where('code', '3d_carton')->firstOrFail();
+
+    Setting::firstOrCreate([])->update([
+        'separate_business_units_enabled' => false,
+        'default_business_unit_id' => $carton->id,
+    ]);
+
+    session()->forget(BusinessUnitContext::SESSION_KEY);
+
+    $purchase = Purchase::create([
+        'purchase_no' => 'BU-DEFAULT-CARTON',
+        'status' => 'draft',
+    ]);
+
+    expect((int) $purchase->business_unit_id)->toBe($carton->id);
+});
+
 it('automatically tags and scopes new operational records to the active business', function () {
     $carton = BusinessUnit::query()->where('code', '3d_carton')->firstOrFail();
     $syrup = BusinessUnit::query()->where('code', 'syrup_pack')->firstOrFail();
