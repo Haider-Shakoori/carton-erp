@@ -16,12 +16,12 @@ class SettingsController extends Controller
 
     public function index()
     {
-        $businessUnits = app(BusinessUnitProvisioningService::class)
+        $settingsBusinessUnits = app(BusinessUnitProvisioningService::class)
             ->ensureRequiredUnits();
         $setting = Setting::firstOrCreate([])->fresh();
         $currencies = Currency::all();
 
-        return view('admin.settings.index', compact('setting', 'currencies', 'businessUnits'));
+        return view('admin.settings.index', compact('setting', 'currencies', 'settingsBusinessUnits'));
     }
 
     public function update(Request $request)
