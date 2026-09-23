@@ -126,7 +126,7 @@
                         <select class="form-select @error('default_business_unit_id') is-invalid @enderror"
                                 id="defaultBusinessUnitId"
                                 name="default_business_unit_id">
-                            @forelse($businessUnits as $businessUnit)
+                            @forelse($settingsBusinessUnits as $businessUnit)
                                 <option value="{{ $businessUnit->id }}"
                                     @selected((int) old('default_business_unit_id', $setting->default_business_unit_id) === (int) $businessUnit->id)>
                                     {{ $businessUnit->name }}
