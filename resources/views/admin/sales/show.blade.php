@@ -2171,13 +2171,18 @@
                         <i class="bi bi-box-seam" style="color: var(--sale-primary);"></i> Quick Carton Quotation
                     </h5>
                     <span style="font-size: 0.75rem; color: var(--sale-gray-400);">
-                        <i class="bi bi-lightning-charge"></i> Dimensions + board profile → technical BOM + price automatically
+                        <i class="bi bi-lightning-charge"></i> Product + dimensions + board + printing → standard price automatically
                     </span>
                 </div>
 
                 <div class="section-body">
+                    <div class="alert alert-light border py-2 px-3 mb-3" style="font-size:.75rem;">
+                        <i class="bi bi-magic me-1 text-primary"></i>
+                        Paper layers, GSM, flute setup, adhesive recipe, landed material rates, wastage and Standard Work / Profit are resolved automatically from the selected board profile.
+                    </div>
+
                     <div class="row g-3">
-                        <div class="col-md-4">
+                        <div class="col-lg-4">
                             <label class="form-label">Finished Carton Product <span class="text-danger">*</span></label>
                             <select id="csProduct" class="form-select" style="width: 100%;">
                                 <option value="">Select product...</option>
@@ -2186,86 +2191,105 @@
                                 @endforeach
                             </select>
                         </div>
-                        <div class="col-md-2">
-                            <label class="form-label">Box Style</label>
-                            <select id="csBoxStyle" class="form-select"></select>
-                        </div>
-                        <div class="col-md-2">
+                        <div class="col-lg-2 col-sm-4">
                             <label class="form-label">Length <span class="text-danger">*</span></label>
                             <input type="number" id="csLength" class="form-control" step="0.01" min="0.01" placeholder="0.00">
                         </div>
-                        <div class="col-md-2">
+                        <div class="col-lg-2 col-sm-4">
                             <label class="form-label">Width <span class="text-danger">*</span></label>
                             <input type="number" id="csWidth" class="form-control" step="0.01" min="0.01" placeholder="0.00">
                         </div>
-                        <div class="col-md-2">
+                        <div class="col-lg-2 col-sm-4">
                             <label class="form-label">Height <span class="text-danger">*</span></label>
                             <input type="number" id="csHeight" class="form-control" step="0.01" min="0.01" placeholder="0.00">
                         </div>
-                    </div>
-
-                    <div class="row g-3 mt-2">
-                        <div class="col-md-2">
-                            <label class="form-label">Unit</label>
-                            <select id="csUnit" class="form-select"></select>
-                        </div>
-                        <div class="col-md-3">
-                            <label class="form-label">Board Profile <span class="text-danger">*</span></label>
-                            <select id="csBoardProfile" class="form-select"></select>
-                            <small class="text-muted" id="csProfileHelp"></small>
-                        </div>
-                        <div class="col-md-1">
-                            <label class="form-label">Ply</label>
-                            <input type="number" id="csPly" class="form-control" min="1" step="1" readonly>
-                        </div>
-                        <div class="col-md-2">
-                            <label class="form-label">Flute</label>
-                            <select id="csFlute" class="form-select"></select>
-                        </div>
-                        <div class="col-md-2">
-                            <label class="form-label">Printing</label>
-                            <select id="csPrinting" class="form-select"></select>
-                        </div>
-                        <div class="col-md-2">
+                        <div class="col-lg-2 col-sm-4">
                             <label class="form-label">Quantity <span class="text-danger">*</span></label>
                             <input type="number" id="csQuantity" class="form-control" min="1" step="1" value="1">
                         </div>
                     </div>
 
-                    <div class="row g-3 mt-2">
-                        <div class="col-md-2">
-                            <label class="form-label">Wastage %</label>
-                            <input type="number" id="csWastage" class="form-control" min="0" max="100" step="0.1" value="5">
+                    <div class="row g-3 mt-1">
+                        <div class="col-lg-4">
+                            <label class="form-label">Board Profile <span class="text-danger">*</span></label>
+                            <select id="csBoardProfile" class="form-select"></select>
+                            <small class="text-muted" id="csProfileHelp"></small>
                         </div>
-                        <div class="col-md-3">
-                            <label class="form-label">Quoted Unit Price Override <span class="currency-badge">{{ $currencyCode }}</span></label>
-                            <input type="number" id="csQuotedPrice" class="form-control" min="0" step="0.0001" placeholder="Optional">
+                        <div class="col-lg-2">
+                            <label class="form-label">Printing</label>
+                            <select id="csPrinting" class="form-select"></select>
                         </div>
-                        <div class="col-md-3">
+                        <div class="col-lg-3">
+                            <label class="form-label">Customer Price <span class="currency-badge">{{ $currencyCode }}</span></label>
+                            <input type="number" id="csQuotedPrice" class="form-control" min="0" step="0.0001" placeholder="Leave blank for standard price">
+                            <small class="text-muted">Optional negotiation. The difference is recorded as Price Override.</small>
+                        </div>
+                        <div class="col-lg-3">
                             <label class="form-label">Quotation Description</label>
-                            <input type="text" id="csDescription" class="form-control" maxlength="2000" placeholder="Customer-facing description">
+                            <input type="text" id="csDescription" class="form-control" maxlength="2000" placeholder="e.g. 200ml printed carton">
                         </div>
-                        <div class="col-md-4 d-flex align-items-end gap-2">
-                            <button type="button" class="btn btn-outline-primary" id="csCalculateBtn">
-                                <i class="bi bi-calculator"></i> Calculate
-                            </button>
-                            <button type="button" class="btn btn-success" id="csAddBtn" disabled>
-                                <i class="bi bi-cart-plus"></i> Add to Sale
-                            </button>
+                    </div>
+
+                    <div class="mt-3">
+                        <button class="btn btn-sm btn-outline-secondary" type="button"
+                                data-bs-toggle="collapse" data-bs-target="#csInputAdvanced">
+                            <i class="bi bi-gear me-1"></i> Advanced specification
+                        </button>
+                        <div class="collapse mt-2" id="csInputAdvanced">
+                            <div class="p-3 border rounded-3 bg-light">
+                                <div class="row g-3">
+                                    <div class="col-md-2">
+                                        <label class="form-label">Box Style</label>
+                                        <select id="csBoxStyle" class="form-select"></select>
+                                    </div>
+                                    <div class="col-md-2">
+                                        <label class="form-label">Unit</label>
+                                        <select id="csUnit" class="form-select"></select>
+                                    </div>
+                                    <div class="col-md-2">
+                                        <label class="form-label">Ply</label>
+                                        <input type="number" id="csPly" class="form-control" min="1" step="1" readonly>
+                                    </div>
+                                    <div class="col-md-2">
+                                        <label class="form-label">Flute</label>
+                                        <select id="csFlute" class="form-select"></select>
+                                    </div>
+                                    <div class="col-md-2">
+                                        <label class="form-label">Wastage %</label>
+                                        <input type="number" id="csWastage" class="form-control" min="0" max="100" step="0.1" value="5">
+                                    </div>
+                                    <div class="col-md-2">
+                                        <label class="form-label">Print Cost Override</label>
+                                        <input type="number" id="csPrintCost" class="form-control" min="0" step="0.01" placeholder="Preset">
+                                    </div>
+                                </div>
+                            </div>
                         </div>
+                    </div>
+
+                    <div class="d-flex flex-wrap gap-2 mt-3">
+                        <button type="button" class="btn btn-outline-primary" id="csCalculateBtn">
+                            <i class="bi bi-calculator"></i> Calculate
+                        </button>
+                        <button type="button" class="btn btn-success" id="csAddBtn" disabled>
+                            <i class="bi bi-cart-plus"></i> Add This Size
+                        </button>
+                        <button type="button" class="btn btn-outline-success" id="csQueueBtn" disabled>
+                            <i class="bi bi-plus-square"></i> Add Another Size
+                        </button>
                     </div>
 
                     <div id="csError" class="alert alert-danger mt-3 mb-0 py-2 px-3" style="display:none; font-size:.8rem;"></div>
 
                     <div id="csSummary" class="mt-3" style="display:none;">
                         <div class="quote-summary-grid">
-                            <div class="quote-summary-card highlight"><div class="label">Unit Selling Price ({{ $currencyCode }})</div><div class="value" id="csUnitPrice">-</div></div>
+                            <div class="quote-summary-card"><div class="label">Standard Price ({{ $currencyCode }})</div><div class="value" id="csStandardPrice">-</div></div>
+                            <div class="quote-summary-card"><div class="label">Price Override ({{ $currencyCode }})</div><div class="value" id="csPriceOverride">-</div></div>
+                            <div class="quote-summary-card highlight"><div class="label">Customer Price ({{ $currencyCode }})</div><div class="value" id="csCustomerPrice">-</div></div>
                             <div class="quote-summary-card"><div class="label">Order Value ({{ $currencyCode }})</div><div class="value" id="csOrderValue">-</div></div>
                             <div class="quote-summary-card"><div class="label">Estimated Paper</div><div class="value" id="csPaperKg">-</div></div>
                             <div class="quote-summary-card"><div class="label">Estimated Adhesive</div><div class="value" id="csAdhesiveKg">-</div></div>
-                            <div class="quote-summary-card"><div class="label">Estimated Material Cost (AFN)</div><div class="value" id="csMaterialCost">-</div></div>
-                            <div class="quote-summary-card"><div class="label">Work / Profit (AFN)</div><div class="value" id="csWorkProfit">-</div></div>
-                            <div class="quote-summary-card"><div class="label">Expected Profit (AFN)</div><div class="value" id="csExpectedProfit">-</div></div>
+                            <div class="quote-summary-card"><div class="label">Standard Work / Profit (AFN)</div><div class="value" id="csWorkProfit">-</div></div>
                             <div class="quote-summary-card"><div class="label">Stock Status</div><div class="value" id="csStockStatus">-</div></div>
                         </div>
 
@@ -2273,7 +2297,7 @@
 
                         <div class="mt-3">
                             <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#csAdvanced">
-                                <i class="bi bi-gear"></i> Advanced / Technical BOM
+                                <i class="bi bi-list-check"></i> Technical calculation
                             </button>
                             <div class="collapse mt-2" id="csAdvanced">
                                 <div class="table-responsive">
@@ -2295,9 +2319,37 @@
                                     </table>
                                 </div>
                                 <small class="text-muted">
-                                    Frozen technical rows generated by the carton specification engine. Adhesive rows are physical material cost only and never receive the paper work/profit.
+                                    Generated from the same technical engine used by BOM and production. Adhesive recipe ingredients remain physical material cost only.
                                 </small>
                             </div>
+                        </div>
+                    </div>
+
+                    <div id="csQueuePanel" class="mt-3 border rounded-3 overflow-hidden" style="display:none;">
+                        <div class="d-flex justify-content-between align-items-center gap-2 p-3 bg-light border-bottom">
+                            <div>
+                                <strong><i class="bi bi-collection me-1"></i> Sizes ready to add</strong>
+                                <div class="small text-muted">Each row keeps its own dimensions, quantity and accepted price.</div>
+                            </div>
+                            <button type="button" class="btn btn-success btn-sm" id="csAddAllBtn">
+                                <i class="bi bi-cart-check me-1"></i> Add All Sizes
+                            </button>
+                        </div>
+                        <div class="table-responsive">
+                            <table class="table table-sm align-middle mb-0">
+                                <thead class="table-light">
+                                <tr>
+                                    <th>Product / Description</th>
+                                    <th>Dimensions</th>
+                                    <th>Board</th>
+                                    <th class="text-end">Qty</th>
+                                    <th class="text-end">Customer Price</th>
+                                    <th class="text-end">Total</th>
+                                    <th></th>
+                                </tr>
+                                </thead>
+                                <tbody id="csQueueRows"></tbody>
+                            </table>
                         </div>
                     </div>
                 </div>
