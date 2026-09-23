@@ -118,6 +118,17 @@ class Sale extends Model
         return $this->hasMany(SaleItem::class);
     }
 
+    /**
+     * All production orders created for this sale.
+     *
+     * production_order_id on sales is retained as the legacy/primary pointer;
+     * this plural relationship is authoritative for multi-line sales.
+     */
+    public function productionOrders(): HasMany
+    {
+        return $this->hasMany(ProductionOrder::class, 'sale_id');
+    }
+
     public function gatePass()
     {
         return $this->hasOne(GatePass::class);
