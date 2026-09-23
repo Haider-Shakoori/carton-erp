@@ -230,35 +230,19 @@
             min-width: 0 !important;
         }
 
-        .bom-index .table-ledger th:nth-child(1),
-        .bom-index .table-ledger td:nth-child(1) { width: 3%; }
+        .bom-index .table-ledger col.col-number { width: 44px; }
+        .bom-index .table-ledger col.col-materials { width: 78px; }
+        .bom-index .table-ledger col.col-physical-cost { width: 125px; }
+        .bom-index .table-ledger col.col-standard-rate { width: 140px; }
+        .bom-index .table-ledger col.col-status { width: 100px; }
+        .bom-index .table-ledger col.col-updated { width: 105px; }
+        .bom-index .table-ledger col.col-actions { width: 160px; }
 
-        .bom-index .table-ledger th:nth-child(2),
-        .bom-index .table-ledger td:nth-child(2) { width: 16%; }
-
-        .bom-index .table-ledger th:nth-child(3),
-        .bom-index .table-ledger td:nth-child(3) { width: 15%; }
-
-        .bom-index .table-ledger th:nth-child(4),
-        .bom-index .table-ledger td:nth-child(4) { width: 13%; }
-
-        .bom-index .table-ledger th:nth-child(5),
-        .bom-index .table-ledger td:nth-child(5) { width: 6%; }
-
-        .bom-index .table-ledger th:nth-child(6),
-        .bom-index .table-ledger td:nth-child(6) { width: 9%; }
-
-        .bom-index .table-ledger th:nth-child(7),
-        .bom-index .table-ledger td:nth-child(7) { width: 10%; }
-
-        .bom-index .table-ledger th:nth-child(8),
-        .bom-index .table-ledger td:nth-child(8) { width: 8%; }
-
-        .bom-index .table-ledger th:nth-child(9),
-        .bom-index .table-ledger td:nth-child(9) { width: 7%; }
-
-        .bom-index .table-ledger th:nth-child(10),
-        .bom-index .table-ledger td:nth-child(10) { width: 13%; }
+        .bom-index .table-ledger .bom-row-number {
+            width: 44px !important;
+            max-width: 44px;
+            white-space: nowrap;
+        }
 
         .bom-index .bom-code,
         .bom-index .product-name,
@@ -309,7 +293,7 @@
             margin-top:.85rem;
         }
 
-        @media (max-width: 1199.98px) {
+        @media (max-width: 1499.98px) {
             .bom-index {
                 padding-left: .75rem !important;
                 padding-right: .75rem !important;
@@ -386,6 +370,10 @@
                 display: block;
                 min-width: 0 !important;
                 width: 100%;
+            }
+
+            .bom-index .table-ledger colgroup {
+                display: none;
             }
 
             .bom-index .table-ledger thead {
@@ -803,18 +791,30 @@
 
             <div class="table-responsive-custom">
                 <table class="table-ledger">
+                    <colgroup>
+                        <col class="col-number">
+                        <col class="col-bom">
+                        <col class="col-product">
+                        <col class="col-specification">
+                        <col class="col-materials">
+                        <col class="col-physical-cost">
+                        <col class="col-standard-rate">
+                        <col class="col-status">
+                        <col class="col-updated">
+                        <col class="col-actions">
+                    </colgroup>
                     <thead>
                     <tr>
-                        <th style="width:48px;">#</th>
-                        <th style="min-width:190px;">BOM</th>
-                        <th style="min-width:180px;">Product</th>
-                        <th style="min-width:170px;">Specification</th>
-                        <th class="text-center" style="min-width:95px;">Materials</th>
-                        <th class="text-end" style="min-width:135px;">Physical Cost</th>
-                        <th class="text-end" style="min-width:145px;">Standard Rate</th>
-                        <th class="text-center" style="min-width:120px;">Status</th>
-                        <th style="min-width:125px;">Updated</th>
-                        <th class="text-end" style="width:1%;min-width:145px;">Actions</th>
+                        <th>#</th>
+                        <th>BOM</th>
+                        <th>Product</th>
+                        <th>Specification</th>
+                        <th class="text-center">Materials</th>
+                        <th class="text-end">Physical Cost</th>
+                        <th class="text-end">Standard Rate</th>
+                        <th class="text-center">Status</th>
+                        <th>Updated</th>
+                        <th class="text-end">Actions</th>
                     </tr>
                     </thead>
                     <tbody>
