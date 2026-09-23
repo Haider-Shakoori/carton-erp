@@ -42,7 +42,7 @@ class SaleReturnController extends Controller
             });
         }
 
-        $returns = $query->latest()->paginate(15);
+        $returns = $query->latest()->paginate(15)->withQueryString();
 
         $stats = [
             'total' => SaleReturn::count(),
