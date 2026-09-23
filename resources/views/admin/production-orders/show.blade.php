@@ -2350,11 +2350,16 @@
                 syncCompletionSummary();
             };
 
-            const syncAutomaticRollConsumption = function() {
+            const syncStandardFormulaConsumption = function() {
                 const manufacturedInput = document.getElementById('quantity_manufactured');
                 const manufactured = Number(manufacturedInput ? manufacturedInput.value : 0);
 
-                document.querySelectorAll('.auto-roll-consumption').forEach(function(input) {
+                document.querySelectorAll('.auto-formula-consumption').forEach(function(input) {
+                    if (input.dataset.autoFormula !== '1') {
+                        syncMaterialVariance(input);
+                        return;
+                    }
+
                     const planned = Number(input.dataset.planned || 0);
                     const plannedRun = Number(input.dataset.plannedRun || 0);
                     const calculated = plannedRun > 0 && Number.isFinite(manufactured)
@@ -2362,14 +2367,21 @@
                         : planned;
 
                     input.value = Math.max(calculated, 0).toFixed(6);
-                    const display = input.parentElement.querySelector('.auto-roll-consumption-display');
+
+                    const cell = input.closest('td');
+                    const display = cell ? cell.querySelector('.auto-formula-consumption-display') : null;
                     if (display) {
                         display.textContent = Number(input.value).toFixed(4) + ' ' + (input.dataset.unit || '');
                     }
+
                     syncMaterialVariance(input);
                 });
 
-                document.querySelectorAll('.auto-roll-wastage').forEach(function(input) {
+                document.querySelectorAll('.formula-wastage-input').forEach(function(input) {
+                    if (input.dataset.autoFormula !== '1') {
+                        return;
+                    }
+
                     const plannedWaste = Number(input.dataset.plannedWastage || 0);
                     const plannedRun = Number(input.dataset.plannedRun || 0);
                     const calculatedWaste = plannedRun > 0 && Number.isFinite(manufactured)
@@ -2377,15 +2389,44 @@
                         : plannedWaste;
 
                     input.value = Math.max(calculatedWaste, 0).toFixed(6);
-                    const display = input.parentElement.querySelector('.auto-roll-wastage-display');
-                    if (display) {
-                        display.textContent = Number(input.value).toFixed(4) + ' kg';
-                    }
                 });
             };
 
+            document.querySelectorAll('.measured-actual-toggle').forEach(function(toggle) {
+                const actualInput = document.getElementById(toggle.dataset.input);
+                const wasteInput = document.getElementById(toggle.dataset.wasteInput);
+
+                const syncMeasuredMode = function() {
+                    const measured = toggle.checked;
+
+                    if (actualInput) {
+                        actualInput.readOnly = !measured;
+                        actualInput.dataset.autoFormula = measured ? '0' : '1';
+                    }
+
+                    if (wasteInput) {
+                        wasteInput.readOnly = !measured;
+                        wasteInput.dataset.autoFormula = measured ? '0' : '1';
+                    }
+
+                    if (!measured) {
+                        syncStandardFormulaConsumption();
+                    }
+                };
+
+                toggle.addEventListener('change', function() {
+                    syncMeasuredMode();
+                    if (toggle.checked && actualInput) {
+                        actualInput.focus();
+                        actualInput.select();
+                    }
+                });
+
+                syncMeasuredMode();
+            });
+
             document.querySelectorAll('.actual-consumption-input').forEach(function(input) {
-                if (input.dataset.autoRoll !== '1') {
+                if (input.dataset.autoFormula !== '1') {
                     input.addEventListener('input', function() {
                         syncMaterialVariance(input);
                     });
@@ -2393,7 +2434,7 @@
                 syncMaterialVariance(input);
             });
 
-            syncAutomaticRollConsumption();
+            syncStandardFormulaConsumption();
 
             document.querySelectorAll('.use-bom-plan').forEach(function(button) {
                 button.addEventListener('click', function() {
@@ -2439,13 +2480,13 @@
                     input.addEventListener('input', function() {
                         syncOutputCheck();
                         if (id === 'quantity_manufactured') {
-                            syncAutomaticRollConsumption();
+                            syncStandardFormulaConsumption();
                         }
                     });
                 }
             });
             syncOutputCheck();
-            syncAutomaticRollConsumption();
+            syncStandardFormulaConsumption();
 
             const productionCompletionForm = document.getElementById('productionCompletionForm');
             if (productionCompletionForm) {
