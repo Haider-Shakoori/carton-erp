@@ -37,6 +37,7 @@ class BOMController extends Controller
     public function create()
     {
         $products = Product::finishedGoods()
+            ->forActiveBusiness()
             ->where('is_active', true)
             ->get();
 
@@ -977,6 +978,7 @@ class BOMController extends Controller
         $bom->load('items');
 
         $products = Product::finishedGoods()
+            ->forActiveBusiness()
             ->where('is_active', true)
             ->get();
 
