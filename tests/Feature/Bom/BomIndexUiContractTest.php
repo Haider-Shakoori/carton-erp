@@ -22,7 +22,10 @@ it('keeps the BOM library on the simplified server-driven index UI', function ()
         ->toContain('data-mobile-label="Physical Cost"')
         ->toContain('data-mobile-label="Standard Rate"')
         ->toContain('grid-template-columns: repeat(2, minmax(0, 1fr))')
+        ->toContain('table-layout: fixed')
         ->toContain('min-width: 0 !important')
+        ->toContain('width: auto !important')
+        ->not->toContain('min-width: 1080px')
         ->not->toContain('jquery.dataTables')
         ->not->toContain('.DataTable(');
 
