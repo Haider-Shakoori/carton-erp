@@ -1194,7 +1194,10 @@
                                         <td><span class="catalog-id">#{{ $product->id }}</span></td>
                                         <td>
                                             @if ($product->image)
-                                                <img src="{{ Storage::url($product->image) }}" class="product-avatar">
+                                                <img src="{{ Storage::url($product->image) }}"
+                                                     class="product-avatar"
+                                                     alt="{{ $product->name }}"
+                                                     loading="lazy">
                                             @else
                                                 <div class="product-avatar placeholder">
                                                     <i class="bi bi-box-seam"></i>
@@ -1253,23 +1256,40 @@
                                             @endif
                                         </td>
                                         <td>
-                                            <div class="action-buttons justify-content-end">
-                                                <button class="action-btn edit-product" data-id="{{ $product->id }}"
-                                                        data-name="{{ $product->name }}"
-                                                        data-category_id="{{ $product->category_id }}"
-                                                        data-unit="{{ $product->unit }}"
-                                                        data-default_kg_per_roll="{{ $product->default_kg_per_roll ?? '' }}"
-                                                        data-min_stock_alert="{{ $product->min_stock_alert ?? 0 }}"
-                                                        data-description="{{ $product->description }}"
-                                                        data-is_active="{{ $product->is_active }}"
-                                                        data-image="{{ $product->image }}" title="{{ __('ui.edit') }}">
-                                                    <i class="bi bi-pencil"></i>
+                                            <div class="dropdown text-end">
+                                                <button class="catalog-action-btn dropdown-toggle"
+                                                        type="button"
+                                                        data-bs-toggle="dropdown"
+                                                        aria-expanded="false"
+                                                        title="Product actions">
+                                                    <i class="bi bi-three-dots"></i>
                                                 </button>
-                                                <button class="action-btn text-danger delete-product"
-                                                        data-id="{{ $product->id }}" data-name="{{ $product->name }}"
-                                                        title="{{ __('ui.delete') }}">
-                                                    <i class="bi bi-trash"></i>
-                                                </button>
+                                                <ul class="dropdown-menu dropdown-menu-end catalog-action-menu">
+                                                    <li>
+                                                        <button class="dropdown-item edit-product"
+                                                                type="button"
+                                                                data-id="{{ $product->id }}"
+                                                                data-name="{{ $product->name }}"
+                                                                data-category_id="{{ $product->category_id }}"
+                                                                data-unit="{{ $product->unit }}"
+                                                                data-default_kg_per_roll="{{ $product->default_kg_per_roll ?? '' }}"
+                                                                data-min_stock_alert="{{ $product->min_stock_alert ?? 0 }}"
+                                                                data-description="{{ $product->description }}"
+                                                                data-is_active="{{ $product->is_active }}"
+                                                                data-image="{{ $product->image }}">
+                                                            <i class="bi bi-pencil"></i> Edit material
+                                                        </button>
+                                                    </li>
+                                                    <li><hr class="dropdown-divider my-1"></li>
+                                                    <li>
+                                                        <button class="dropdown-item text-danger delete-product"
+                                                                type="button"
+                                                                data-id="{{ $product->id }}"
+                                                                data-name="{{ $product->name }}">
+                                                            <i class="bi bi-trash"></i> Delete
+                                                        </button>
+                                                    </li>
+                                                </ul>
                                             </div>
                                         </td>
                                     </tr>
@@ -1310,7 +1330,10 @@
                                         <td><span class="catalog-id">#{{ $product->id }}</span></td>
                                         <td>
                                             @if ($product->image)
-                                                <img src="{{ Storage::url($product->image) }}" class="product-avatar">
+                                                <img src="{{ Storage::url($product->image) }}"
+                                                     class="product-avatar"
+                                                     alt="{{ $product->name }}"
+                                                     loading="lazy">
                                             @else
                                                 <div class="product-avatar placeholder">
                                                     <i class="bi bi-box-seam"></i>
@@ -1351,23 +1374,38 @@
                                             @endif
                                         </td>
                                         <td>
-                                            <div class="action-buttons justify-content-end">
-                                                <button class="action-btn edit-finished-good"
-                                                        data-id="{{ $product->id }}"
-                                                        data-name="{{ $product->name }}"
-                                                        data-category_id="{{ $product->category_id }}"
-                                                        data-unit="{{ $product->unit }}"
-                                                        data-description="{{ $product->description }}"
-                                                        data-is_active="{{ $product->is_active }}"
-                                                        data-image="{{ $product->image }}"
-                                                        title="{{ __('ui.edit') }}">
-                                                    <i class="bi bi-pencil"></i>
+                                            <div class="dropdown text-end">
+                                                <button class="catalog-action-btn dropdown-toggle"
+                                                        type="button"
+                                                        data-bs-toggle="dropdown"
+                                                        aria-expanded="false"
+                                                        title="Product actions">
+                                                    <i class="bi bi-three-dots"></i>
                                                 </button>
-                                                <button class="action-btn text-danger delete-product"
-                                                        data-id="{{ $product->id }}" data-name="{{ $product->name }}"
-                                                        title="{{ __('ui.delete') }}">
-                                                    <i class="bi bi-trash"></i>
-                                                </button>
+                                                <ul class="dropdown-menu dropdown-menu-end catalog-action-menu">
+                                                    <li>
+                                                        <button class="dropdown-item edit-finished-good"
+                                                                type="button"
+                                                                data-id="{{ $product->id }}"
+                                                                data-name="{{ $product->name }}"
+                                                                data-category_id="{{ $product->category_id }}"
+                                                                data-unit="{{ $product->unit }}"
+                                                                data-description="{{ $product->description }}"
+                                                                data-is_active="{{ $product->is_active }}"
+                                                                data-image="{{ $product->image }}">
+                                                            <i class="bi bi-pencil"></i> Edit finished good
+                                                        </button>
+                                                    </li>
+                                                    <li><hr class="dropdown-divider my-1"></li>
+                                                    <li>
+                                                        <button class="dropdown-item text-danger delete-product"
+                                                                type="button"
+                                                                data-id="{{ $product->id }}"
+                                                                data-name="{{ $product->name }}">
+                                                            <i class="bi bi-trash"></i> Delete
+                                                        </button>
+                                                    </li>
+                                                </ul>
                                             </div>
                                         </td>
                                     </tr>
@@ -1395,7 +1433,12 @@
                                 @foreach ($categories as $category)
                                     <tr>
                                         <td><span class="catalog-id">#{{ $category->id }}</span></td>
-                                        <td class="fw-semibold text-dark">{{ $category->name }}</td>
+                                        <td>
+                                            <div class="product-cell">
+                                                <span class="product-name">{{ $category->name }}</span>
+                                                <span class="product-description">Category master record</span>
+                                            </div>
+                                        </td>
                                         <td class="text-muted text-truncate" style="max-width: 280px;">
                                             {{ $category->description ?: 'No description' }}
                                         </td>
@@ -1418,19 +1461,36 @@
                                             @endif
                                         </td>
                                         <td>
-                                            <div class="action-buttons justify-content-end">
-                                                <button class="action-btn edit-category"
-                                                        data-id="{{ $category->id }}" data-name="{{ $category->name }}"
-                                                        data-description="{{ $category->description }}"
-                                                        data-is_active="{{ $category->is_active }}" title="{{ __('ui.edit') }}">
-                                                    <i class="bi bi-pencil"></i>
+                                            <div class="dropdown text-end">
+                                                <button class="catalog-action-btn dropdown-toggle"
+                                                        type="button"
+                                                        data-bs-toggle="dropdown"
+                                                        aria-expanded="false"
+                                                        title="Category actions">
+                                                    <i class="bi bi-three-dots"></i>
                                                 </button>
-                                                <button class="action-btn text-danger delete-category"
-                                                        data-id="{{ $category->id }}" data-name="{{ $category->name }}"
-                                                        data-products-count="{{ $category->products_count ?? 0 }}"
-                                                        title="{{ __('ui.delete') }}">
-                                                    <i class="bi bi-trash"></i>
-                                                </button>
+                                                <ul class="dropdown-menu dropdown-menu-end catalog-action-menu">
+                                                    <li>
+                                                        <button class="dropdown-item edit-category"
+                                                                type="button"
+                                                                data-id="{{ $category->id }}"
+                                                                data-name="{{ $category->name }}"
+                                                                data-description="{{ $category->description }}"
+                                                                data-is_active="{{ $category->is_active }}">
+                                                            <i class="bi bi-pencil"></i> Edit category
+                                                        </button>
+                                                    </li>
+                                                    <li><hr class="dropdown-divider my-1"></li>
+                                                    <li>
+                                                        <button class="dropdown-item text-danger delete-category"
+                                                                type="button"
+                                                                data-id="{{ $category->id }}"
+                                                                data-name="{{ $category->name }}"
+                                                                data-products-count="{{ $category->products_count ?? 0 }}">
+                                                            <i class="bi bi-trash"></i> Delete
+                                                        </button>
+                                                    </li>
+                                                </ul>
                                             </div>
                                         </td>
                                     </tr>
@@ -1462,7 +1522,7 @@
                 <form id="productForm" method="POST" enctype="multipart/form-data">
                     @csrf
                     <input type="hidden" name="product_id" id="product_id">
-                    <input type="hidden" name="type" value="raw">
+                    <input type="hidden" name="type" value="raw_material">
                     <div class="modal-body p-4">
                         <div class="row g-3">
                             <div class="col-md-6">
@@ -1476,7 +1536,9 @@
                                         required>
                                     <option value="">{{ __('ui.select_category_dots') }}</option>
                                     @foreach ($categoryOptions as $category)
-                                        <option value="{{ $category->id }}">{{ $category->name }}</option>
+                                        <option value="{{ $category->id }}">
+                                            {{ $category->name }}{{ $category->is_active ? '' : ' (Inactive)' }}
+                                        </option>
                                     @endforeach
                                 </select>
                             </div>
@@ -1608,7 +1670,7 @@
                 <form id="finishedGoodsForm" method="POST" enctype="multipart/form-data">
                     @csrf
                     <input type="hidden" name="product_id" id="fg_product_id">
-                    <input type="hidden" name="type" value="finished">
+                    <input type="hidden" name="type" value="finished_good">
                     <div class="modal-body p-4">
                         <div class="row g-3">
                             <div class="col-md-6">
@@ -1621,7 +1683,9 @@
                                 <select class="form-select select2-fg-category" name="category_id" id="fg_product_category_id" required>
                                     <option value="">{{ __('ui.select_category_dots') }}</option>
                                     @foreach ($categoryOptions as $category)
-                                        <option value="{{ $category->id }}">{{ $category->name }}</option>
+                                        <option value="{{ $category->id }}">
+                                            {{ $category->name }}{{ $category->is_active ? '' : ' (Inactive)' }}
+                                        </option>
                                     @endforeach
                                 </select>
                             </div>
