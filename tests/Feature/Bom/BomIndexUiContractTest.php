@@ -16,6 +16,13 @@ it('keeps the BOM library on the simplified server-driven index UI', function ()
         ->toContain('Effective')
         ->toContain("route('bom.create')")
         ->toContain("route('bom.calculator')")
+        ->toContain('@media (max-width: 991.98px)')
+        ->toContain('class="bom-responsive-row"')
+        ->toContain('data-mobile-label="Product"')
+        ->toContain('data-mobile-label="Physical Cost"')
+        ->toContain('data-mobile-label="Standard Rate"')
+        ->toContain('grid-template-columns: repeat(2, minmax(0, 1fr))')
+        ->toContain('min-width: 0 !important')
         ->not->toContain('jquery.dataTables')
         ->not->toContain('.DataTable(');
 
