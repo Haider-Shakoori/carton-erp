@@ -11,6 +11,8 @@ use App\Models\Product;
 use App\Models\Category;
 use App\Models\Setting;
 use App\Models\PurchaseItem;
+use App\Models\BoardProfile;
+use App\Services\CartonSpecificationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
@@ -72,6 +74,32 @@ class BOMController extends Controller
 
         $categories = Category::where('is_active', true)->get();
 
+        // Quick BOM Builder reference data. The advanced editor below still
+        // uses the same products/materials, while normal users only choose
+        // dimensions + a reusable board profile + printing.
+        $boardProfiles = BoardProfile::active()
+            ->with('layers.material')
+            ->orderBy('name')
+            ->get();
+
+        $simpleBomOptions = [
+            'box_styles' => collect((array) config('carton.box_styles', []))
+                ->map(fn ($option, $key) => [
+                    'value' => (string) $key,
+                    'label' => is_array($option) ? ($option['label'] ?? (string) $key) : (string) $option,
+                ])->values(),
+            'printing' => collect((array) config('carton.printing', []))
+                ->map(fn ($option, $key) => [
+                    'value' => (string) $key,
+                    'label' => is_array($option) ? ($option['label'] ?? (string) $key) : (string) $option,
+                    'print_cost_afn' => is_array($option) ? (float) ($option['print_cost_afn'] ?? 0) : 0,
+                ])->values(),
+            'units' => array_keys((array) config('carton.length_units', ['mm' => 1])),
+            'default_box_style' => config('carton.default_box_style', 'RSC'),
+            'default_wastage_percentage' => (float) config('carton.default_wastage_percentage', 5),
+            'standard_work_percentage' => 40.0,
+        ];
+
         // Get system currency
         $defaultCurrency = Currency::where('is_default', 1)->first();
         $afnCurrency = Currency::where('code', 'AFN')->first();
@@ -90,12 +118,184 @@ class BOMController extends Controller
             'products',
             'materials',
             'categories',
+            'boardProfiles',
+            'simpleBomOptions',
             'currencySymbol',
             'exchangeRate',
             'defaultCurrency',
             'afnCurrency',
             'usdCurrency'
         ));
+    }
+
+    /**
+     * Preview one or more simple carton sizes without persisting anything.
+     */
+    public function simplePreview(Request $request, CartonSpecificationService $specification)
+    {
+        $validated = $this->validateSimpleBomRequest($request);
+        $exchangeRate = max((float) ($validated['exchange_rate'] ?? $this->getDefaultExchangeRate()), 0.000001);
+
+        try {
+            $previews = collect($validated['sizes'])->map(function (array $size) use ($validated, $specification, $exchangeRate) {
+                $result = $specification->calculate($this->simpleSpecPayload($validated, $size), $exchangeRate);
+
+                return $this->simplePreviewPayload($result, $size);
+            })->values();
+
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'previews' => $previews,
+                    'count' => $previews->count(),
+                ],
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 422);
+        }
+    }
+
+    /**
+     * Create one technical BOM per submitted size using the canonical carton
+     * specification engine. This is the normal/client-facing BOM workflow.
+     */
+    public function simpleStore(Request $request, CartonSpecificationService $specification)
+    {
+        $validated = $this->validateSimpleBomRequest($request);
+        $exchangeRate = max((float) ($validated['exchange_rate'] ?? $this->getDefaultExchangeRate()), 0.000001);
+
+        try {
+            $created = DB::transaction(function () use ($validated, $exchangeRate, $specification) {
+                return collect($validated['sizes'])->map(function (array $size) use ($validated, $exchangeRate, $specification) {
+                    $result = $specification->calculate($this->simpleSpecPayload($validated, $size), $exchangeRate);
+                    $bom = $specification->persistTechnicalBom(
+                        $result,
+                        (int) $validated['product_id'],
+                        Auth::id()
+                    );
+
+                    if (! empty($size['name'])) {
+                        $bom->forceFill(['name' => trim((string) $size['name'])])->saveQuietly();
+                    }
+
+                    return [
+                        'id' => (int) $bom->id,
+                        'code' => $bom->code,
+                        'name' => $bom->name,
+                        'selling_price_afn' => round((float) $result['commercial']['selling_price_afn_per_unit'], 2),
+                    ];
+                })->values()->all();
+            });
+
+            if ($request->expectsJson() || $request->ajax()) {
+                return response()->json([
+                    'success' => true,
+                    'message' => count($created) === 1
+                        ? 'BOM created successfully.'
+                        : count($created) . ' BOMs created successfully.',
+                    'data' => ['boms' => $created],
+                ]);
+            }
+
+            return redirect()
+                ->route('bom.index')
+                ->with('success', count($created) === 1
+                    ? 'BOM created successfully.'
+                    : count($created) . ' BOMs created successfully.');
+        } catch (\Throwable $e) {
+            Log::error('Simple BOM builder failed', [
+                'user_id' => Auth::id(),
+                'error' => $e->getMessage(),
+            ]);
+
+            if ($request->expectsJson() || $request->ajax()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $e->getMessage(),
+                ], 422);
+            }
+
+            return back()->withInput()->with('error', $e->getMessage());
+        }
+    }
+
+    private function validateSimpleBomRequest(Request $request): array
+    {
+        return $request->validate([
+            'product_id' => 'required|exists:products,id',
+            'board_profile_id' => 'required|exists:board_profiles,id',
+            'box_style' => 'required|string|max:20',
+            'dimension_unit' => 'required|string|in:inch,in,cm,mm',
+            'printing_option' => 'required|string|max:40',
+            'print_cost_afn' => 'nullable|numeric|min:0',
+            'wastage_percentage' => 'nullable|numeric|min:0|max:100',
+            'work_percentage' => 'nullable|numeric|min:0|max:100',
+            'profit_margin_percentage' => 'nullable|numeric|min:0|max:1000',
+            'exchange_rate' => 'nullable|numeric|min:0.0001',
+            'sizes' => 'required|array|min:1|max:25',
+            'sizes.*.name' => 'nullable|string|max:255',
+            'sizes.*.length' => 'required|numeric|gt:0',
+            'sizes.*.width' => 'required|numeric|gt:0',
+            'sizes.*.height' => 'required|numeric|gt:0',
+        ]);
+    }
+
+    private function simpleSpecPayload(array $validated, array $size): array
+    {
+        return [
+            'box_style' => $validated['box_style'],
+            'length' => $size['length'],
+            'width' => $size['width'],
+            'height' => $size['height'],
+            'dimension_unit' => $validated['dimension_unit'],
+            'board_profile_id' => $validated['board_profile_id'],
+            'printing_option' => $validated['printing_option'],
+            'print_cost_afn' => $validated['print_cost_afn'] ?? null,
+            'quantity' => 1,
+            'wastage_percentage' => $validated['wastage_percentage'] ?? null,
+            'work_percentage' => $validated['work_percentage'] ?? 40,
+            'profit_margin_percentage' => $validated['profit_margin_percentage'] ?? 0,
+        ];
+    }
+
+    private function simplePreviewPayload(array $result, array $size): array
+    {
+        return [
+            'name' => $size['name'] ?? null,
+            'dimensions' => [
+                'length' => (float) $result['spec']['length'],
+                'width' => (float) $result['spec']['width'],
+                'height' => (float) $result['spec']['height'],
+                'unit' => $result['spec']['dimension_unit'],
+                'reel_length_inch' => (float) $result['spec']['reel_length_inch'],
+                'reel_height_inch' => (float) $result['spec']['reel_height_inch'],
+            ],
+            'profile' => [
+                'name' => $result['profile']['name'] ?? null,
+                'ply' => (int) $result['spec']['ply'],
+                'flute_type' => $result['spec']['flute_type'],
+            ],
+            'material_kg_per_unit' => round((float) $result['paper']['physical_kg_per_unit'], 6),
+            'adhesive_kg_per_unit' => round((float) $result['adhesive']['kg_per_unit'], 6),
+            'physical_material_cost_afn' => round((float) $result['physical']['material_cost_afn_per_unit'], 2),
+            'paper_basis_afn' => round((float) $result['commercial']['paper_basis_afn_per_unit'], 2),
+            'standard_work_profit_afn' => round((float) $result['commercial']['work_profit_afn_per_unit'], 2),
+            'print_cost_afn' => round((float) $result['commercial']['print_cost_afn_per_unit'], 2),
+            'standard_rate_afn' => round((float) $result['commercial']['selling_price_afn_per_unit'], 2),
+            'work_percentage' => round((float) $result['commercial']['work_percentage'], 2),
+            'has_missing_landed_cost' => (bool) $result['physical']['has_missing_landed_cost'],
+            'has_shortage' => (bool) $result['shortages']['has_shortage'],
+            'rows' => collect($result['rows'])->map(fn (array $row) => [
+                'material_name' => $row['material_name'],
+                'component_type' => $row['component_type'],
+                'gsm' => $row['paper_gsm'],
+                'kg_per_unit' => round((float) $row['kg_with_wastage'], 6),
+                'landed_cost_afn' => round((float) $row['cost_per_unit_afn'], 4),
+            ])->values(),
+        ];
     }
 
     /**
