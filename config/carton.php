@@ -47,7 +47,7 @@ return [
             'fixed_rate',
         ],
         'paper_formula' => 'ReelLength × ReelHeight × GSM × LayerMultiplier ÷ FormulaConstant × ManufacturedQty × (1 + Waste%)',
-        'adhesive_formula' => 'BoardArea × GlueLines × DryGlueGSM ÷ Solids% × RecipeFraction × ManufacturedQty',
+        'adhesive_formula' => '((BoardAreaM² × GlueLines × DryGlueGSM/line × (1 + GlueWaste%)) ÷ 1000 ÷ SolidsFraction) × RecipeFraction × ManufacturedQty',
     ],
 
     // Supported dimension units => inches.
