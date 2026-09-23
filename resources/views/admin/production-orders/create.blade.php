@@ -307,10 +307,6 @@
                             <span>Material Cost (incl. wastage):</span>
                             <span id="bomTotalCost" class="fw-semibold text-primary">؋0.00</span>
                         </div>
-                        <div class="cost-item">
-                            <span class="text-muted">Standard Work / Profit (<span id="bomWorkPercentage">40</span>%) — Commercial</span>
-                            <span id="bomWorkCost" class="fw-semibold text-muted">؋0.00</span>
-                        </div>
                         <div class="cost-item cost-total">
                             <span>Estimated Production Cost:</span>
                             <span id="bomTotalCostWithOverhead" class="fw-semibold text-primary">؋0.00</span>
@@ -319,9 +315,19 @@
                             <span>Estimated Cost per Unit:</span>
                             <span id="bomCostPerUnit" class="fw-semibold">؋0.00</span>
                         </div>
-                        <div class="cost-item">
-                            <span>Expected Profit / Loss:</span>
-                            <span id="bomExpectedProfit" class="fw-semibold">؋0.00</span>
+                        <div class="cost-item mt-2 pt-2 border-top">
+                            <span>
+                                Standard Work / Profit (<span id="bomWorkPercentage">40</span>%) — Commercial
+                                <small class="d-block text-muted">Client standard profit component; not a production cost.</small>
+                            </span>
+                            <span id="bomWorkCost" class="fw-semibold text-success">؋0.00</span>
+                        </div>
+                        <div class="cost-item" id="bomPriceOverrideRow" style="display: none;">
+                            <span>
+                                Price Override — Commercial
+                                <small class="d-block text-muted">Manual selling-price change added to or deducted from commercial profit.</small>
+                            </span>
+                            <span id="bomPriceOverride" class="fw-semibold">؋0.00</span>
                         </div>
                             <div id="bomShortageWarning" style="display: none;" class="shortage-warning mt-2">
                                 <i class="bi bi-exclamation-triangle me-1"></i>
@@ -542,7 +548,8 @@
                 const $totalCost = $('#bomTotalCost');
                 const $workCost = $('#bomWorkCost');
                 const $workPercentage = $('#bomWorkPercentage');
-                const $expectedProfit = $('#bomExpectedProfit');
+                const $priceOverrideRow = $('#bomPriceOverrideRow');
+                const $priceOverride = $('#bomPriceOverride');
                 const $totalCostWithOverhead = $('#bomTotalCostWithOverhead');
                 const $costPerUnit = $('#bomCostPerUnit');
                 const $shortageWarning = $('#bomShortageWarning');
@@ -572,11 +579,19 @@
                             const summary = response.summary || {};
                             const requirements = response.requirements || [];
 
-                            // ─── Use AFN values for display ───
-                            const materialCost = Number(summary.material_cost_afn || 0);
+                            // ─── Use the sale currency consistently for display ───
+                            const useUsd = currencyCode === 'USD';
+                            const materialCost = Number(useUsd ? (summary.material_cost_usd || 0) : (summary.material_cost_afn || 0));
                             const workPercentage = Number(summary.work_percentage ?? 40);
-                            const totalCost = Number(summary.total_cost_afn || 0);
-                            const costPerUnit = Number(summary.cost_per_unit_afn || 0);
+                            const standardWorkProfit = Number(useUsd
+                                ? (summary.standard_work_profit_usd || 0)
+                                : (summary.standard_work_profit_afn || 0));
+                            const priceOverrideAmount = Number(useUsd
+                                ? (summary.price_override_usd || 0)
+                                : (summary.price_override_afn || 0));
+                            const hasManualPriceOverride = summary.has_manual_price_override === true;
+                            const totalCost = Number(useUsd ? (summary.total_cost_usd || 0) : (summary.total_cost_afn || 0));
+                            const costPerUnit = Number(useUsd ? (summary.cost_per_unit_usd || 0) : (summary.cost_per_unit_afn || 0));
 
                             // ─── Display material requirements ───
                             if (requirements.length > 0) {
@@ -587,7 +602,7 @@
                                         ? '<i class="bi bi-check-circle text-success"></i>'
                                         : '<i class="bi bi-exclamation-triangle text-danger"></i>';
 
-                                    const totalCostAfn = req.total_cost_afn || req.total_cost_usd || 0;
+                                    const displayedRequirementCost = Number(useUsd ? (req.total_cost_usd || 0) : (req.total_cost_afn || 0));
 
                                     html += `
                                         <div class="material-item">
@@ -599,7 +614,7 @@
                                             <span class="material-qty">
                                                 ${(req.total_required || 0).toFixed(4)} ${req.unit || 'kg'}
                                                 <span class="text-muted">(Stock: ${(req.available_stock || 0).toFixed(4)} ${req.unit || 'kg'})</span>
-                                                <span class="fw-semibold ms-2">${currencySymbol}${totalCostAfn.toFixed(2)}</span>
+                                                <span class="fw-semibold ms-2">${currencySymbol}${displayedRequirementCost.toFixed(2)}</span>
                                             </span>
                                         </div>
                                     `;
@@ -609,33 +624,39 @@
                                 $materials.html('<div class="text-muted">No materials required for this BOM.</div>');
                             }
 
-                            // ─── Update costs with currency symbol ───
+                            // ─── Production cost and commercial profit are separate ───
+                            // Standard Work / Profit is the client's configured commercial
+                            // profit component and remains visible even when physical cost
+                            // cannot be estimated. A manual selling-price change is shown
+                            // separately as "Price Override"; there is no generic
+                            // sale-total-minus-production-cost "Expected Profit" on this screen.
+                            $workPercentage.text(workPercentage.toFixed(2).replace(/\.00$/, ''));
+                            $workCost.text(currencySymbol + standardWorkProfit.toFixed(2));
+
+                            if (hasManualPriceOverride) {
+                                const overridePrefix = priceOverrideAmount > 0 ? '+' : (priceOverrideAmount < 0 ? '-' : '');
+                                $priceOverride
+                                    .text(overridePrefix + currencySymbol + Math.abs(priceOverrideAmount).toFixed(2))
+                                    .removeClass('text-success text-danger text-muted')
+                                    .addClass(priceOverrideAmount > 0 ? 'text-success' : (priceOverrideAmount < 0 ? 'text-danger' : 'text-muted'));
+                                $priceOverrideRow.show();
+                            } else {
+                                $priceOverrideRow.hide();
+                                $priceOverride.text(currencySymbol + '0.00');
+                            }
+
                             // If any material lacks a valid roll/KG cost basis, mirror the
-                            // Sale Order: show "Unavailable" instead of inventing a cost.
+                            // Sale Order: show "Unavailable" instead of inventing a production cost.
                             const rollWeightMissing = requirements.some(r => r.roll_weight_missing === true);
                             if (rollWeightMissing) {
-                                $totalCost.text(currencySymbol + 'Unavailable');
-                                $workCost.text(currencySymbol + '0.00');
+                                $totalCost.text('Unavailable');
                                 $totalCostWithOverhead.text('Unavailable — valid roll/KG cost basis required');
                                 $costPerUnit.text('Unavailable');
-                                $expectedProfit.text('Unavailable');
                             } else {
                                 $totalCost.text(currencySymbol + materialCost.toFixed(2));
                                 $totalCostWithOverhead.text(currencySymbol + totalCost.toFixed(2));
                                 $costPerUnit.text(currencySymbol + costPerUnit.toFixed(2));
-
-                                // Compare the sale revenue with estimated production cost (material only).
-                                const saleTotal = currentSaleData
-                                    ? Number(String(currentSaleData.total_amount || 0).replace(/,/g, ''))
-                                    : 0;
-                                const expectedProfit = saleTotal - totalCost;
-                                const expectedLabel = expectedProfit >= 0 ? 'Profit' : 'Loss';
-                                $expectedProfit
-                                    .text(`${expectedLabel}: ${currencySymbol}${Math.abs(expectedProfit).toFixed(2)}`)
-                                    .removeClass('text-success text-danger')
-                                    .addClass(expectedProfit >= 0 ? 'text-success' : 'text-danger');
                             }
-                            $workPercentage.text(workPercentage.toFixed(2).replace(/\.00$/, ''));
 
                             // ─── Check for shortages ───
                             const hasShortage = response.has_shortage || false;
@@ -687,6 +708,8 @@
                 $('#quantity_ordered').val(1).prop('readonly', true);
                 $('#saleInfoCard').hide();
                 $('#bomPreview').hide();
+                $('#bomPriceOverrideRow').hide();
+                $('#bomPriceOverride').text('؋0.00').removeClass('text-success text-danger').addClass('text-muted');
                 $('#submitBtn').prop('disabled', true);
                 $('#currencyCodeDisplay').text('AFN');
                 $('#exchangeRateDisplay').text('1 USD = 66 AFN');

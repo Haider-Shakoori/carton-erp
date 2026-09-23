@@ -1099,6 +1099,41 @@ it('accepts a manual selling price and quotation description without changing ph
         ->and((float) $item->total_cost_usd)->toBe($physicalCostBefore)
         ->and((float) $sale->grand_total)->toBe(13075.0);
 
+    // Production-create commercial preview: the configured Standard Work /
+    // Profit is the base profit component. Manual selling price changes are a
+    // separate labelled Price Override adjustment, never production cost.
+    $systemPrice = (float) $bomSummary['selling_price_afn'];
+    $expectedOverrideAfn = (130.75 - $systemPrice) * 100;
+
+    $profitBreakdown = app(\App\Services\SaleProfitService::class)
+        ->calculate($sale->fresh(['items.bom.items', 'currency']));
+
+    expect((float) $profitBreakdown['standard_work_profit_afn'])->toBeGreaterThan(0)
+        ->and($profitBreakdown['has_manual_price_override'])->toBeTrue()
+        ->and(abs((float) $profitBreakdown['price_override_afn'] - $expectedOverrideAfn))->toBeLessThan(0.01)
+        ->and(abs(
+            (float) $profitBreakdown['commercial_profit_afn']
+            - ((float) $profitBreakdown['standard_work_profit_afn'] + $expectedOverrideAfn)
+        ))->toBeLessThan(0.01);
+
+    $preview = (new ProductionOrderController())->getProductionMaterials(
+        rwRequest('/admin/production-orders/materials', 'POST', [
+            'sale_id' => $sale->id,
+            'quantity' => 100,
+        ])
+    )->getData(true);
+
+    expect($preview['success'])->toBeTrue()
+        ->and((float) data_get($preview, 'summary.standard_work_profit_afn'))->toBeGreaterThan(0)
+        ->and((bool) data_get($preview, 'summary.has_manual_price_override'))->toBeTrue()
+        ->and(abs((float) data_get($preview, 'summary.price_override_afn') - $expectedOverrideAfn))->toBeLessThan(0.01);
+
+    $productionCreateView = file_get_contents(resource_path('views/admin/production-orders/create.blade.php'));
+    expect($productionCreateView)
+        ->toContain('Standard Work / Profit')
+        ->toContain('Price Override — Commercial')
+        ->not->toContain('Expected Profit / Loss');
+
     $clearOverride = $controller->updateManualPrice(
         rwRequest('/admin/sales/item/'.$item->id.'/manual-price', 'PATCH', []),
         $item->fresh()
@@ -1108,8 +1143,6 @@ it('accepts a manual selling price and quotation description without changing ph
 
     $item->refresh();
     $sale->refresh();
-    $systemPrice = (float) $bomSummary['selling_price_afn'];
-
     expect(abs((float) $item->unit_price - $systemPrice))->toBeLessThan(0.0001)
         ->and($item->price_adjustment_type)->toBe('none')
         ->and((float) $item->total_cost_usd)->toBe($physicalCostBefore)
