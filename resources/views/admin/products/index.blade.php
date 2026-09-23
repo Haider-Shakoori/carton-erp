@@ -322,45 +322,737 @@
         .modal-header.raw-materials {
             background: linear-gradient(135deg, #4f46e5, #4338ca);
         }
+
+        /* ============================================================
+           PRODUCTS CATALOG — UX REFRESH
+           ============================================================ */
+        .catalog-page {
+            --catalog-border: #e8edf4;
+            --catalog-muted: #64748b;
+            --catalog-text: #0f172a;
+            --catalog-soft: #f8fafc;
+        }
+
+        .catalog-hero {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 1.5rem;
+            padding: 1.4rem 1.5rem;
+            margin-bottom: 1rem;
+            border: 1px solid var(--catalog-border);
+            border-radius: 16px;
+            background:
+                radial-gradient(circle at top right, rgba(79, 70, 229, .10), transparent 32%),
+                linear-gradient(135deg, #ffffff 0%, #fbfcff 100%);
+            box-shadow: 0 8px 28px rgba(15, 23, 42, .05);
+        }
+
+        .catalog-hero-main {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            min-width: 0;
+        }
+
+        .catalog-hero-icon {
+            width: 54px;
+            height: 54px;
+            border-radius: 14px;
+            display: grid;
+            place-items: center;
+            background: var(--primary-bg);
+            color: var(--primary);
+            font-size: 1.45rem;
+            flex-shrink: 0;
+        }
+
+        .catalog-eyebrow {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: .5rem;
+            margin-bottom: .3rem;
+        }
+
+        .catalog-eyebrow-label {
+            font-size: .64rem;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: .08em;
+            color: var(--primary);
+        }
+
+        .shared-master-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: .35rem;
+            padding: .22rem .55rem;
+            border-radius: 999px;
+            background: #ecfdf5;
+            color: #047857;
+            font-size: .63rem;
+            font-weight: 700;
+        }
+
+        .catalog-hero h1 {
+            margin: 0;
+            color: var(--catalog-text);
+            font-size: clamp(1.35rem, 2vw, 1.75rem);
+            font-weight: 800;
+            letter-spacing: -.03em;
+        }
+
+        .catalog-hero p {
+            margin: .35rem 0 0;
+            color: var(--catalog-muted);
+            font-size: .84rem;
+            line-height: 1.5;
+        }
+
+        .catalog-create-btn {
+            min-height: 42px;
+            border-radius: 10px;
+            padding-inline: 1rem;
+            font-weight: 700;
+            white-space: nowrap;
+        }
+
+        .catalog-create-menu {
+            min-width: 230px;
+            padding: .45rem;
+            border: 1px solid var(--catalog-border);
+            border-radius: 12px;
+            box-shadow: 0 18px 40px rgba(15, 23, 42, .12);
+        }
+
+        .catalog-create-menu .dropdown-item {
+            display: flex;
+            align-items: center;
+            gap: .7rem;
+            padding: .65rem .75rem;
+            border-radius: 8px;
+            font-size: .8rem;
+            font-weight: 600;
+        }
+
+        .catalog-create-menu .dropdown-item i {
+            width: 22px;
+            color: var(--primary);
+            text-align: center;
+        }
+
+        .catalog-stat-grid {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: .8rem;
+            margin-bottom: 1rem;
+        }
+
+        .catalog-stat-card {
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            gap: .8rem;
+            padding: .9rem 1rem;
+            min-height: 86px;
+            background: #fff;
+            border: 1px solid var(--catalog-border);
+            border-radius: 14px;
+            box-shadow: 0 4px 16px rgba(15, 23, 42, .035);
+        }
+
+        .catalog-stat-icon {
+            width: 42px;
+            height: 42px;
+            border-radius: 11px;
+            display: grid;
+            place-items: center;
+            font-size: 1.05rem;
+            flex-shrink: 0;
+        }
+
+        .catalog-stat-icon.total { background: #eef2ff; color: #4f46e5; }
+        .catalog-stat-icon.raw { background: #eff6ff; color: #2563eb; }
+        .catalog-stat-icon.finished { background: #ecfdf5; color: #059669; }
+        .catalog-stat-icon.alert { background: #fff7ed; color: #ea580c; }
+
+        .catalog-stat-value {
+            color: var(--catalog-text);
+            font-size: 1.2rem;
+            font-weight: 800;
+            line-height: 1.1;
+        }
+
+        .catalog-stat-label {
+            margin-top: .2rem;
+            color: var(--catalog-muted);
+            font-size: .68rem;
+            font-weight: 600;
+        }
+
+        .catalog-stat-meta {
+            margin-top: .15rem;
+            color: #94a3b8;
+            font-size: .6rem;
+        }
+
+        .catalog-control-card {
+            overflow: hidden;
+            background: #fff;
+            border: 1px solid var(--catalog-border);
+            border-radius: 16px;
+            box-shadow: 0 8px 28px rgba(15, 23, 42, .045);
+        }
+
+        .catalog-tabs-bar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 1rem;
+            padding: .65rem .8rem;
+            border-bottom: 1px solid var(--catalog-border);
+            background: #fbfcfe;
+        }
+
+        .catalog-tabs {
+            display: inline-flex;
+            align-items: center;
+            gap: .25rem;
+            padding: .2rem;
+            margin: 0;
+            border-radius: 10px;
+            background: #f1f5f9;
+        }
+
+        .catalog-tabs .nav-link {
+            display: inline-flex;
+            align-items: center;
+            gap: .45rem;
+            min-height: 36px;
+            padding: .45rem .75rem;
+            border: 0;
+            border-radius: 8px;
+            color: #64748b;
+            background: transparent;
+            font-size: .73rem;
+            font-weight: 700;
+            transition: all .18s ease;
+        }
+
+        .catalog-tabs .nav-link:hover {
+            color: var(--primary);
+        }
+
+        .catalog-tabs .nav-link.active {
+            background: #fff;
+            color: var(--primary);
+            box-shadow: 0 2px 8px rgba(15, 23, 42, .08);
+        }
+
+        .catalog-tab-count {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 22px;
+            height: 20px;
+            padding: 0 .4rem;
+            border-radius: 999px;
+            background: rgba(100, 116, 139, .10);
+            color: inherit;
+            font-size: .6rem;
+            font-weight: 800;
+        }
+
+        .catalog-toolbar {
+            display: flex;
+            align-items: center;
+            gap: .55rem;
+            padding: .75rem .85rem;
+            border-bottom: 1px solid var(--catalog-border);
+            background: #fff;
+        }
+
+        .catalog-search {
+            position: relative;
+            flex: 1 1 320px;
+            max-width: 440px;
+        }
+
+        .catalog-search i {
+            position: absolute;
+            top: 50%;
+            left: .8rem;
+            transform: translateY(-50%);
+            color: #94a3b8;
+            font-size: .9rem;
+            pointer-events: none;
+        }
+
+        .catalog-search input {
+            width: 100%;
+            height: 38px;
+            padding: .45rem .75rem .45rem 2.2rem;
+            border: 1px solid #dbe3ee;
+            border-radius: 9px;
+            background: #fff;
+            color: var(--catalog-text);
+            font-size: .77rem;
+            outline: none;
+            transition: all .18s ease;
+        }
+
+        .catalog-search input:focus {
+            border-color: var(--primary-light);
+            box-shadow: 0 0 0 3px rgba(79, 70, 229, .08);
+        }
+
+        .catalog-filter {
+            width: auto;
+            min-width: 150px;
+            height: 38px;
+            border-radius: 9px;
+            border-color: #dbe3ee;
+            color: #475569;
+            font-size: .73rem;
+            font-weight: 600;
+        }
+
+        .catalog-clear-filter {
+            width: 38px;
+            height: 38px;
+            display: grid;
+            place-items: center;
+            border: 1px solid #dbe3ee;
+            border-radius: 9px;
+            background: #fff;
+            color: #64748b;
+        }
+
+        .catalog-clear-filter:hover {
+            color: var(--primary);
+            border-color: var(--primary-light);
+            background: var(--primary-bg);
+        }
+
+        .catalog-visible-count {
+            margin-left: auto;
+            color: #94a3b8;
+            font-size: .68rem;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+
+        .catalog-table-pane {
+            padding: 0 !important;
+        }
+
+        .catalog-table-shell {
+            overflow-x: auto;
+        }
+
+        .catalog-table-shell .table-ledger {
+            width: 100% !important;
+            margin: 0 !important;
+            border-collapse: separate;
+            border-spacing: 0;
+        }
+
+        .catalog-table-shell .table-ledger thead th {
+            padding: .72rem .8rem;
+            border-bottom: 1px solid var(--catalog-border);
+            background: #f8fafc;
+            color: #64748b;
+            font-size: .63rem;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: .045em;
+            white-space: nowrap;
+        }
+
+        .catalog-table-shell .table-ledger tbody td {
+            padding: .72rem .8rem;
+            border-bottom: 1px solid #f1f5f9;
+            vertical-align: middle;
+            color: #334155;
+            font-size: .76rem;
+        }
+
+        .catalog-table-shell .table-ledger tbody tr:last-child td {
+            border-bottom: 0;
+        }
+
+        .catalog-table-shell .table-ledger tbody tr:hover {
+            background: #fbfcff;
+        }
+
+        .product-cell {
+            display: flex;
+            flex-direction: column;
+            gap: .16rem;
+            min-width: 180px;
+        }
+
+        .product-cell .product-name {
+            color: #0f172a;
+            font-size: .78rem;
+            font-weight: 700;
+            line-height: 1.25;
+        }
+
+        .product-cell .product-description {
+            max-width: 300px;
+            color: #94a3b8;
+            font-size: .64rem;
+            line-height: 1.3;
+        }
+
+        .product-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 10px;
+        }
+
+        .catalog-id {
+            color: #94a3b8;
+            font-size: .68rem;
+            font-weight: 700;
+        }
+
+        .catalog-category-badge {
+            display: inline-flex;
+            align-items: center;
+            max-width: 170px;
+            padding: .26rem .55rem;
+            border-radius: 7px;
+            background: #f1f5f9;
+            color: #475569;
+            font-size: .66rem;
+            font-weight: 650;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .catalog-stock {
+            display: inline-flex;
+            align-items: center;
+            gap: .4rem;
+            min-width: 90px;
+            font-size: .7rem;
+            font-weight: 700;
+        }
+
+        .catalog-stock .dot {
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+
+        .catalog-stock.good { color: #047857; }
+        .catalog-stock.good .dot { background: #10b981; }
+        .catalog-stock.low { color: #a16207; }
+        .catalog-stock.low .dot { background: #f59e0b; }
+        .catalog-stock.critical { color: #b91c1c; }
+        .catalog-stock.critical .dot { background: #ef4444; }
+
+        .catalog-status {
+            display: inline-flex;
+            align-items: center;
+            gap: .35rem;
+            padding: .25rem .52rem;
+            border-radius: 999px;
+            font-size: .63rem;
+            font-weight: 700;
+        }
+
+        .catalog-status.active {
+            background: #ecfdf5;
+            color: #047857;
+        }
+
+        .catalog-status.inactive {
+            background: #f1f5f9;
+            color: #64748b;
+        }
+
+        .catalog-action-btn {
+            width: 32px;
+            height: 32px;
+            display: inline-grid;
+            place-items: center;
+            padding: 0;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            background: #fff;
+            color: #64748b;
+        }
+
+        .catalog-action-btn:hover,
+        .catalog-action-btn[aria-expanded="true"] {
+            border-color: var(--primary-light);
+            background: var(--primary-bg);
+            color: var(--primary);
+        }
+
+        .catalog-action-menu {
+            min-width: 165px;
+            padding: .35rem;
+            border: 1px solid var(--catalog-border);
+            border-radius: 10px;
+            box-shadow: 0 12px 32px rgba(15, 23, 42, .12);
+        }
+
+        .catalog-action-menu .dropdown-item {
+            display: flex;
+            align-items: center;
+            gap: .55rem;
+            padding: .5rem .6rem;
+            border-radius: 7px;
+            font-size: .72rem;
+            font-weight: 600;
+        }
+
+        .catalog-action-menu .dropdown-item.text-danger:hover {
+            background: #fef2f2;
+        }
+
+        .catalog-table-footer {
+            align-items: center;
+            justify-content: space-between;
+            gap: 1rem;
+            padding: .7rem .85rem;
+            border-top: 1px solid var(--catalog-border);
+            background: #fbfcfe;
+        }
+
+        .catalog-table-footer .dataTables_info {
+            padding: 0 !important;
+            color: #94a3b8;
+            font-size: .67rem;
+        }
+
+        .catalog-table-footer .dataTables_paginate {
+            margin: 0 !important;
+        }
+
+        .catalog-table-footer .pagination {
+            margin: 0;
+        }
+
+        .dataTables_filter,
+        .dataTables_length {
+            display: none !important;
+        }
+
+        .modal-content {
+            border: 0;
+            border-radius: 16px;
+            overflow: hidden;
+            box-shadow: 0 24px 64px rgba(15, 23, 42, .18);
+        }
+
+        .modal-header {
+            padding: 1rem 1.2rem;
+            border-bottom: 0;
+        }
+
+        .modal-body .form-label {
+            margin-bottom: .4rem;
+            color: #475569;
+            font-size: .7rem;
+            font-weight: 700;
+        }
+
+        .modal-body .form-control,
+        .modal-body .form-select {
+            min-height: 42px;
+            border-radius: 9px;
+            border-color: #dbe3ee;
+            font-size: .78rem;
+        }
+
+        .modal-footer {
+            padding: .8rem 1.2rem;
+            border-top: 1px solid #eef2f7;
+            background: #fbfcfe;
+        }
+
+        @media (max-width: 992px) {
+            .catalog-stat-grid {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+
+            .catalog-toolbar {
+                flex-wrap: wrap;
+            }
+
+            .catalog-search {
+                flex-basis: 100%;
+                max-width: none;
+            }
+
+            .catalog-visible-count {
+                margin-left: 0;
+            }
+        }
+
+        @media (max-width: 700px) {
+            .catalog-hero {
+                align-items: flex-start;
+                flex-direction: column;
+                padding: 1rem;
+            }
+
+            .catalog-hero-main {
+                align-items: flex-start;
+            }
+
+            .catalog-hero-icon {
+                width: 44px;
+                height: 44px;
+            }
+
+            .catalog-hero-actions,
+            .catalog-hero-actions .dropdown,
+            .catalog-create-btn {
+                width: 100%;
+            }
+
+            .catalog-stat-grid {
+                grid-template-columns: 1fr 1fr;
+                gap: .6rem;
+            }
+
+            .catalog-stat-card {
+                min-height: 76px;
+                padding: .75rem;
+            }
+
+            .catalog-tabs-bar {
+                align-items: flex-start;
+                flex-direction: column;
+            }
+
+            .catalog-tabs {
+                width: 100%;
+                overflow-x: auto;
+            }
+
+            .catalog-tabs .nav-link {
+                white-space: nowrap;
+            }
+
+            .catalog-filter {
+                flex: 1 1 140px;
+                min-width: 0;
+            }
+
+            .catalog-visible-count {
+                width: 100%;
+            }
+        }
     </style>
 @endsection
 
 @section('content')
     <div class="container-fluid px-3 px-md-4">
 
-        {{-- ============================================================
-        PAGE HEADER
-        ============================================================ --}}
-        <div class="page-header">
-            <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3">
-                <div>
-                    <h1>
-                        <i class="bi bi-box me-2"></i>
-                        Catalog <span class="accent">{{ __('ui.control') }}</span>
-                    </h1>
-                    <p class="subtitle">
-                        <i class="bi bi-grid-3x3-gap me-1"></i>
-                        Configure production catalog items and organizational node trees
-                    </p>
+        <div class="catalog-page">
+            <div class="catalog-hero">
+                <div class="catalog-hero-main">
+                    <div class="catalog-hero-icon">
+                        <i class="bi bi-boxes"></i>
+                    </div>
+                    <div>
+                        <div class="catalog-eyebrow">
+                            <span class="catalog-eyebrow-label">Inventory master</span>
+                            <span class="shared-master-badge">
+                                <i class="bi bi-people"></i>
+                                Shared across business units
+                            </span>
+                        </div>
+                        <h1>Products &amp; Materials</h1>
+                        <p>Manage raw materials, finished goods, categories, units and stock-alert thresholds from one catalog.</p>
+                    </div>
                 </div>
 
-                <div class="d-flex gap-2 flex-wrap">
-                    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#categoryModal"
-                            onclick="resetCategoryForm()">
-                        <i class="bi bi-tag me-1"></i> {{ __('ui.add_category') }}
-                    </button>
-                    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#productModal"
-                            onclick="resetProductForm()">
-                        <i class="bi bi-plus-circle me-1"></i> {{ __('ui.add_raw_material') }}
-                    </button>
-                    <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#finishedGoodsModal"
-                            onclick="resetFinishedGoodsForm()">
-                        <i class="bi bi-check-circle me-1"></i> {{ __('ui.add_finished_good') }}
-                    </button>
+                <div class="catalog-hero-actions">
+                    <div class="dropdown">
+                        <button class="btn btn-primary dropdown-toggle catalog-create-btn"
+                                type="button"
+                                data-bs-toggle="dropdown"
+                                aria-expanded="false">
+                            <i class="bi bi-plus-lg me-1"></i>
+                            New catalog item
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end catalog-create-menu">
+                            <li>
+                                <button class="dropdown-item" type="button"
+                                        data-bs-toggle="modal" data-bs-target="#productModal"
+                                        onclick="resetProductForm()">
+                                    <i class="bi bi-box-seam"></i>
+                                    Add raw material
+                                </button>
+                            </li>
+                            <li>
+                                <button class="dropdown-item" type="button"
+                                        data-bs-toggle="modal" data-bs-target="#finishedGoodsModal"
+                                        onclick="resetFinishedGoodsForm()">
+                                    <i class="bi bi-box2-check"></i>
+                                    Add finished good
+                                </button>
+                            </li>
+                            <li><hr class="dropdown-divider my-1"></li>
+                            <li>
+                                <button class="dropdown-item" type="button"
+                                        data-bs-toggle="modal" data-bs-target="#categoryModal"
+                                        onclick="resetCategoryForm()">
+                                    <i class="bi bi-tags"></i>
+                                    Add category
+                                </button>
+                            </li>
+                        </ul>
+                    </div>
                 </div>
             </div>
-        </div>
 
+            <div class="catalog-stat-grid">
+                <div class="catalog-stat-card">
+                    <div class="catalog-stat-icon total"><i class="bi bi-grid-3x3-gap"></i></div>
+                    <div>
+                        <div class="catalog-stat-value">{{ number_format($catalogStats['total_products']) }}</div>
+                        <div class="catalog-stat-label">Total products</div>
+                        <div class="catalog-stat-meta">{{ number_format($catalogStats['active_products']) }} active</div>
+                    </div>
+                </div>
+                <div class="catalog-stat-card">
+                    <div class="catalog-stat-icon raw"><i class="bi bi-box-seam"></i></div>
+                    <div>
+                        <div class="catalog-stat-value">{{ number_format($catalogStats['raw_materials']) }}</div>
+                        <div class="catalog-stat-label">Raw materials</div>
+                        <div class="catalog-stat-meta">Production inputs</div>
+                    </div>
+                </div>
+                <div class="catalog-stat-card">
+                    <div class="catalog-stat-icon finished"><i class="bi bi-box2-check"></i></div>
+                    <div>
+                        <div class="catalog-stat-value">{{ number_format($catalogStats['finished_goods']) }}</div>
+                        <div class="catalog-stat-label">Finished goods</div>
+                        <div class="catalog-stat-meta">{{ number_format($catalogStats['categories']) }} categories</div>
+                    </div>
+                </div>
+                <div class="catalog-stat-card">
+                    <div class="catalog-stat-icon alert"><i class="bi bi-exclamation-triangle"></i></div>
+                    <div>
+                        <div class="catalog-stat-value">{{ number_format($catalogStats['low_stock']) }}</div>
+                        <div class="catalog-stat-label">Needs attention</div>
+                        <div class="catalog-stat-meta">At or below minimum stock</div>
+                    </div>
+                </div>
+            </div>
         {{-- ============================================================
         LOW STOCK NOTIFICATION
         ============================================================ --}}
@@ -381,44 +1073,89 @@
             </div>
         </div>
 
-        {{-- ============================================================
-        MAIN TABLE CARD
-        ============================================================ --}}
-        <div class="table-card">
-            <div class="card-header-custom">
-                <ul class="nav-tabs-custom" role="tablist">
+        <div class="catalog-control-card">
+            <div class="catalog-tabs-bar">
+                <ul class="nav catalog-tabs" role="tablist">
                     <li class="nav-item" role="presentation">
-                        <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#products-tab" type="button">
-                            <i class="bi bi-boxes"></i> Raw Materials
-                            <span class="badge">{{ $rawProducts->total() }}</span>
+                        <button class="nav-link active"
+                                data-bs-toggle="tab"
+                                data-bs-target="#products-tab"
+                                data-table="#products-table"
+                                data-category-column="3"
+                                data-status-column="7"
+                                type="button">
+                            <i class="bi bi-box-seam"></i>
+                            Raw Materials
+                            <span class="catalog-tab-count">{{ $rawProducts->count() }}</span>
                         </button>
                     </li>
                     <li class="nav-item" role="presentation">
-                        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#finished-goods-tab" type="button">
-                            <i class="bi bi-check-circle-fill finished-goods-icon"></i> Finished Goods
-                            <span class="badge">{{ $finishedProducts->total() }}</span>
+                        <button class="nav-link"
+                                data-bs-toggle="tab"
+                                data-bs-target="#finished-goods-tab"
+                                data-table="#finished-goods-table"
+                                data-category-column="3"
+                                data-status-column="5"
+                                type="button">
+                            <i class="bi bi-box2-check"></i>
+                            Finished Goods
+                            <span class="catalog-tab-count">{{ $finishedProducts->count() }}</span>
                         </button>
                     </li>
                     <li class="nav-item" role="presentation">
-                        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#categories-tab" type="button">
-                            <i class="bi bi-tags"></i> {{ __('ui.categories') }}
-                            <span class="badge">{{ $categories->total() }}</span>
+                        <button class="nav-link"
+                                data-bs-toggle="tab"
+                                data-bs-target="#categories-tab"
+                                data-table="#categories-table"
+                                data-category-column=""
+                                data-status-column="4"
+                                type="button">
+                            <i class="bi bi-tags"></i>
+                            Categories
+                            <span class="catalog-tab-count">{{ $categories->count() }}</span>
                         </button>
                     </li>
                 </ul>
-                <div>
-                    <span class="header-badge">
-                        <i class="bi bi-database me-1"></i> Total: {{ $allProducts->total() + $categories->total() }} entries
-                    </span>
-                </div>
+
+                <span class="shared-master-badge">
+                    <i class="bi bi-diagram-3"></i>
+                    Master catalog
+                </span>
             </div>
 
-            <div class="p-0">
-                <div class="tab-content">
+            <div class="catalog-toolbar">
+                <div class="catalog-search">
+                    <i class="bi bi-search"></i>
+                    <input type="search"
+                           id="catalogSearch"
+                           autocomplete="off"
+                           placeholder="Search products, categories or units...">
+                </div>
 
+                <select class="form-select catalog-filter" id="catalogCategoryFilter" aria-label="Filter by category">
+                    <option value="">All categories</option>
+                    @foreach($categoryOptions as $categoryOption)
+                        <option value="{{ $categoryOption->name }}">{{ $categoryOption->name }}</option>
+                    @endforeach
+                </select>
+
+                <select class="form-select catalog-filter" id="catalogStatusFilter" aria-label="Filter by status">
+                    <option value="">All statuses</option>
+                    <option value="Active">Active</option>
+                    <option value="Inactive">Inactive</option>
+                </select>
+
+                <button type="button" class="catalog-clear-filter" id="catalogClearFilters" title="Clear filters">
+                    <i class="bi bi-arrow-counterclockwise"></i>
+                </button>
+
+                <span class="catalog-visible-count" id="catalogVisibleCount"></span>
+            </div>
+
+            <div class="tab-content">
                     {{-- ─── Raw Materials Tab ─── --}}
-                    <div class="tab-pane fade show active p-3" id="products-tab" role="tabpanel">
-                        <div class="table-responsive-custom">
+                    <div class="tab-pane fade show active catalog-table-pane" id="products-tab" role="tabpanel">
+                        <div class="catalog-table-shell">
                             <table class="table-ledger" id="products-table">
                                 <thead>
                                 <tr>
@@ -446,15 +1183,15 @@
                                             default => 'bi bi-box-seam',
                                         };
 
-                                        $stockClass = 'good';
-                                        if ($product->is_low_stock && $product->current_stock > 0) {
-                                            $stockClass = 'low';
-                                        } elseif ($product->is_out_of_stock) {
-                                            $stockClass = 'critical';
-                                        }
+                                        $currentStock = (float) ($product->catalog_current_stock ?? 0);
+                                        $isOutOfStock = $currentStock <= 0;
+                                        $isLowStock = !$isOutOfStock
+                                            && (float) ($product->min_stock_alert ?? 0) > 0
+                                            && $currentStock <= (float) $product->min_stock_alert;
+                                        $stockClass = $isOutOfStock ? 'critical' : ($isLowStock ? 'low' : 'good');
                                     @endphp
                                     <tr>
-                                        <td class="num-cell">#{{ $product->id }}</td>
+                                        <td><span class="catalog-id">#{{ $product->id }}</span></td>
                                         <td>
                                             @if ($product->image)
                                                 <img src="{{ Storage::url($product->image) }}" class="product-avatar">
@@ -464,9 +1201,16 @@
                                                 </div>
                                             @endif
                                         </td>
-                                        <td class="fw-semibold text-dark">{{ $product->name }}</td>
                                         <td>
-                                            <span class="badge-cat">
+                                            <div class="product-cell">
+                                                <span class="product-name">{{ $product->name }}</span>
+                                                @if($product->description)
+                                                    <span class="product-description">{{ \Illuminate\Support\Str::limit($product->description, 72) }}</span>
+                                                @endif
+                                            </div>
+                                        </td>
+                                        <td>
+                                            <span class="catalog-category-badge">
                                                 {{ $product->category->name ?? 'Unassigned' }}
                                             </span>
                                         </td>
@@ -482,9 +1226,9 @@
                                             @endif
                                         </td>
                                         <td>
-                                            <span class="stock-indicator {{ $stockClass }}">
-                                                <i class="bi bi-{{ $product->is_out_of_stock ? 'x-circle' : ($product->is_low_stock ? 'exclamation-triangle' : 'check-circle') }}"></i>
-                                                {{ $product->current_stock }}
+                                            <span class="catalog-stock {{ $stockClass }}">
+                                                <span class="dot"></span>
+                                                {{ number_format($currentStock, 2) }} {{ $product->unit ?? 'unit' }}
                                             </span>
                                         </td>
                                         <td>
@@ -499,12 +1243,12 @@
                                         </td>
                                         <td>
                                             @if ($product->is_active)
-                                                <span class="stock-badge in-stock">
-                                                    <i class="bi bi-circle-fill"></i> {{ __('ui.active') }}
+                                                <span class="catalog-status active">
+                                                    <i class="bi bi-check-circle"></i> {{ __('ui.active') }}
                                                 </span>
                                             @else
-                                                <span class="stock-badge out-of-stock">
-                                                    <i class="bi bi-circle-fill"></i> {{ __('ui.inactive') }}
+                                                <span class="catalog-status inactive">
+                                                    <i class="bi bi-pause-circle"></i> {{ __('ui.inactive') }}
                                                 </span>
                                             @endif
                                         </td>
@@ -536,8 +1280,8 @@
                     </div>
 
                     {{-- ─── Finished Goods Tab ─── --}}
-                    <div class="tab-pane fade p-3" id="finished-goods-tab" role="tabpanel">
-                        <div class="table-responsive-custom">
+                    <div class="tab-pane fade catalog-table-pane" id="finished-goods-tab" role="tabpanel">
+                        <div class="catalog-table-shell">
                             <table class="table-ledger" id="finished-goods-table">
                                 <thead>
                                 <tr>
@@ -563,7 +1307,7 @@
                                         };
                                     @endphp
                                     <tr>
-                                        <td class="num-cell">#{{ $product->id }}</td>
+                                        <td><span class="catalog-id">#{{ $product->id }}</span></td>
                                         <td>
                                             @if ($product->image)
                                                 <img src="{{ Storage::url($product->image) }}" class="product-avatar">
@@ -573,14 +1317,19 @@
                                                 </div>
                                             @endif
                                         </td>
-                                        <td class="fw-semibold text-dark">
-                                            {{ $product->name }}
-                                            <span class="type-badge finished ms-1">
-                                                <i class="bi bi-check-circle-fill"></i> FG
-                                            </span>
+                                        <td>
+                                            <div class="product-cell">
+                                                <span class="product-name">
+                                                    {{ $product->name }}
+                                                    <span class="type-badge finished ms-1">FG</span>
+                                                </span>
+                                                @if($product->description)
+                                                    <span class="product-description">{{ \Illuminate\Support\Str::limit($product->description, 72) }}</span>
+                                                @endif
+                                            </div>
                                         </td>
                                         <td>
-                                            <span class="badge-cat">
+                                            <span class="catalog-category-badge">
                                                 {{ $product->category->name ?? 'Unassigned' }}
                                             </span>
                                         </td>
@@ -592,12 +1341,12 @@
                                         </td>
                                         <td>
                                             @if ($product->is_active)
-                                                <span class="stock-badge in-stock">
-                                                    <i class="bi bi-circle-fill"></i> {{ __('ui.active') }}
+                                                <span class="catalog-status active">
+                                                    <i class="bi bi-check-circle"></i> {{ __('ui.active') }}
                                                 </span>
                                             @else
-                                                <span class="stock-badge out-of-stock">
-                                                    <i class="bi bi-circle-fill"></i> {{ __('ui.inactive') }}
+                                                <span class="catalog-status inactive">
+                                                    <i class="bi bi-pause-circle"></i> {{ __('ui.inactive') }}
                                                 </span>
                                             @endif
                                         </td>
@@ -629,8 +1378,8 @@
                     </div>
 
                     {{-- ─── Categories Tab ─── --}}
-                    <div class="tab-pane fade p-3" id="categories-tab" role="tabpanel">
-                        <div class="table-responsive-custom">
+                    <div class="tab-pane fade catalog-table-pane" id="categories-tab" role="tabpanel">
+                        <div class="catalog-table-shell">
                             <table class="table-ledger" id="categories-table">
                                 <thead>
                                 <tr>
@@ -645,7 +1394,7 @@
                                 <tbody>
                                 @foreach ($categories as $category)
                                     <tr>
-                                        <td class="num-cell">#{{ $category->id }}</td>
+                                        <td><span class="catalog-id">#{{ $category->id }}</span></td>
                                         <td class="fw-semibold text-dark">{{ $category->name }}</td>
                                         <td class="text-muted text-truncate" style="max-width: 280px;">
                                             {{ $category->description ?: 'No description' }}
@@ -659,12 +1408,12 @@
                                         </td>
                                         <td>
                                             @if ($category->is_active)
-                                                <span class="stock-badge in-stock">
-                                                    <i class="bi bi-circle-fill"></i> {{ __('ui.active') }}
+                                                <span class="catalog-status active">
+                                                    <i class="bi bi-check-circle"></i> {{ __('ui.active') }}
                                                 </span>
                                             @else
-                                                <span class="stock-badge out-of-stock">
-                                                    <i class="bi bi-circle-fill"></i> {{ __('ui.inactive') }}
+                                                <span class="catalog-status inactive">
+                                                    <i class="bi bi-pause-circle"></i> {{ __('ui.inactive') }}
                                                 </span>
                                             @endif
                                         </td>
@@ -693,6 +1442,7 @@
 
                 </div>
             </div>
+        </div>
         </div>
     </div>
 
@@ -725,7 +1475,7 @@
                                 <select class="form-select select2-category" name="category_id" id="product_category_id"
                                         required>
                                     <option value="">{{ __('ui.select_category_dots') }}</option>
-                                    @foreach ($categories as $category)
+                                    @foreach ($categoryOptions as $category)
                                         <option value="{{ $category->id }}">{{ $category->name }}</option>
                                     @endforeach
                                 </select>
@@ -870,7 +1620,7 @@
                                 <label class="form-label">{{ __('ui.category') }} <span class="text-danger">*</span></label>
                                 <select class="form-select select2-fg-category" name="category_id" id="fg_product_category_id" required>
                                     <option value="">{{ __('ui.select_category_dots') }}</option>
-                                    @foreach ($categories as $category)
+                                    @foreach ($categoryOptions as $category)
                                         <option value="{{ $category->id }}">{{ $category->name }}</option>
                                     @endforeach
                                 </select>
@@ -1022,47 +1772,118 @@
 
     <script>
         $(document).ready(function() {
-            // ─── DataTables ───
+            // ─── Catalog tables + unified toolbar ───
             const tableOpts = {
                 pageLength: 15,
                 lengthChange: false,
                 ordering: true,
                 searching: true,
-                order: [
-                    [0, 'desc']
-                ],
+                autoWidth: false,
+                deferRender: true,
+                order: [[0, 'desc']],
+                dom: 'rt<"catalog-table-footer d-flex flex-wrap"ip>',
                 language: {
                     search: '',
-                    searchPlaceholder: 'Search entries...',
-                    info: 'Showing _START_ to _END_ of _TOTAL_ entries',
-                    infoEmpty: 'No entries found',
-                    infoFiltered: '(filtered from _MAX_ total)',
+                    info: 'Showing _START_–_END_ of _TOTAL_',
+                    infoEmpty: 'No matching records',
+                    infoFiltered: '(filtered from _MAX_)',
+                    emptyTable: 'No records in this section yet',
+                    paginate: {
+                        previous: '‹',
+                        next: '›'
+                    }
                 }
             };
 
-            $('#products-table').DataTable({
+            const rawTable = $('#products-table').DataTable({
                 ...tableOpts,
-                columnDefs: [{
-                    orderable: false,
-                    targets: [1, 5, 6, 8]
-                }]
+                columnDefs: [{ orderable: false, targets: [1, 5, 6, 8] }]
             });
 
-            $('#finished-goods-table').DataTable({
+            const finishedTable = $('#finished-goods-table').DataTable({
                 ...tableOpts,
-                columnDefs: [{
-                    orderable: false,
-                    targets: [1, 6]
-                }]
+                columnDefs: [{ orderable: false, targets: [1, 6] }]
             });
 
-            $('#categories-table').DataTable({
+            const categoriesTable = $('#categories-table').DataTable({
                 ...tableOpts,
-                columnDefs: [{
-                    orderable: false,
-                    targets: [5]
-                }]
+                columnDefs: [{ orderable: false, targets: [5] }]
             });
+
+            const tableRegistry = {
+                '#products-table': rawTable,
+                '#finished-goods-table': finishedTable,
+                '#categories-table': categoriesTable,
+            };
+
+            let activeTable = rawTable;
+            let activeCategoryColumn = 3;
+            let activeStatusColumn = 7;
+
+            function exactColumnSearch(table, columnIndex, value) {
+                if (columnIndex === '' || columnIndex === null || typeof columnIndex === 'undefined') {
+                    return;
+                }
+
+                const escaped = value ? $.fn.dataTable.util.escapeRegex(value) : '';
+                table.column(Number(columnIndex)).search(
+                    escaped ? '^\\s*' + escaped + '\\s*$' : '',
+                    true,
+                    false
+                );
+            }
+
+            function refreshVisibleCount() {
+                const count = activeTable.rows({ search: 'applied' }).count();
+                $('#catalogVisibleCount').text(count + (count === 1 ? ' record' : ' records') + ' shown');
+            }
+
+            function applyCatalogFilters() {
+                activeTable.search($('#catalogSearch').val() || '');
+
+                if (activeCategoryColumn !== '') {
+                    exactColumnSearch(activeTable, activeCategoryColumn, $('#catalogCategoryFilter').val() || '');
+                }
+
+                exactColumnSearch(activeTable, activeStatusColumn, $('#catalogStatusFilter').val() || '');
+                activeTable.draw();
+                refreshVisibleCount();
+            }
+
+            $('#catalogSearch').on('input', applyCatalogFilters);
+            $('#catalogCategoryFilter, #catalogStatusFilter').on('change', applyCatalogFilters);
+
+            $('#catalogClearFilters').on('click', function() {
+                $('#catalogSearch').val('');
+                $('#catalogCategoryFilter').val('');
+                $('#catalogStatusFilter').val('');
+                activeTable.search('').columns().search('').draw();
+                refreshVisibleCount();
+            });
+
+            $('.catalog-tabs [data-bs-toggle="tab"]').on('shown.bs.tab', function() {
+                const selector = $(this).data('table');
+                activeTable = tableRegistry[selector];
+                activeCategoryColumn = $(this).attr('data-category-column');
+                activeStatusColumn = $(this).attr('data-status-column');
+
+                const categoryEnabled = activeCategoryColumn !== '';
+                $('#catalogCategoryFilter')
+                    .prop('disabled', !categoryEnabled)
+                    .toggleClass('d-none', !categoryEnabled)
+                    .val('');
+
+                $('#catalogSearch').val('');
+                $('#catalogStatusFilter').val('');
+                activeTable.search('').columns().search('').draw();
+                activeTable.columns.adjust();
+                refreshVisibleCount();
+            });
+
+            rawTable.on('draw', refreshVisibleCount);
+            finishedTable.on('draw', refreshVisibleCount);
+            categoriesTable.on('draw', refreshVisibleCount);
+            refreshVisibleCount();
 
             // ─── Select2 ───
             $('.select2-category').select2({
