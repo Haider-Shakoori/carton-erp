@@ -3,532 +3,706 @@
 @section('title', __('ui.bill_of_materials'))
 
 @section('css')
-    <link rel="stylesheet" href="{{ asset('vendor/datatables/css/dataTables.bootstrap5.min.css') }}">
+    <link rel="stylesheet" href="{{ asset('vendor/bootstrap-icons/1.11.3/bootstrap-icons.min.css') }}">
+    <link rel="stylesheet" href="{{ asset('css/admin-index.css') }}">
     <style>
-        /* ─── Status Badges ─── */
-        .status-badge {
-            padding: 4px 12px;
-            border-radius: 20px;
-            font-size: 0.75rem;
-            font-weight: 600;
-            display: inline-flex;
-            align-items: center;
-            gap: 0.35rem;
-        }
-        .status-badge.draft {
-            background: #fef3c7;
-            color: #92400e;
-        }
-        .status-badge.active {
-            background: #d1fae5;
-            color: #065f46;
-        }
-        .status-badge.archived {
-            background: #f3f4f6;
-            color: #6b7280;
+        .bom-index {
+            --bom-purple: #4f46e5;
+            --bom-green: #059669;
+            --bom-amber: #d97706;
+            --bom-slate: #64748b;
+            --bom-border: #e8edf4;
         }
 
-        /* ─── Stat Cards ─── */
-        .stat-card {
-            background: white;
-            padding: 1.25rem;
-            border-radius: 12px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
-            display: flex;
-            align-items: center;
-            gap: 1rem;
-            transition: all 0.3s ease;
-            border: 1px solid #f1f5f9;
-            height: 100%;
-        }
-        .stat-card:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 16px rgba(0,0,0,0.1);
-        }
-        .stat-icon {
-            width: 48px;
-            height: 48px;
-            border-radius: 10px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 1.25rem;
-            flex-shrink: 0;
-        }
-        .stat-icon.purple {
-            background: #e0e7ff;
-            color: #4f46e5;
-        }
-        .stat-icon.green {
-            background: #d1fae5;
-            color: #065f46;
-        }
-        .stat-icon.yellow {
-            background: #fef3c7;
-            color: #92400e;
-        }
-        .stat-icon.gray {
-            background: #f3f4f6;
-            color: #6b7280;
-        }
-        .stat-value {
-            font-size: 1.5rem;
-            font-weight: 700;
-            color: #1a1a2e;
-            line-height: 1.2;
-        }
-        .stat-label {
-            font-size: 0.75rem;
-            color: #6b7280;
-            font-weight: 500;
-        }
-
-        /* ─── Action Buttons ─── */
-        .action-buttons {
-            display: flex;
-            align-items: center;
-            gap: 0.25rem;
-            justify-content: flex-end;
-        }
-        .action-btn {
-            width: 32px;
-            height: 32px;
-            border: none;
-            background: transparent;
-            border-radius: 6px;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            transition: all 0.3s ease;
-            cursor: pointer;
-            color: #94a3b8;
+        .bom-index .bom-stat-card {
             text-decoration: none;
-            font-size: 0.9rem;
-        }
-        .action-btn:hover {
-            background: #f1f5f9;
-            color: #4f46e5;
-        }
-        .action-btn.text-danger:hover {
-            background: #fecaca;
-            color: #dc2626;
-        }
-        .action-btn.text-success:hover {
-            background: #d1fae5;
-            color: #059669;
-        }
-        .action-btn.text-warning:hover {
-            background: #fef3c7;
-            color: #d97706;
-        }
-        .action-btn form {
-            display: inline-block;
-            margin: 0;
+            color: inherit;
+            display: block;
         }
 
-        /* ─── Badge Category ─── */
-        .badge-cat {
-            background: #eef2ff;
-            color: #4f46e5;
-            padding: 0.2rem 0.6rem;
-            border-radius: 4px;
-            font-size: 0.7rem;
-            font-weight: 600;
-            display: inline-block;
+        .bom-index .bom-stat-card .stat-card::before {
+            content: '';
+            position: absolute;
+            inset: 0 0 auto 0;
+            height: 3px !important;
         }
 
-        /* ─── Table ─── */
-        .table-ledger tbody tr {
-            transition: background 0.2s ease;
-        }
-        .table-ledger tbody tr:hover {
-            background: #f8fafc;
-        }
-        .num-cell {
-            font-family: 'Inter', monospace;
-            font-weight: 600;
-            color: #1e293b;
-        }
-        .num-cell .unit-label {
-            font-weight: 400;
-            color: #94a3b8;
-            font-size: 0.65rem;
-            margin-left: 0.15rem;
-        }
-        .header-badge {
-            background: #f1f5f9;
-            padding: 0.25rem 0.75rem;
-            border-radius: 20px;
-            font-size: 0.75rem;
-            color: #64748b;
-            display: inline-flex;
-            align-items: center;
-            gap: 0.35rem;
+        .bom-index .bom-stat-card.total .stat-card::before { background: var(--bom-purple); }
+        .bom-index .bom-stat-card.active .stat-card::before { background: var(--bom-green); }
+        .bom-index .bom-stat-card.draft .stat-card::before { background: var(--bom-amber); }
+        .bom-index .bom-stat-card.archived .stat-card::before { background: #94a3b8; }
+
+        .bom-index .bom-stat-card.is-selected .stat-card {
+            border-color: rgba(79, 70, 229, .28) !important;
+            box-shadow: 0 0 0 3px rgba(79, 70, 229, .055), var(--index-shadow-sm) !important;
         }
 
-        /* ─── Pagination ─── */
-        .pagination-wrap {
-            display: flex;
+        .bom-index .stat-icon.purple { background:#eef2ff; color:#4f46e5; }
+        .bom-index .stat-icon.green { background:#ecfdf5; color:#059669; }
+        .bom-index .stat-icon.amber { background:#fffbeb; color:#d97706; }
+        .bom-index .stat-icon.slate { background:#f1f5f9; color:#64748b; }
+
+        .bom-index .filter-bar {
             justify-content: space-between;
+        }
+
+        .bom-index .bom-filter-form {
+            display: flex;
             align-items: center;
             flex-wrap: wrap;
-            gap: 1rem;
-            padding-top: 1rem;
-            border-top: 1px solid #f1f5f9;
-        }
-        .pagination-wrap .info-text {
-            font-size: 0.8rem;
-            color: #94a3b8;
+            gap: .5rem;
+            margin-left: auto;
         }
 
-        /* ─── Responsive ─── */
+        .bom-index .bom-search {
+            width: min(310px, 100%);
+        }
+
+        .bom-index .bom-code {
+            font-size: .75rem;
+            font-weight: 800;
+            color: #1e293b;
+            letter-spacing: -.01em;
+        }
+
+        .bom-index .bom-name {
+            margin-top: .12rem;
+            font-size: .66rem;
+            color: #64748b;
+            max-width: 220px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .bom-index .bom-version {
+            display: inline-flex;
+            align-items: center;
+            margin-top: .28rem;
+            padding: .12rem .38rem;
+            border-radius: 999px;
+            background: #f1f5f9;
+            color: #64748b;
+            font-size: .56rem;
+            font-weight: 750;
+        }
+
+        .bom-index .product-name {
+            color:#0f172a;
+            font-size:.74rem;
+            font-weight:750;
+        }
+
+        .bom-index .product-meta,
+        .bom-index .spec-meta,
+        .bom-index .money-meta,
+        .bom-index .date-meta {
+            margin-top:.12rem;
+            color:#94a3b8;
+            font-size:.61rem;
+            line-height:1.4;
+        }
+
+        .bom-index .spec-primary {
+            color:#334155;
+            font-size:.71rem;
+            font-weight:700;
+            white-space:nowrap;
+        }
+
+        .bom-index .material-count {
+            display:inline-flex;
+            align-items:center;
+            gap:.35rem;
+            min-height:27px;
+            padding:.2rem .5rem;
+            border-radius:8px;
+            background:#f8fafc;
+            border:1px solid #e8edf4;
+            color:#475569;
+            font-size:.66rem;
+            font-weight:750;
+        }
+
+        .bom-index .money-main {
+            color:#0f172a;
+            font-size:.75rem;
+            font-weight:800;
+            white-space:nowrap;
+        }
+
+        .bom-index .money-main.rate {
+            color:#047857;
+        }
+
+        .bom-index .work-chip {
+            display:inline-flex;
+            align-items:center;
+            gap:.25rem;
+            margin-top:.24rem;
+            padding:.12rem .4rem;
+            border-radius:999px;
+            background:#ecfdf5;
+            color:#047857;
+            font-size:.56rem;
+            font-weight:750;
+            white-space:nowrap;
+        }
+
+        .bom-index .status-badge {
+            border:1px solid transparent;
+        }
+
+        .bom-index .status-badge.active {
+            background:#ecfdf5;
+            border-color:#a7f3d0;
+            color:#047857;
+        }
+
+        .bom-index .status-badge.draft {
+            background:#fffbeb;
+            border-color:#fde68a;
+            color:#b45309;
+        }
+
+        .bom-index .status-badge.archived {
+            background:#f1f5f9;
+            border-color:#e2e8f0;
+            color:#64748b;
+        }
+
+        .bom-index .governance-chip {
+            display:inline-flex;
+            align-items:center;
+            gap:.25rem;
+            margin-top:.3rem;
+            padding:.14rem .4rem;
+            border-radius:999px;
+            font-size:.55rem;
+            font-weight:750;
+        }
+
+        .bom-index .governance-chip.locked {
+            background:#eef2ff;
+            color:#4f46e5;
+        }
+
+        .bom-index .governance-chip.effective {
+            background:#ecfdf5;
+            color:#047857;
+        }
+
+        .bom-index .governance-chip.inactive {
+            background:#fef2f2;
+            color:#b91c1c;
+        }
+
+        .bom-index .table-responsive-custom {
+            overflow-x:auto;
+        }
+
+        .bom-index .table-ledger {
+            min-width: 1120px;
+        }
+
+        .bom-index .action-buttons form {
+            margin:0;
+        }
+
+        .bom-index .action-btn.text-success:hover {
+            border-color:#a7f3d0 !important;
+            background:#ecfdf5 !important;
+            color:#047857 !important;
+        }
+
+        .bom-index .action-btn.text-warning:hover {
+            border-color:#fde68a !important;
+            background:#fffbeb !important;
+            color:#b45309 !important;
+        }
+
+        .bom-index .filter-note {
+            display:flex;
+            align-items:center;
+            gap:.4rem;
+            color:#94a3b8;
+            font-size:.62rem;
+            font-weight:600;
+        }
+
+        .bom-index .empty-state .btn {
+            margin-top:.85rem;
+        }
+
         @media (max-width: 768px) {
-            .pagination-wrap {
-                flex-direction: column;
-                align-items: center;
-                text-align: center;
+            .bom-index .filter-bar {
+                align-items:stretch;
             }
-            .stat-card {
-                padding: 1rem;
+
+            .bom-index .bom-filter-form,
+            .bom-index .bom-search {
+                width:100%;
+                margin-left:0;
             }
-            .stat-value {
-                font-size: 1.2rem;
+
+            .bom-index .bom-filter-form .form-select,
+            .bom-index .bom-filter-form .btn {
+                flex:1 1 135px;
             }
         }
     </style>
 @endsection
 
 @section('content')
-    <div class="container-fluid px-3 px-md-4">
+    <div class="container-fluid px-3 px-md-4 erp-index-ui bom-index">
 
-        {{-- ─── PAGE HEADER ─── --}}
+        @if(session('success'))
+            <div class="alert alert-success border-0 shadow-sm">
+                <i class="bi bi-check-circle me-2"></i>{{ session('success') }}
+            </div>
+        @endif
+
+        @if(session('error'))
+            <div class="alert alert-danger border-0 shadow-sm">
+                <i class="bi bi-exclamation-triangle me-2"></i>{{ session('error') }}
+            </div>
+        @endif
+
+        {{-- PAGE HEADER --}}
         <div class="page-header">
             <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3">
                 <div>
                     <h1>
-                        <i class="bi bi-list-ul me-2"></i>
+                        <i class="bi bi-diagram-3 me-2"></i>
                         Bill of <span class="accent">Materials</span>
                     </h1>
                     <p class="subtitle">
                         <i class="bi bi-boxes me-1"></i>
-                        Manage production formulas and material requirements
+                        Manage carton specifications, production recipes and standard customer rates
+                        @if(($stats['locked'] ?? 0) > 0)
+                            <span class="ms-2"><i class="bi bi-lock me-1"></i>{{ $stats['locked'] }} approved/locked</span>
+                        @endif
                     </p>
                 </div>
-                <div>
-                    <a href="{{ route('bom.create') }}" class="btn btn-primary">
-                        <i class="bi bi-plus-circle me-1"></i> {{ __('ui.create_bom') }}
+
+                <div class="d-flex gap-2 flex-wrap">
+                    @can('view bom')
+                        <a href="{{ route('bom.calculator') }}" class="btn btn-outline-secondary">
+                            <i class="bi bi-calculator me-1"></i> Cost Calculator
+                        </a>
+                    @endcan
+                    @can('create bom')
+                        <a href="{{ route('bom.create') }}" class="btn btn-primary">
+                            <i class="bi bi-plus-lg me-1"></i> Create BOM
+                        </a>
+                    @endcan
+                </div>
+            </div>
+        </div>
+
+        {{-- GLOBAL STATS --}}
+        <div class="stats-grid">
+            <a class="bom-stat-card total {{ request('status', 'all') === 'all' ? 'is-selected' : '' }}"
+               href="{{ route('bom.index', request()->except('page', 'status')) }}">
+                <div class="stat-card">
+                    <div class="stat-top">
+                        <div class="stat-icon purple"><i class="bi bi-diagram-3"></i></div>
+                        <div class="stat-value">{{ $stats['total'] ?? 0 }}</div>
+                    </div>
+                    <div class="stat-label">Total BOMs</div>
+                </div>
+            </a>
+
+            <a class="bom-stat-card active {{ request('status') === 'active' ? 'is-selected' : '' }}"
+               href="{{ route('bom.index', array_merge(request()->except('page', 'status'), ['status' => 'active'])) }}">
+                <div class="stat-card">
+                    <div class="stat-top">
+                        <div class="stat-icon green"><i class="bi bi-check2-circle"></i></div>
+                        <div class="stat-value">{{ $stats['active'] ?? 0 }}</div>
+                    </div>
+                    <div class="stat-label">Active BOMs</div>
+                </div>
+            </a>
+
+            <a class="bom-stat-card draft {{ request('status') === 'draft' ? 'is-selected' : '' }}"
+               href="{{ route('bom.index', array_merge(request()->except('page', 'status'), ['status' => 'draft'])) }}">
+                <div class="stat-card">
+                    <div class="stat-top">
+                        <div class="stat-icon amber"><i class="bi bi-pencil-square"></i></div>
+                        <div class="stat-value">{{ $stats['draft'] ?? 0 }}</div>
+                    </div>
+                    <div class="stat-label">Draft BOMs</div>
+                </div>
+            </a>
+
+            <a class="bom-stat-card archived {{ request('status') === 'archived' ? 'is-selected' : '' }}"
+               href="{{ route('bom.index', array_merge(request()->except('page', 'status'), ['status' => 'archived'])) }}">
+                <div class="stat-card">
+                    <div class="stat-top">
+                        <div class="stat-icon slate"><i class="bi bi-archive"></i></div>
+                        <div class="stat-value">{{ $stats['archived'] ?? 0 }}</div>
+                    </div>
+                    <div class="stat-label">Archived BOMs</div>
+                </div>
+            </a>
+        </div>
+
+        {{-- FILTERS --}}
+        <div class="filter-bar">
+            <div class="status-filter-group">
+                <a href="{{ route('bom.index', request()->except('page', 'status')) }}"
+                   class="status-filter-btn {{ request('status', 'all') === 'all' ? 'active-all' : '' }}">
+                    <i class="bi bi-circle-fill"></i> All
+                </a>
+                <a href="{{ route('bom.index', array_merge(request()->except('page', 'status'), ['status' => 'active'])) }}"
+                   class="status-filter-btn {{ request('status') === 'active' ? 'active-active' : '' }}">
+                    <i class="bi bi-circle-fill"></i> Active
+                </a>
+                <a href="{{ route('bom.index', array_merge(request()->except('page', 'status'), ['status' => 'draft'])) }}"
+                   class="status-filter-btn {{ request('status') === 'draft' ? 'active-draft' : '' }}">
+                    <i class="bi bi-circle-fill"></i> Draft
+                </a>
+                <a href="{{ route('bom.index', array_merge(request()->except('page', 'status'), ['status' => 'archived'])) }}"
+                   class="status-filter-btn {{ request('status') === 'archived' ? 'active-archived' : '' }}">
+                    <i class="bi bi-circle-fill"></i> Archived
+                </a>
+            </div>
+
+            <form action="{{ route('bom.index') }}" method="GET" class="bom-filter-form">
+                @if(request('status') && request('status') !== 'all')
+                    <input type="hidden" name="status" value="{{ request('status') }}">
+                @endif
+
+                <div class="input-group bom-search">
+                    <span class="input-group-text"><i class="bi bi-search"></i></span>
+                    <input type="search"
+                           name="search"
+                           class="form-control"
+                           value="{{ request('search') }}"
+                           placeholder="Search code, BOM, or product...">
+                </div>
+
+                <select name="sort" class="form-select" style="width:auto;min-width:145px;">
+                    <option value="latest" @selected(request('sort', 'latest') === 'latest')>Latest updated</option>
+                    <option value="oldest" @selected(request('sort') === 'oldest')>Oldest first</option>
+                    <option value="name" @selected(request('sort') === 'name')>Name A–Z</option>
+                    <option value="rate_high" @selected(request('sort') === 'rate_high')>Rate high–low</option>
+                    <option value="rate_low" @selected(request('sort') === 'rate_low')>Rate low–high</option>
+                </select>
+
+                <select name="per_page" class="form-select" style="width:auto;min-width:105px;">
+                    @foreach([15, 30, 50] as $pageSize)
+                        <option value="{{ $pageSize }}" @selected((int) request('per_page', 15) === $pageSize)>
+                            {{ $pageSize }} / page
+                        </option>
+                    @endforeach
+                </select>
+
+                <button type="submit" class="btn-filter btn-primary">
+                    <i class="bi bi-search me-1"></i> Apply
+                </button>
+
+                @if(request()->filled('search') || request()->filled('sort') || request()->filled('per_page') || (request()->filled('status') && request('status') !== 'all'))
+                    <a href="{{ route('bom.index') }}" class="btn-filter btn btn-outline-secondary">
+                        <i class="bi bi-arrow-counterclockwise me-1"></i> Reset
                     </a>
-                </div>
-            </div>
+                @endif
+            </form>
         </div>
 
-        {{-- ─── STATISTICS CARDS ─── --}}
-        <div class="row g-3 mb-4">
-            <div class="col-6 col-lg-3">
-                <div class="stat-card">
-                    <div class="stat-icon purple">
-                        <i class="bi bi-list-ul"></i>
-                    </div>
-                    <div>
-                        <div class="stat-value">{{ $boms->total() }}</div>
-                        <div class="stat-label">Total BOMs</div>
-                    </div>
-                </div>
-            </div>
-            <div class="col-6 col-lg-3">
-                <div class="stat-card">
-                    <div class="stat-icon green">
-                        <i class="bi bi-check-circle"></i>
-                    </div>
-                    <div>
-                        <div class="stat-value">{{ $boms->where('status', 'active')->count() }}</div>
-                        <div class="stat-label">Active BOMs</div>
-                    </div>
-                </div>
-            </div>
-            <div class="col-6 col-lg-3">
-                <div class="stat-card">
-                    <div class="stat-icon yellow">
-                        <i class="bi bi-pencil"></i>
-                    </div>
-                    <div>
-                        <div class="stat-value">{{ $boms->where('status', 'draft')->count() }}</div>
-                        <div class="stat-label">Draft BOMs</div>
-                    </div>
-                </div>
-            </div>
-            <div class="col-6 col-lg-3">
-                <div class="stat-card">
-                    <div class="stat-icon gray">
-                        <i class="bi bi-archive"></i>
-                    </div>
-                    <div>
-                        <div class="stat-value">{{ $boms->where('status', 'archived')->count() }}</div>
-                        <div class="stat-label">Archived BOMs</div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        {{-- ─── BOM TABLE ─── --}}
+        {{-- BOM LIST --}}
         <div class="table-card">
             <div class="card-header-custom">
-                <h6 class="mb-0">
-                    <i class="bi bi-table me-2"></i> {{ __('ui.bom_list') }}
-                </h6>
-                <span class="header-badge">
-                    <i class="bi bi-database me-1"></i>
-                    Showing {{ $boms->firstItem() ?? 0 }} - {{ $boms->lastItem() ?? 0 }} of {{ $boms->total() }}
-                </span>
+                <h5>
+                    <i class="bi bi-table me-1"></i>
+                    BOM Library
+                    <span class="header-badge ms-2">
+                        <i class="bi bi-database"></i>
+                        {{ $boms->total() }} {{ $boms->total() === 1 ? 'result' : 'results' }}
+                    </span>
+                </h5>
+                <div class="filter-note">
+                    <i class="bi bi-info-circle"></i>
+                    Physical cost and standard rate are shown per finished unit.
+                </div>
             </div>
-            <div class="p-0">
-                <div class="table-responsive">
-                    <table class="table table-hover table-ledger mb-0" id="bom-table">
-                        <thead>
+
+            <div class="table-responsive-custom">
+                <table class="table-ledger">
+                    <thead>
+                    <tr>
+                        <th style="width:48px;">#</th>
+                        <th style="min-width:190px;">BOM</th>
+                        <th style="min-width:180px;">Product</th>
+                        <th style="min-width:170px;">Specification</th>
+                        <th class="text-center" style="min-width:95px;">Materials</th>
+                        <th class="text-end" style="min-width:135px;">Physical Cost</th>
+                        <th class="text-end" style="min-width:145px;">Standard Rate</th>
+                        <th class="text-center" style="min-width:120px;">Status</th>
+                        <th style="min-width:125px;">Updated</th>
+                        <th class="text-end" style="width:1%;min-width:145px;">Actions</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    @forelse($boms as $bom)
+                        @php
+                            $dimensionItem = $bom->items->first(function ($item) {
+                                return (float) ($item->length_inch ?? 0) > 0
+                                    && (float) ($item->width_inch ?? 0) > 0
+                                    && (float) ($item->height_inch ?? 0) > 0;
+                            });
+
+                            $paperRows = $bom->items->filter(function ($item) {
+                                return ($item->component_type ?? null) === 'paper'
+                                    || in_array(($item->formula_type ?? null), ['carton_3d', 'cut_roll'], true);
+                            });
+
+                            $gsmValues = $paperRows
+                                ->pluck('paper_gsm')
+                                ->filter(fn ($gsm) => (float) $gsm > 0)
+                                ->map(fn ($gsm) => (int) $gsm)
+                                ->unique()
+                                ->values();
+
+                            $materialCostAfn = (float) ($bom->total_material_cost_afn ?? 0);
+                            if ($materialCostAfn <= 0) {
+                                $materialCostAfn = (float) $bom->items->sum('total_cost_afn');
+                            }
+
+                            $standardRateAfn = (float) ($bom->selling_price_afn ?? 0);
+                            $expectedProfitAfn = (float) ($bom->profit_afn ?? 0);
+                            $workPercentage = (float) ($bom->work_percentage ?? 40);
+
+                            $statusConfig = [
+                                'active' => ['icon' => 'bi-check2-circle', 'label' => 'Active'],
+                                'draft' => ['icon' => 'bi-pencil-square', 'label' => 'Draft'],
+                                'archived' => ['icon' => 'bi-archive', 'label' => 'Archived'],
+                            ];
+                            $status = $statusConfig[$bom->status] ?? [
+                                'icon' => 'bi-circle',
+                                'label' => ucfirst((string) $bom->status),
+                            ];
+                        @endphp
+
                         <tr>
-                            <th style="width: 60px;">#</th>
-                            <th>{{ __('ui.bom_code') }}</th>
-                            <th>{{ __('ui.name') }}</th>
-                            <th>{{ __('ui.product') }}</th>
-                            <th style="text-align: center;">{{ __('ui.items') }}</th>
-                            <th style="text-align: right; min-width: 120px;">{{ __('ui.total_cost_usd') }}</th>
-                            <th style="text-align: right; min-width: 120px;">Total Cost (AFN)</th>
-                            <th style="text-align: center;">{{ __('ui.status') }}</th>
-                            <th>{{ __('ui.created_by') }}</th>
-                            <th style="text-align: right; min-width: 180px;">{{ __('ui.actions') }}</th>
-                        </tr>
-                        </thead>
-                        <tbody>
-                        @forelse ($boms as $bom)
-                            @php
-                                // Calculate totals from items
-                                $materialCostUsd = 0;
-                                $materialCostAfn = 0;
-                                foreach ($bom->items as $item) {
-                                    $materialCostUsd += floatval($item->total_cost_usd ?? 0);
-                                    $materialCostAfn += floatval($item->total_cost_afn ?? 0);
-                                }
+                            <td class="text-muted fw-semibold">
+                                {{ ($boms->firstItem() ?? 1) + $loop->index }}
+                            </td>
 
-                                // Calculate work cost
-                                $workPercentage = floatval($bom->work_percentage ?? 40) / 100;
-                                $workCostUsd = $materialCostUsd * $workPercentage;
-                                $workCostAfn = $materialCostAfn * $workPercentage;
-
-                                // Total cost
-                                $totalCostUsd = $materialCostUsd + $workCostUsd;
-                                $totalCostAfn = $materialCostAfn + $workCostAfn;
-
-                                // Exchange rate
-                                $exchangeRate = floatval($bom->exchange_rate ?? 85);
-                            @endphp
-                            <tr>
-                                <td class="num-cell">{{ $loop->iteration }}</td>
-                                <td>
-                                    <span class="fw-semibold text-dark">{{ $bom->code }}</span>
-                                    <br>
-                                    <small class="text-muted">v{{ $bom->version }}</small>
-                                </td>
-                                <td>{{ $bom->name }}</td>
-                                <td>
-                                    <span class="badge-cat">
-                                        {{ $bom->product->name ?? 'N/A' }}
-                                    </span>
-                                </td>
-                                <td class="text-center">
-                                    <span class="num-cell">
-                                        <i class="bi bi-box-seam me-1"></i>
-                                        {{ $bom->items->count() }}
-                                    </span>
-                                </td>
-                                <td class="text-end">
-                                    <span class="num-cell fw-semibold text-dark">
-                                        ${{ number_format($totalCostUsd, 2) }}
-                                    </span>
-                                    <br>
-                                    <small class="text-muted" style="font-size: 0.65rem;">
-                                        Material: ${{ number_format($materialCostUsd, 2) }}
-                                    </small>
-                                </td>
-                                <td class="text-end">
-                                    <span class="num-cell fw-semibold text-dark">
-                                        ؋{{ number_format($totalCostAfn, 2) }}
-                                    </span>
-                                    <br>
-                                    <small class="text-muted" style="font-size: 0.65rem;">
-                                        Material: ؋{{ number_format($materialCostAfn, 2) }}
-                                    </small>
-                                </td>
-                                <td class="text-center">
-                                    <span class="status-badge {{ $bom->status }}">
-                                        <i class="bi bi-circle-fill me-1" style="font-size: 0.5rem;"></i>
-                                        {{ ucfirst($bom->status) }}
-                                    </span>
-                                    @if($bom->is_active)
-                                        <span class="badge bg-success ms-1" style="font-size: 0.6rem;">{{ __('ui.active') }}</span>
+                            <td>
+                                <a href="{{ route('bom.show', $bom) }}" class="bom-code">
+                                    {{ $bom->code }}
+                                </a>
+                                <div class="bom-name" title="{{ $bom->name }}">{{ $bom->name }}</div>
+                                <span class="bom-version">
+                                    v{{ $bom->version ?: '1.0' }}
+                                    @if(($bom->revision_sequence ?? 0) > 0)
+                                        · R{{ $bom->revision_sequence }}
                                     @endif
-                                </td>
-                                <td>
-                                    <small>
-                                        {{ $bom->createdBy->name ?? 'Unknown' }}
-                                        <br>
-                                        <span class="text-muted" style="font-size: 0.65rem;">
-                                            {{ $bom->created_at->format('d M, Y') }}
+                                </span>
+                            </td>
+
+                            <td>
+                                <div class="product-name">{{ $bom->product->name ?? 'Product unavailable' }}</div>
+                                <div class="product-meta">
+                                    {{ $bom->product->unit ?? 'finished unit' }}
+                                    @if($bom->createdBy)
+                                        · by {{ $bom->createdBy->name }}
+                                    @endif
+                                </div>
+                            </td>
+
+                            <td>
+                                @if($dimensionItem)
+                                    <div class="spec-primary">
+                                        {{ number_format((float) $dimensionItem->length_inch, 2) }}
+                                        × {{ number_format((float) $dimensionItem->width_inch, 2) }}
+                                        × {{ number_format((float) $dimensionItem->height_inch, 2) }} in
+                                    </div>
+                                @else
+                                    <div class="spec-primary text-muted">Standard / fixed formula</div>
+                                @endif
+
+                                <div class="spec-meta">
+                                    @if($gsmValues->isNotEmpty())
+                                        GSM {{ $gsmValues->implode(' / ') }}
+                                    @else
+                                        Technical recipe
+                                    @endif
+                                    @if($paperRows->count() > 0)
+                                        · {{ $paperRows->count() }} paper {{ $paperRows->count() === 1 ? 'row' : 'rows' }}
+                                    @endif
+                                </div>
+                            </td>
+
+                            <td class="text-center">
+                                <span class="material-count">
+                                    <i class="bi bi-boxes"></i>
+                                    {{ $bom->items->count() }}
+                                </span>
+                            </td>
+
+                            <td class="text-end">
+                                <div class="money-main">
+                                    {{ $materialCostAfn > 0 ? '؋'.number_format($materialCostAfn, 2) : '—' }}
+                                </div>
+                                <div class="money-meta">material / unit</div>
+                            </td>
+
+                            <td class="text-end">
+                                <div class="money-main rate">
+                                    {{ $standardRateAfn > 0 ? '؋'.number_format($standardRateAfn, 2) : '—' }}
+                                </div>
+                                <span class="work-chip">
+                                    <i class="bi bi-graph-up-arrow"></i>
+                                    {{ number_format($workPercentage, 0) }}% work/profit
+                                </span>
+                                @if($expectedProfitAfn != 0)
+                                    <div class="money-meta">
+                                        Expected {{ $expectedProfitAfn > 0 ? '+' : '-' }}؋{{ number_format(abs($expectedProfitAfn), 2) }}
+                                    </div>
+                                @endif
+                            </td>
+
+                            <td class="text-center">
+                                <span class="status-badge {{ $bom->status }}">
+                                    <i class="bi {{ $status['icon'] }}"></i>
+                                    {{ $status['label'] }}
+                                </span>
+
+                                <div>
+                                    @if($bom->locked_at)
+                                        <span class="governance-chip locked">
+                                            <i class="bi bi-lock-fill"></i> Locked
                                         </span>
-                                    </small>
-                                </td>
-                                <td>
-                                    <div class="action-buttons">
-                                        {{-- View --}}
-                                        <a href="{{ route('bom.show', $bom) }}" class="action-btn" title="{{ __('ui.view_details') }}">
-                                            <i class="bi bi-eye"></i>
-                                        </a>
+                                    @elseif($bom->is_effective)
+                                        <span class="governance-chip effective">
+                                            <i class="bi bi-lightning-charge-fill"></i> Effective
+                                        </span>
+                                    @elseif(!$bom->is_active)
+                                        <span class="governance-chip inactive">
+                                            <i class="bi bi-pause-circle"></i> Disabled
+                                        </span>
+                                    @endif
+                                </div>
+                            </td>
 
-                                        {{-- Edit --}}
-                                        <a href="{{ route('bom.edit', $bom) }}" class="action-btn" title="Edit BOM">
-                                            <i class="bi bi-pencil"></i>
-                                        </a>
+                            <td>
+                                <div class="fw-semibold" style="color:#475569;font-size:.68rem;">
+                                    {{ $bom->updated_at?->format('d M Y') ?? '—' }}
+                                </div>
+                                <div class="date-meta">
+                                    {{ $bom->updated_at?->format('H:i') ?? '' }}
+                                </div>
+                            </td>
 
-                                        {{-- Clone --}}
-                                        @if($bom->status !== 'active')
-                                            <form action="{{ route('bom.clone', $bom) }}" method="POST" class="d-inline">
-                                                @csrf
-                                                <button type="submit" class="action-btn text-success" title="{{ __('ui.clone_bom') }}"
-                                                        onclick="return confirm('Clone this BOM?')">
-                                                    <i class="bi bi-files"></i>
-                                                </button>
-                                            </form>
+                            <td class="text-end">
+                                <div class="action-buttons">
+                                    <a href="{{ route('bom.show', $bom) }}"
+                                       class="action-btn"
+                                       title="View BOM"
+                                       aria-label="View BOM">
+                                        <i class="bi bi-eye"></i>
+                                    </a>
+
+                                    @can('update bom')
+                                        @if(!$bom->locked_at)
+                                            <a href="{{ route('bom.edit', $bom) }}"
+                                               class="action-btn"
+                                               title="Edit BOM"
+                                               aria-label="Edit BOM">
+                                                <i class="bi bi-pencil"></i>
+                                            </a>
                                         @endif
 
-                                        {{-- Toggle Status --}}
-                                        <form action="{{ route('bom.toggle-status', $bom) }}" method="POST" class="d-inline">
+                                        <form action="{{ route('bom.toggle-status', $bom) }}" method="POST"
+                                              onsubmit="return confirm('{{ $bom->status === 'active' ? 'Archive' : 'Activate' }} this BOM?');">
                                             @csrf
-                                            <button type="submit" class="action-btn text-warning"
-                                                    title="{{ $bom->status === 'active' ? 'Archive' : 'Activate' }}"
-                                                    onclick="return confirm('{{ $bom->status === 'active' ? 'Archive' : 'Activate' }} this BOM?')">
-                                                <i class="bi bi-{{ $bom->status === 'active' ? 'archive' : 'check-circle' }}"></i>
+                                            <button type="submit"
+                                                    class="action-btn text-warning"
+                                                    title="{{ $bom->status === 'active' ? 'Archive BOM' : 'Activate BOM' }}"
+                                                    aria-label="{{ $bom->status === 'active' ? 'Archive BOM' : 'Activate BOM' }}">
+                                                <i class="bi bi-{{ $bom->status === 'active' ? 'archive' : 'check2-circle' }}"></i>
                                             </button>
                                         </form>
+                                    @endcan
 
-                                        {{-- Delete --}}
+                                    @can('create bom')
                                         @if($bom->status !== 'active')
-                                            <form action="{{ route('bom.destroy', $bom) }}" method="POST" class="d-inline">
+                                            <form action="{{ route('bom.clone', $bom) }}" method="POST"
+                                                  onsubmit="return confirm('Clone this BOM?');">
                                                 @csrf
-                                                @method('DELETE')
-                                                <button type="submit" class="action-btn text-danger" title="{{ __('ui.delete_bom') }}"
-                                                        onclick="return confirm('Delete this BOM? This action cannot be undone.')">
-                                                    <i class="bi bi-trash"></i>
+                                                <button type="submit"
+                                                        class="action-btn text-success"
+                                                        title="Clone BOM"
+                                                        aria-label="Clone BOM">
+                                                    <i class="bi bi-copy"></i>
                                                 </button>
                                             </form>
                                         @endif
-                                    </div>
-                                </td>
-                            </tr>
-                        @empty
-                            <tr>
-                                <td colspan="10">
-                                    <div class="text-center py-5">
-                                        <i class="bi bi-inboxes" style="font-size: 2.5rem; color: #cbd5e1; display: block; margin-bottom: 0.5rem;"></i>
-                                        <p class="text-muted">No BOMs found</p>
-                                        <a href="{{ route('bom.create') }}" class="btn btn-primary btn-sm">
-                                            <i class="bi bi-plus-circle me-1"></i> Create First BOM
-                                        </a>
-                                    </div>
-                                </td>
-                            </tr>
-                        @endforelse
-                        </tbody>
-                    </table>
-                </div>
+                                    @endcan
 
-                {{-- ─── PAGINATION ─── --}}
-                @if ($boms->hasPages())
-                    <div class="p-3 border-top">
-                        <div class="pagination-wrap">
-                            <span class="info-text">
-                                Showing {{ $boms->firstItem() ?? 0 }} to {{ $boms->lastItem() ?? 0 }} of {{ $boms->total() }} entries
-                            </span>
-                            {{ $boms->appends(request()->query())->links() }}
-                        </div>
-                    </div>
-                @endif
+                                    @can('delete bom')
+                                        @if($bom->status !== 'active' && !$bom->locked_at)
+                                            <form action="{{ route('bom.destroy', $bom) }}" method="POST"
+                                                  onsubmit="return confirm('Delete this BOM? This action cannot be undone.');">
+                                                @csrf
+                                                @method('DELETE')
+                                                <button type="submit"
+                                                        class="action-btn text-danger"
+                                                        title="Delete BOM"
+                                                        aria-label="Delete BOM">
+                                                    <i class="bi bi-trash3"></i>
+                                                </button>
+                                            </form>
+                                        @endif
+                                    @endcan
+                                </div>
+                            </td>
+                        </tr>
+                    @empty
+                        <tr>
+                            <td colspan="10">
+                                <div class="empty-state">
+                                    <i class="bi bi-diagram-3"></i>
+                                    @if(request()->filled('search') || (request()->filled('status') && request('status') !== 'all'))
+                                        <p>No BOMs match the current filters.</p>
+                                        <div class="sub-text">Try another search or reset the filters.</div>
+                                        <a href="{{ route('bom.index') }}" class="btn btn-outline-secondary btn-sm">
+                                            <i class="bi bi-arrow-counterclockwise me-1"></i> Reset Filters
+                                        </a>
+                                    @else
+                                        <p>No BOMs have been created yet.</p>
+                                        <div class="sub-text">Use the Quick BOM Builder to create the first carton specification.</div>
+                                        @can('create bom')
+                                            <a href="{{ route('bom.create') }}" class="btn btn-primary btn-sm">
+                                                <i class="bi bi-plus-lg me-1"></i> Create First BOM
+                                            </a>
+                                        @endcan
+                                    @endif
+                                </div>
+                            </td>
+                        </tr>
+                    @endforelse
+                    </tbody>
+                </table>
             </div>
+
+            @if($boms->hasPages())
+                <div class="pagination-wrap">
+                    <span class="info-text">
+                        Showing {{ $boms->firstItem() ?? 0 }}–{{ $boms->lastItem() ?? 0 }}
+                        of {{ $boms->total() }} BOMs
+                    </span>
+                    {{ $boms->links('pagination::bootstrap-5') }}
+                </div>
+            @elseif($boms->total() > 0)
+                <div class="pagination-wrap">
+                    <span class="info-text">
+                        Showing all {{ $boms->total() }} {{ $boms->total() === 1 ? 'BOM' : 'BOMs' }}
+                    </span>
+                </div>
+            @endif
         </div>
     </div>
-@endsection
-
-@section('js')
-    <script src="{{ asset('vendor/datatables/js/jquery.dataTables.min.js') }}"></script>
-    <script>
-        $(document).ready(function() {
-            // DataTables does not support colspan rows inside tbody. When the
-            // active business has no BOMs, keep the server-rendered empty state
-            // and do not initialize DataTables against that placeholder row.
-            @if($boms->count() > 0)
-            const table = $('#bom-table').DataTable({
-                pageLength: 15,
-                lengthChange: false,
-                ordering: true,
-                searching: true,
-                order: [[0, 'desc']],
-                language: {
-                    search: '',
-                    searchPlaceholder: 'Search BOMs...',
-                    info: 'Showing _START_ to _END_ of _TOTAL_ entries',
-                    infoEmpty: 'No BOMs found',
-                    infoFiltered: '(filtered from _MAX_ total)',
-                },
-                columnDefs: [
-                    { orderable: false, targets: [4, 5, 6, 7, 8, 9] }
-                ],
-                // Custom styling for search
-                dom: '<"d-flex justify-content-between align-items-center flex-wrap gap-2"lf>tip',
-                drawCallback: function() {
-                    // Re-apply any custom styling after draw
-                    $('.dataTables_filter input').addClass('form-control form-control-sm');
-                    $('.dataTables_filter input').attr('placeholder', 'Search BOMs...');
-                }
-            });
-
-            // Move the search input to match our design
-            $('.dataTables_filter input').addClass('form-control form-control-sm');
-            $('.dataTables_filter input').attr('placeholder', 'Search BOMs...');
-
-            // Handle window resize for responsive table
-            $(window).resize(function() {
-                table.columns.adjust();
-            });
-            @endif
-        });
-
-        // ─── SWEET ALERT FOR DELETE CONFIRMATION ───
-        document.addEventListener('DOMContentLoaded', function() {
-            // Attach to all delete buttons with class 'action-btn text-danger'
-            document.querySelectorAll('.action-btn.text-danger').forEach(function(btn) {
-                btn.addEventListener('click', function(e) {
-                    // Check if this is a delete button (has trash icon)
-                    const icon = this.querySelector('i');
-                    if (icon && icon.classList.contains('bi-trash')) {
-                        e.preventDefault();
-                        const form = this.closest('form');
-                        if (form) {
-                            Swal.fire({
-                                title: 'Are you sure?',
-                                text: "This action cannot be undone!",
-                                icon: 'warning',
-                                showCancelButton: true,
-                                confirmButtonColor: '#dc2626',
-                                cancelButtonColor: '#6b7280',
-                                confirmButtonText: 'Yes, delete it!',
-                                cancelButtonText: 'Cancel'
-                            }).then((result) => {
-                                if (result.isConfirmed) {
-                                    form.submit();
-                                }
-                            });
-                        }
-                    }
-                });
-            });
-        });
-    </script>
 @endsection
