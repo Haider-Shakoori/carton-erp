@@ -583,6 +583,9 @@ class ProductionOrderController extends Controller
                             'current_actual_quantity' => (float) ($current->actual_quantity ?? 0),
                             'current_wastage_quantity' => (float) ($current->wastage_quantity ?? 0),
                             'is_roll_based' => $rollMaterialIds->contains($materialId),
+                            'is_formula_based' => (bool) ($row['is_formula_based'] ?? false),
+                            'formula_types' => $row['formula_types'] ?? [],
+                            'consumption_source' => (string) ($row['consumption_source'] ?? 'manual'),
                             'reel_options' => $reelOptions,
                         ];
                     }
@@ -1064,6 +1067,7 @@ class ProductionOrderController extends Controller
                 'materials.*.material_id' => 'required|integer|distinct|exists:products,id',
                 'materials.*.actual_quantity' => 'nullable|numeric|min:0|max:999999999.999999',
                 'materials.*.wastage_quantity' => 'nullable|numeric|min:0|max:999999999.999999',
+                'materials.*.use_measured_actual' => 'nullable|boolean',
                 'materials.*.unit' => 'nullable|string|max:50',
                 'materials.*.use_reel_selection' => 'nullable|boolean',
                 'materials.*.selection_note' => 'nullable|string|max:1000',
@@ -1146,27 +1150,33 @@ class ProductionOrderController extends Controller
                     $materialId = (int) $row['material_id'];
                     $isRollBased = $rollMaterialIds->contains($materialId);
                     $autoRequirement = $autoRequirements->get($materialId);
+                    $isFormulaBased = (bool) ($autoRequirement['is_formula_based'] ?? false);
+                    $useMeasuredActual = ! $isRollBased
+                        && $isFormulaBased
+                        && (bool) ($row['use_measured_actual'] ?? false);
 
-                    if ($isRollBased && ! $autoRequirement) {
+                    if (($isRollBased || $isFormulaBased) && ! $autoRequirement) {
                         throw \Illuminate\Validation\ValidationException::withMessages([
-                            'materials' => "Could not calculate paper consumption for material #{$materialId}.",
+                            'materials' => "Could not calculate standard consumption for material #{$materialId}.",
                         ]);
                     }
 
-                    // Large paper reels are left on the corrugator between jobs
-                    // and cannot be weighed per production. Their completion
-                    // quantity is therefore calculated from the frozen BOM and
-                    // ACTUAL MANUFACTURED quantity (good + rejected). Operator
-                    // actuals remain available only for measurable materials.
                     $actualProvided = array_key_exists('actual_quantity', $row)
                         && $row['actual_quantity'] !== null
                         && $row['actual_quantity'] !== '';
 
-                    $actualQuantity = $isRollBased
+                    // Standard formula is the normal production source of truth.
+                    // Roll paper is always automatic. Formula-based non-roll
+                    // materials (for example adhesive ingredients) are automatic
+                    // unless the operator explicitly switches to a measured actual.
+                    $usesStandardFormula = $isRollBased
+                        || ($isFormulaBased && ! $useMeasuredActual);
+
+                    $actualQuantity = $usesStandardFormula
                         ? (float) ($autoRequirement['quantity'] ?? 0)
                         : (float) ($row['actual_quantity'] ?? 0);
 
-                    $wastageQuantity = $isRollBased
+                    $wastageQuantity = $usesStandardFormula
                         ? (float) ($autoRequirement['wastage_quantity'] ?? 0)
                         : (float) ($row['wastage_quantity'] ?? 0);
 
@@ -1176,6 +1186,9 @@ class ProductionOrderController extends Controller
                         'wastage_quantity' => $wastageQuantity,
                         'unit' => $row['unit'] ?? ($autoRequirement['unit'] ?? null),
                         'is_roll_based' => $isRollBased,
+                        'is_formula_based' => $isFormulaBased,
+                        'uses_standard_formula' => $usesStandardFormula,
+                        'use_measured_actual' => $useMeasuredActual,
                         'actual_provided' => $actualProvided,
                         // Exact physical reel declaration remains an advanced,
                         // optional allocation control. It never changes the
@@ -1198,9 +1211,9 @@ class ProductionOrderController extends Controller
             }
 
             foreach ($submittedMaterials as $index => $row) {
-                if (! $row['is_roll_based'] && ! $row['actual_provided']) {
+                if (! $row['uses_standard_formula'] && ! $row['actual_provided']) {
                     throw \Illuminate\Validation\ValidationException::withMessages([
-                        "materials.{$index}.actual_quantity" => 'Enter the actual quantity used for this measurable material.',
+                        "materials.{$index}.actual_quantity" => 'Enter the measured actual quantity or use the standard consumption formula.',
                     ]);
                 }
 
@@ -1272,7 +1285,7 @@ class ProductionOrderController extends Controller
                 );
             }
 
-            $message .= ' Stock and actual production cost were reconciled. Roll-paper consumption was calculated automatically from manufactured quantity; measurable materials used the operator actuals. Physical reel allocation remains FIFO unless reconciled separately.';
+            $message .= ' Stock and actual production cost were reconciled. Standard-formula paper and mixing materials were calculated from manufactured quantity and deducted/reconciled automatically; measured overrides were used only where explicitly entered. Physical reel allocation remains FIFO unless reconciled separately.';
 
             if ($sale) {
                 $message .= ' The final invoice quantity uses the good/usable finished quantity.';
