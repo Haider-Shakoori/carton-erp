@@ -226,7 +226,18 @@ class ProductionOrder extends Model
         return $costPerUnit * (1 + ($profitMargin / 100));
     }
 
+    /**
+     * Legacy primary-sale pointer retained for compatibility.
+     */
     public function sale()
+    {
+        return $this->hasOne(Sale::class, 'production_order_id');
+    }
+
+    /**
+     * Authoritative owning sale for multi-line production.
+     */
+    public function owningSale()
     {
         return $this->belongsTo(Sale::class, 'sale_id');
     }
@@ -242,7 +253,7 @@ class ProductionOrder extends Model
      */
     public function resolveSale(array $with = []): ?Sale
     {
-        $query = $this->sale();
+        $query = $this->owningSale();
         if ($with !== []) {
             $query->with($with);
         }
@@ -252,7 +263,7 @@ class ProductionOrder extends Model
             return $sale;
         }
 
-        $legacy = Sale::query()->where('production_order_id', $this->id);
+        $legacy = $this->sale();
         if ($with !== []) {
             $legacy->with($with);
         }
@@ -288,7 +299,7 @@ class ProductionOrder extends Model
     public function hasSale()
     {
         return $this->sale_id !== null
-            || Sale::query()->where('production_order_id', $this->id)->exists()
+            || $this->sale()->exists()
             || $this->resolveSale() !== null;
     }
 }
