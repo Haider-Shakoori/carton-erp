@@ -514,10 +514,15 @@ it('uses standard formula consumption to reconcile paper and adhesive stock at c
 
     foreach ($fx['mixing'] as $material) {
         $requirement = $expected->get($material->id);
+        $batch = PurchaseItem::where('product_id', $material->id)->firstOrFail();
 
         expect($requirement)->not->toBeNull()
             ->and((bool) ($requirement['is_formula_based'] ?? false))->toBeTrue()
-            ->and($requirement['consumption_source'] ?? null)->toBe('standard_formula');
+            ->and($requirement['consumption_source'] ?? null)->toBe('standard_formula')
+            // Initial stock is 500 kg. Completion must leave inventory reduced
+            // by the standard-formula quantity for the actual manufactured run.
+            ->and((float) $batch->fresh()->qty_available)
+            ->toEqualWithDelta(500 - (float) $requirement['quantity'], 0.001);
     }
 
     expect($production->fresh()->status)->toBe('completed');
