@@ -14,34 +14,63 @@ class ProductController extends Controller
 {
     public function index()
     {
-        // Get raw materials (type = 'raw' or null for backward compatibility)
+        $arrivedStock = function ($query) {
+            $query->whereHas('purchase', function ($purchaseQuery) {
+                $purchaseQuery->where('status', 'arrived');
+            });
+        };
+
+        // The page uses client-side DataTables. Return the complete catalog
+        // instead of pre-paginating to 15 rows (which made later records
+        // impossible to reach from the UI).
         $rawProducts = Product::with('category')
             ->withCount('purchaseItems')
-            ->where(function($query) {
-                $query->where('type', 'raw_material')
-                    ->orWhereNull('type'); // For backward compatibility
+            ->withSum(['purchaseItems as catalog_current_stock' => $arrivedStock], 'qty_available')
+            ->where(function ($query) {
+                $query->where('type', Product::TYPE_RAW_MATERIAL)
+                    ->orWhereNull('type');
             })
             ->latest()
-            ->paginate(15);
+            ->get();
 
-        // Get finished goods (type = 'finished')
         $finishedProducts = Product::with('category')
             ->withCount('purchaseItems')
-            ->where('type', 'finished_good')
+            ->where('type', Product::TYPE_FINISHED_GOOD)
             ->latest()
-            ->paginate(15);
-        // Total products count (only the paginator metadata is used by the view)
-        $allProducts = Product::latest()->paginate(15);
-        // Get categories with counts
+            ->get();
+
         $categories = Category::withCount('products')
             ->latest()
-            ->paginate(15);
+            ->get();
+
+        // Keep the modal selectors complete even when the category table grows.
+        $categoryOptions = Category::query()
+            ->orderBy('name')
+            ->get(['id', 'name', 'is_active']);
+
+        $lowStockCount = $rawProducts->filter(function (Product $product): bool {
+            $currentStock = (float) ($product->catalog_current_stock ?? 0);
+
+            return (int) ($product->min_stock_alert ?? 0) > 0
+                && $currentStock <= (float) $product->min_stock_alert;
+        })->count();
+
+        $catalogStats = [
+            'total_products' => $rawProducts->count() + $finishedProducts->count(),
+            'raw_materials' => $rawProducts->count(),
+            'finished_goods' => $finishedProducts->count(),
+            'categories' => $categories->count(),
+            'active_products' => $rawProducts->where('is_active', true)->count()
+                + $finishedProducts->where('is_active', true)->count(),
+            'low_stock' => $lowStockCount,
+        ];
 
         return view('admin.products.index', compact(
             'rawProducts',
             'finishedProducts',
             'categories',
-            'allProducts'
+            'categoryOptions',
+            'catalogStats'
         ));
     }
 
@@ -69,6 +98,7 @@ class ProductController extends Controller
         try {
             $validated = $request->validate([
                 'product_id' => 'nullable|exists:products,id',
+                'type' => 'nullable|string|in:raw,raw_material,finished,finished_good,equipment,service',
                 'name' => 'required|string|max:255',
                 'category_id' => 'required|exists:categories,id',
                 'unit' => 'nullable|string|max:100',
@@ -85,6 +115,12 @@ class ProductController extends Controller
                 $validated['default_kg_per_roll'] = null;
             }
 
+            $requestedType = $validated['type'] ?? Product::TYPE_FINISHED_GOOD;
+            $validated['type'] = match ($requestedType) {
+                'raw' => Product::TYPE_RAW_MATERIAL,
+                'finished' => Product::TYPE_FINISHED_GOOD,
+                default => $requestedType,
+            };
             $validated['min_stock_alert'] = $request->min_stock_alert ?? 0;
             $validated['is_active'] = $request->has('is_active');
 
@@ -132,6 +168,7 @@ class ProductController extends Controller
     {
         try {
             $validated = $request->validate([
+                'type' => 'nullable|string|in:raw,raw_material,finished,finished_good,equipment,service',
                 'name' => 'required|string|max:255',
                 'category_id' => 'required|exists:categories,id',
                 'unit' => 'nullable|string|max:100',
@@ -148,6 +185,12 @@ class ProductController extends Controller
                 $validated['default_kg_per_roll'] = null;
             }
 
+            $requestedType = $validated['type'] ?? $product->type ?? Product::TYPE_FINISHED_GOOD;
+            $validated['type'] = match ($requestedType) {
+                'raw' => Product::TYPE_RAW_MATERIAL,
+                'finished' => Product::TYPE_FINISHED_GOOD,
+                default => $requestedType,
+            };
             $validated['min_stock_alert'] = $request->min_stock_alert ?? 0;
             $validated['is_active'] = $request->has('is_active');
 
