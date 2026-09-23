@@ -366,7 +366,9 @@ Route::middleware(['auth', InitializeBusinessUnitContext::class])->prefix('admin
         // Simple carton specification quotation (dimensions + board profile).
         Route::get('/carton-spec/options', [CartonQuotationController::class, 'options'])->name('carton-spec.options')->middleware('permission.feedback:create sales');
         Route::post('/{sale}/carton-spec/calculate', [CartonQuotationController::class, 'calculate'])->name('carton-spec.calculate')->middleware('permission.feedback:create sales');
+        Route::post('/{sale}/carton-spec/calculate-many', [CartonQuotationController::class, 'calculateMany'])->name('carton-spec.calculate-many')->middleware('permission.feedback:create sales');
         Route::post('/{sale}/carton-spec/add', [CartonQuotationController::class, 'add'])->name('carton-spec.add')->middleware('permission.feedback:create sales');
+        Route::post('/{sale}/carton-spec/add-many', [CartonQuotationController::class, 'addMany'])->name('carton-spec.add-many')->middleware('permission.feedback:create sales');
         Route::get('/', [SaleController::class, 'index'])->name('index')->middleware('permission.feedback:view sales');
         Route::get('/create', [SaleController::class, 'create'])->name('create')->middleware('permission.feedback:create sales');
         Route::post('/', [SaleController::class, 'store'])->name('store')->middleware('permission.feedback:create sales');
