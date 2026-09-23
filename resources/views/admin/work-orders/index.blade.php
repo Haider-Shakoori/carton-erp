@@ -56,10 +56,11 @@
             color: #475569;
         }
     </style>
+    <link rel="stylesheet" href="{{ asset('css/admin-index.css') }}">
 @endsection
 
 @section('content')
-    <div class="container-fluid px-3 px-md-4">
+    <div class="container-fluid px-3 px-md-4 erp-index-ui">
         <div class="page-header">
             <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3">
                 <div>
@@ -81,39 +82,33 @@
         </div>
 
         {{-- Statistics Cards --}}
-        <div class="row g-3 mb-4">
-            <div class="col-md-4">
-                <div class="stat-card">
+        <div class="stats-grid" style="grid-template-columns: repeat(3, minmax(0, 1fr));">
+            <div class="stat-card">
+                <div class="stat-top">
                     <div class="stat-icon" style="background: #e0e7ff; color: #4f46e5;">
                         <i class="bi bi-list-ul"></i>
                     </div>
-                    <div>
-                        <div class="stat-value">{{ $stats['total'] ?? 0 }}</div>
-                        <div class="stat-label">Total Work Orders</div>
-                    </div>
+                    <div class="stat-value">{{ $stats['total'] ?? 0 }}</div>
                 </div>
+                <div class="stat-label">Total Work Orders</div>
             </div>
-            <div class="col-md-4">
-                <div class="stat-card">
+            <div class="stat-card">
+                <div class="stat-top">
                     <div class="stat-icon" style="background: #fef3c7; color: #92400e;">
                         <i class="bi bi-clock"></i>
                     </div>
-                    <div>
-                        <div class="stat-value">{{ $stats['pending'] ?? 0 }}</div>
-                        <div class="stat-label">{{ __('ui.pending') }}</div>
-                    </div>
+                    <div class="stat-value">{{ $stats['pending'] ?? 0 }}</div>
                 </div>
+                <div class="stat-label">{{ __('ui.pending') }}</div>
             </div>
-            <div class="col-md-4">
-                <div class="stat-card">
+            <div class="stat-card">
+                <div class="stat-top">
                     <div class="stat-icon" style="background: #d1fae5; color: #065f46;">
                         <i class="bi bi-check2-circle"></i>
                     </div>
-                    <div>
-                        <div class="stat-value">{{ $stats['completed'] ?? 0 }}</div>
-                        <div class="stat-label">{{ __('ui.completed') }}</div>
-                    </div>
+                    <div class="stat-value">{{ $stats['completed'] ?? 0 }}</div>
                 </div>
+                <div class="stat-label">{{ __('ui.completed') }}</div>
             </div>
         </div>
 
@@ -224,13 +219,12 @@
 
             {{-- Pagination --}}
             @if($workOrders->hasPages())
-                <div class="p-3 border-top">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <div class="text-muted" style="font-size: 0.8rem;">
-                            Showing {{ $workOrders->firstItem() ?? 0 }} to {{ $workOrders->lastItem() ?? 0 }} of {{ $workOrders->total() }} entries
-                        </div>
-                        {{ $workOrders->appends(request()->query())->links() }}
-                    </div>
+                <div class="pagination-wrap">
+                    <span class="info-text">
+                        Showing {{ $workOrders->firstItem() ?? 0 }}–{{ $workOrders->lastItem() ?? 0 }}
+                        of {{ $workOrders->total() }} entries
+                    </span>
+                    {{ $workOrders->appends(request()->query())->links('pagination::bootstrap-5') }}
                 </div>
             @endif
         </div>
