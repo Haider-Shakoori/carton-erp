@@ -7,6 +7,7 @@ use App\Models\BusinessUnit;
 use App\Models\Currency;
 use App\Models\Setting;
 use App\Support\Business\BusinessUnitContext;
+use App\Services\BusinessUnitProvisioningService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 
@@ -15,15 +16,18 @@ class SettingsController extends Controller
 
     public function index()
     {
-        $setting = Setting::firstOrCreate([]);
+        $businessUnits = app(BusinessUnitProvisioningService::class)
+            ->ensureRequiredUnits();
+        $setting = Setting::firstOrCreate([])->fresh();
         $currencies = Currency::all();
-        $businessUnits = BusinessUnit::query()->active()->get();
 
         return view('admin.settings.index', compact('setting', 'currencies', 'businessUnits'));
     }
 
     public function update(Request $request)
     {
+        app(BusinessUnitProvisioningService::class)->ensureRequiredUnits();
+
         $setting = Setting::firstOrCreate([]);
         $data = $request->validate([
             'company_name' => 'nullable|string',
