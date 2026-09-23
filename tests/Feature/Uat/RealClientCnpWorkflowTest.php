@@ -404,6 +404,10 @@ it('runs the seeded CNP 5-ply carton through real-client purchase, sale, product
             'material_id' => (int) $row->material_id,
             'actual_quantity' => round($actual, 6),
             'wastage_quantity' => round($waste, 6),
+            // Standard roll-paper consumption is always system-calculated.
+            // Adhesive/mixing rows only accept a shop-floor override when the
+            // operator explicitly enables Measured Actual in the completion UI.
+            'use_measured_actual' => $isPaper ? 0 : 1,
             'unit' => (string) $row->unit,
         ];
     })->values()->all();
@@ -455,12 +459,25 @@ it('runs the seeded CNP 5-ply carton through real-client purchase, sale, product
 
     foreach ($actualMaterials as $declared) {
         $persisted = $actualRows->firstWhere('material_id', $declared['material_id']);
+        $material = Product::findOrFail((int) $declared['material_id']);
+        $isPaper = in_array($material->name, $paperNames, true);
 
-        expect($persisted)->not->toBeNull()
-            ->and(abs((float) $persisted->actual_quantity - (float) $declared['actual_quantity']))
-            ->toBeLessThan(0.001)
-            ->and(abs((float) $persisted->wastage_quantity - (float) $declared['wastage_quantity']))
-            ->toBeLessThan(0.001);
+        expect($persisted)->not->toBeNull();
+
+        if ($isPaper) {
+            $standard = $atStart->firstWhere('material_id', $declared['material_id']);
+
+            expect($standard)->not->toBeNull()
+                ->and(abs((float) $persisted->actual_quantity - (float) $standard->actual_quantity))
+                ->toBeLessThan(0.001)
+                ->and((float) $persisted->wastage_quantity)
+                ->toBe(0.0);
+        } else {
+            expect(abs((float) $persisted->actual_quantity - (float) $declared['actual_quantity']))
+                ->toBeLessThan(0.001)
+                ->and(abs((float) $persisted->wastage_quantity - (float) $declared['wastage_quantity']))
+                ->toBeLessThan(0.001);
+        }
     }
 
     $variance = app(\App\Services\ProductionVarianceService::class)
