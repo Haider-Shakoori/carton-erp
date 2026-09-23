@@ -489,7 +489,7 @@ class ProductionService
     public function startProduction($productionOrder)
     {
         return app(\App\Services\ProductionQuantityService::class)
-            ->start($productionOrder, $productionOrder->sale()->with('items')->first());
+            ->start($productionOrder, $productionOrder->resolveSale(['items']));
     }
 
     public function completeProduction(
