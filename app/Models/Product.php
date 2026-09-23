@@ -317,6 +317,24 @@ class Product extends Model
         return $this->type === self::TYPE_FINISHED_GOOD;
     }
 
+    public function intendedBusinessUnitCode(): ?string
+    {
+        if (! $this->isFinishedGood()) {
+            return null;
+        }
+
+        $this->loadMissing('category');
+
+        if (
+            $this->category?->name === 'Syrup Boxes'
+            || str_contains(strtolower((string) $this->name), 'syrup')
+        ) {
+            return 'syrup_pack';
+        }
+
+        return '3d_carton';
+    }
+
     public function getTypeLabelAttribute()
     {
         $labels = [
