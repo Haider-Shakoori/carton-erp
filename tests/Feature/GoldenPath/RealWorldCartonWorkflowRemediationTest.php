@@ -800,6 +800,7 @@ it('reduces realized profit when actual material consumption exceeds plan at the
             'material_id' => (int) $row->material_id,
             'actual_quantity' => (float) $row->actual_quantity * 1.20,
             'wastage_quantity' => 0,
+            'use_measured_actual' => true,
             'unit' => $row->unit,
         ])
         ->values()
@@ -1102,7 +1103,10 @@ it('accepts a manual selling price and quotation description without changing ph
     // Production-create commercial preview: the configured Standard Work /
     // Profit is the base profit component. Manual selling price changes are a
     // separate labelled Price Override adjustment, never production cost.
-    $systemPrice = (float) $bomSummary['selling_price_afn'];
+    // Price Override is measured from the standard/base price actually
+    // persisted on the sale line (the customer-facing accepted basis), not a
+    // higher-precision transient recalculation of the BOM summary.
+    $systemPrice = (float) ($item->original_unit_price ?: $item->base_price ?: $bomSummary['selling_price_afn']);
     $expectedOverrideAfn = (130.75 - $systemPrice) * 100;
 
     $profitBreakdown = app(\App\Services\SaleProfitService::class)
