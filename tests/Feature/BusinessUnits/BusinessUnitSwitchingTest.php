@@ -9,6 +9,7 @@ use App\Support\Business\BusinessUnitContext;
 use App\Services\BusinessUnitProvisioningService;
 use Database\Seeders\BusinessUnitSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Schema;
 
 uses(RefreshDatabase::class);
 
@@ -78,6 +79,28 @@ it('self-heals missing business units for settings and the topbar context', func
     expect($context->available()->pluck('code')->all())
         ->toBe(['3d_carton', 'syrup_pack'])
         ->and($context->current()?->code)->toBe('3d_carton');
+});
+
+it('repairs a database where the business-unit schema is missing despite migration history', function () {
+    Schema::disableForeignKeyConstraints();
+    Schema::dropIfExists('business_unit_user');
+    Schema::dropIfExists('business_units');
+    Schema::enableForeignKeyConstraints();
+
+    expect(Schema::hasTable('business_units'))->toBeFalse();
+
+    $migration = require database_path('migrations/2026_09_23_093000_repair_business_unit_schema.php');
+    $migration->up();
+
+    expect(Schema::hasTable('business_units'))->toBeTrue()
+        ->and(Schema::hasTable('business_unit_user'))->toBeTrue()
+        ->and(BusinessUnit::query()->active()->pluck('code')->all())
+        ->toBe(['3d_carton', 'syrup_pack']);
+
+    $setting = Setting::firstOrCreate([]);
+
+    expect((int) $setting->fresh()->default_business_unit_id)
+        ->toBe((int) BusinessUnit::query()->where('code', '3d_carton')->value('id'));
 });
 
 it('renders and persists business-unit settings through the real settings HTTP flow', function () {
