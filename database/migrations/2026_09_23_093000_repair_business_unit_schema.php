@@ -176,6 +176,19 @@ return new class extends Migration
             return;
         }
 
+        // A damaged/partially restored database can have the settings table
+        // but no singleton row yet. Repair that state as well so the default
+        // workspace is valid immediately after this recovery migration.
+        if (! DB::table('settings')->exists()) {
+            DB::table('settings')->insert([
+                'default_business_unit_id' => $cartonId,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+
+            return;
+        }
+
         DB::table('settings')
             ->where(function ($query) {
                 $query->whereNull('default_business_unit_id')
