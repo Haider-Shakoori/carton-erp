@@ -1204,11 +1204,14 @@
                                         </div>
                                         <span class="badge bg-light text-dark border">BOM remains the planned baseline</span>
                                     </div>
-                                    <div class="text-muted small mb-2">Enter the quantity that physically left inventory for every material allocated to this work order.</div>
+                                    <div class="text-muted small mb-2">
+                                        Paper reels are calculated automatically from the actual manufactured quantity.
+                                        Enter shop-floor actuals only for materials that can realistically be measured.
+                                    </div>
                                 <div class="alert alert-info py-2 px-3 mb-3 small">
-                                    <strong>Difference = Actual Consumed − BOM Planned.</strong>
-                                    Positive means over-consumption; negative means consumption below plan.
-                                    Waste is a classified part of Actual Consumed and is never added a second time.
+                                    <strong>Roll paper: no weighing required.</strong>
+                                    The ERP scales the frozen BOM requirement to Manufactured Qty (good + rejected) and reconciles FIFO/reel inventory automatically.
+                                    Measurable mixing/auxiliary materials can still be corrected manually.
                                 </div>
 
                                 @error('materials')<div class="alert alert-danger py-2">{{ $message }}</div>@enderror
@@ -1230,13 +1233,16 @@
                                             @forelse($completionMaterials as $index => $material)
                                                 @php
                                                     $hasReels = !empty($material['reel_options']);
+                                                    $isRollBased = (bool) ($material['is_roll_based'] ?? false);
                                                     $useReelSelection = $hasReels
                                                         ? (bool) old('materials.'.$index.'.use_reel_selection', false)
                                                         : false;
-                                                    $actualInputValue = old(
-                                                        'materials.'.$index.'.actual_quantity',
-                                                        $material['current_actual_quantity']
-                                                    );
+                                                    $actualInputValue = $isRollBased
+                                                        ? old('materials.'.$index.'.actual_quantity', $material['planned_quantity'])
+                                                        : old('materials.'.$index.'.actual_quantity', $material['current_actual_quantity']);
+                                                    $wastageInputValue = $isRollBased
+                                                        ? old('materials.'.$index.'.wastage_quantity', $material['planned_wastage_quantity'] ?? 0)
+                                                        : old('materials.'.$index.'.wastage_quantity', $material['current_wastage_quantity']);
                                                     $initialVariance = is_numeric($actualInputValue)
                                                         ? ((float) $actualInputValue - (float) $material['planned_quantity'])
                                                         : null;
@@ -1244,7 +1250,13 @@
                                                 <tr class="completion-material-row" data-material-row>
                                                     <td>
                                                         <div class="fw-semibold">{{ $material['material_name'] }}</div>
-                                                        <div class="small text-muted">Production material from BOM/planned snapshot</div>
+                                                        @if($isRollBased)
+                                                            <div class="small text-success fw-semibold">
+                                                                <i class="bi bi-magic me-1"></i> System-calculated roll paper
+                                                            </div>
+                                                        @else
+                                                            <div class="small text-muted">Measurable production material</div>
+                                                        @endif
                                                         <input type="hidden" name="materials[{{ $index }}][material_id]" value="{{ $material['material_id'] }}">
                                                         <input type="hidden" name="materials[{{ $index }}][unit]" value="{{ $material['unit'] }}">
                                                     </td>
@@ -1253,38 +1265,74 @@
                                                         <div class="small text-muted">{{ $material['unit'] }}</div>
                                                     </td>
                                                     <td>
-                                                        <div class="d-flex align-items-center gap-2">
-                                                            <input type="number"
-                                                                   class="form-control actual-consumption-input completion-actual-input @error('materials.'.$index.'.actual_quantity') is-invalid @enderror"
+                                                        @if($isRollBased)
+                                                            <input type="hidden"
+                                                                   class="actual-consumption-input auto-roll-consumption"
                                                                    name="materials[{{ $index }}][actual_quantity]"
                                                                    value="{{ $actualInputValue }}"
-                                                                   min="0"
-                                                                   step="0.000001"
+                                                                   data-auto-roll="1"
                                                                    data-planned="{{ (float) $material['planned_quantity'] }}"
-                                                                   data-current="{{ (float) $material['current_actual_quantity'] }}"
+                                                                   data-planned-run="{{ (float) ($material['planned_run_quantity'] ?? 0) }}"
                                                                    data-unit="{{ $material['unit'] }}"
                                                                    data-variance-target="materialVariance{{ $index }}"
-                                                                   data-variance-status-target="materialVarianceStatus{{ $index }}"
-                                                                   required>
-                                                            <button type="button"
-                                                                    class="btn btn-outline-secondary completion-quick-action use-bom-plan"
-                                                                    title="Copy BOM planned quantity into Actual Consumed">
-                                                                Use Plan
-                                                            </button>
-                                                        </div>
-                                                        @error('materials.'.$index.'.actual_quantity')<div class="invalid-feedback">{{ $message }}</div>@enderror
-                                                        <div class="form-text">Authoritative total that will remain deducted from inventory.</div>
+                                                                   data-variance-status-target="materialVarianceStatus{{ $index }}">
+                                                            <div class="border rounded-3 px-3 py-2 bg-light">
+                                                                <div class="d-flex align-items-center justify-content-between gap-2">
+                                                                    <span class="small text-muted">Calculated</span>
+                                                                    <strong class="text-primary auto-roll-consumption-display">
+                                                                        {{ number_format((float) $actualInputValue, 4) }} {{ $material['unit'] }}
+                                                                    </strong>
+                                                                </div>
+                                                            </div>
+                                                            <div class="form-text">Updates automatically when Manufactured Qty changes.</div>
+                                                        @else
+                                                            <div class="d-flex align-items-center gap-2">
+                                                                <input type="number"
+                                                                       class="form-control actual-consumption-input completion-actual-input @error('materials.'.$index.'.actual_quantity') is-invalid @enderror"
+                                                                       name="materials[{{ $index }}][actual_quantity]"
+                                                                       value="{{ $actualInputValue }}"
+                                                                       min="0"
+                                                                       step="0.000001"
+                                                                       data-planned="{{ (float) $material['planned_quantity'] }}"
+                                                                       data-unit="{{ $material['unit'] }}"
+                                                                       data-variance-target="materialVariance{{ $index }}"
+                                                                       data-variance-status-target="materialVarianceStatus{{ $index }}"
+                                                                       required>
+                                                                <button type="button"
+                                                                        class="btn btn-outline-secondary completion-quick-action use-bom-plan"
+                                                                        title="Copy BOM planned quantity into Actual Consumed">
+                                                                    Use Plan
+                                                                </button>
+                                                            </div>
+                                                            @error('materials.'.$index.'.actual_quantity')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                                                            <div class="form-text">Enter the quantity physically used on the shop floor.</div>
+                                                        @endif
                                                     </td>
                                                     <td>
-                                                        <input type="number"
-                                                               class="form-control @error('materials.'.$index.'.wastage_quantity') is-invalid @enderror"
-                                                               name="materials[{{ $index }}][wastage_quantity]"
-                                                               value="{{ old('materials.'.$index.'.wastage_quantity', $material['current_wastage_quantity']) }}"
-                                                               min="0"
-                                                               step="0.000001"
-                                                               required>
-                                                        @error('materials.'.$index.'.wastage_quantity')<div class="invalid-feedback">{{ $message }}</div>@enderror
-                                                        <div class="form-text">Must be part of Actual Consumed.</div>
+                                                        @if($isRollBased)
+                                                            <input type="hidden"
+                                                                   class="auto-roll-wastage"
+                                                                   name="materials[{{ $index }}][wastage_quantity]"
+                                                                   value="{{ $wastageInputValue }}"
+                                                                   data-planned-wastage="{{ (float) ($material['planned_wastage_quantity'] ?? 0) }}"
+                                                                   data-planned-run="{{ (float) ($material['planned_run_quantity'] ?? 0) }}">
+                                                            <div class="small text-muted">
+                                                                Included in system formula
+                                                                <div class="fw-semibold text-dark auto-roll-wastage-display">
+                                                                    {{ number_format((float) $wastageInputValue, 4) }} {{ $material['unit'] }}
+                                                                </div>
+                                                            </div>
+                                                        @else
+                                                            <input type="number"
+                                                                   class="form-control @error('materials.'.$index.'.wastage_quantity') is-invalid @enderror"
+                                                                   name="materials[{{ $index }}][wastage_quantity]"
+                                                                   value="{{ $wastageInputValue }}"
+                                                                   min="0"
+                                                                   step="0.000001"
+                                                                   required>
+                                                            @error('materials.'.$index.'.wastage_quantity')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                                                            <div class="form-text">Must be part of Actual Consumed.</div>
+                                                        @endif
                                                     </td>
                                                     <td>
                                                         <div class="fw-bold {{ $initialVariance !== null && $initialVariance > 0.000001 ? 'text-danger' : ($initialVariance !== null && $initialVariance < -0.000001 ? 'text-success' : 'text-muted') }}"
@@ -1316,7 +1364,7 @@
                                                                     data-bs-target="#reelDetails{{ $index }}"
                                                                     aria-expanded="{{ $useReelSelection ? 'true' : 'false' }}"
                                                                     aria-controls="reelDetails{{ $index }}">
-                                                                <i class="bi bi-box-seam me-1"></i> Reel details
+                                                                <i class="bi bi-box-seam me-1"></i> Reel tracking
                                                             </button>
                                                         @endif
                                                     </td>
@@ -1340,7 +1388,7 @@
                                                                             Use physical reel declaration
                                                                         </label>
                                                                         <div class="form-text">
-                                                                            Optional. Leave this off to retain normal FIFO allocation. Turn it on only when the operator is declaring the exact physical reel(s) used.
+                                                                            Advanced/optional. Normal production requires no reel weighing and uses automatic FIFO allocation. Turn this on only when the operator genuinely knows the exact reel allocation or has a measured remainder.
                                                                         </div>
                                                                     </div>
 
@@ -1352,7 +1400,7 @@
                                                                         @enderror
 
                                                                         <div class="alert alert-light border py-2 px-3 small mb-3">
-                                                                            Select usage manually from the visible reel list below. No barcode or scanner workflow is used.
+                                                                            This does not replace the ERP's calculated total paper consumption. It only lets you identify the physical reel allocation or record an observed remainder for reconciliation.
                                                                         </div>
 
                                                                         <div class="table-responsive border rounded-3">
@@ -2248,12 +2296,50 @@
                 syncCompletionSummary();
             };
 
-            document.querySelectorAll('.actual-consumption-input').forEach(function(input) {
-                input.addEventListener('input', function() {
+            const syncAutomaticRollConsumption = function() {
+                const manufacturedInput = document.getElementById('quantity_manufactured');
+                const manufactured = Number(manufacturedInput ? manufacturedInput.value : 0);
+
+                document.querySelectorAll('.auto-roll-consumption').forEach(function(input) {
+                    const planned = Number(input.dataset.planned || 0);
+                    const plannedRun = Number(input.dataset.plannedRun || 0);
+                    const calculated = plannedRun > 0 && Number.isFinite(manufactured)
+                        ? planned * (manufactured / plannedRun)
+                        : planned;
+
+                    input.value = Math.max(calculated, 0).toFixed(6);
+                    const display = input.parentElement.querySelector('.auto-roll-consumption-display');
+                    if (display) {
+                        display.textContent = Number(input.value).toFixed(4) + ' ' + (input.dataset.unit || '');
+                    }
                     syncMaterialVariance(input);
                 });
+
+                document.querySelectorAll('.auto-roll-wastage').forEach(function(input) {
+                    const plannedWaste = Number(input.dataset.plannedWastage || 0);
+                    const plannedRun = Number(input.dataset.plannedRun || 0);
+                    const calculatedWaste = plannedRun > 0 && Number.isFinite(manufactured)
+                        ? plannedWaste * (manufactured / plannedRun)
+                        : plannedWaste;
+
+                    input.value = Math.max(calculatedWaste, 0).toFixed(6);
+                    const display = input.parentElement.querySelector('.auto-roll-wastage-display');
+                    if (display) {
+                        display.textContent = Number(input.value).toFixed(4) + ' kg';
+                    }
+                });
+            };
+
+            document.querySelectorAll('.actual-consumption-input').forEach(function(input) {
+                if (input.dataset.autoRoll !== '1') {
+                    input.addEventListener('input', function() {
+                        syncMaterialVariance(input);
+                    });
+                }
                 syncMaterialVariance(input);
             });
+
+            syncAutomaticRollConsumption();
 
             document.querySelectorAll('.use-bom-plan').forEach(function(button) {
                 button.addEventListener('click', function() {
@@ -2295,9 +2381,17 @@
 
             ['quantity_manufactured', 'quantity_produced', 'quantity_rejected'].forEach(function(id) {
                 const input = document.getElementById(id);
-                if (input) input.addEventListener('input', syncOutputCheck);
+                if (input) {
+                    input.addEventListener('input', function() {
+                        syncOutputCheck();
+                        if (id === 'quantity_manufactured') {
+                            syncAutomaticRollConsumption();
+                        }
+                    });
+                }
             });
             syncOutputCheck();
+            syncAutomaticRollConsumption();
 
             const productionCompletionForm = document.getElementById('productionCompletionForm');
             if (productionCompletionForm) {

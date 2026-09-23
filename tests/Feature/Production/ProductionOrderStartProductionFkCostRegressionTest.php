@@ -336,7 +336,7 @@ it('keeps the legacy BOM-template fallback working when no frozen snapshot exist
         ->and($pmc->first()->sale_id)->toBeNull();
 });
 
-it('completes production from operator-entered output and actual material consumption', function () {
+it('calculates roll-paper completion from manufactured output instead of operator-entered kg', function () {
     $fx = startProductionFixtures();
     Auth::login($fx['user']);
 
@@ -355,8 +355,10 @@ it('completes production from operator-entered output and actual material consum
             'quantity_rejected' => 0.10,
             'materials' => [[
                 'material_id' => $fx['materialId'],
-                'actual_quantity' => 1.20,
-                'wastage_quantity' => 0.05,
+                // Deliberately bogus browser values: roll paper must ignore
+                // operator-entered kg and use the frozen production formula.
+                'actual_quantity' => 99.00,
+                'wastage_quantity' => 50.00,
                 'unit' => 'kg',
             ]],
         ]
@@ -378,12 +380,14 @@ it('completes production from operator-entered output and actual material consum
         ->and((float) $order->quantity_produced)->toBe(1.00)
         ->and((float) $order->quantity_rejected)->toBe(0.10)
         ->and(abs((float) $order->yield_percentage - 90.9090909))->toBeLessThan(0.001)
-        ->and(abs((float) $consumptions->sum('actual_quantity') - 1.20))->toBeLessThan(0.0001)
-        ->and(abs((float) $consumptions->sum('wastage_quantity') - 0.05))->toBeLessThan(0.0001)
-        ->and(abs((float) $batch->qty_kg_available - 23998.80))->toBeLessThan(0.001);
+        // Planned requirement is 1.0316 kg for 1.00 manufactured unit.
+        // 1.10 manufactured units therefore consume 1.13476 kg.
+        ->and(abs((float) $consumptions->sum('actual_quantity') - 1.13476))->toBeLessThan(0.0002)
+        ->and(abs((float) $consumptions->sum('wastage_quantity')))->toBeLessThan(0.0001)
+        ->and(abs((float) $batch->qty_kg_available - 23998.86524))->toBeLessThan(0.002);
 });
 
-it('restores unused FIFO stock when operator-entered actual material use is below the start allocation', function () {
+it('restores unused FIFO roll stock when manufactured output is below the planned run', function () {
     $fx = startProductionFixtures();
     Auth::login($fx['user']);
 
@@ -397,13 +401,12 @@ it('restores unused FIFO stock when operator-entered actual material use is belo
         '/admin/production-orders/'.$order->id.'/complete',
         'POST',
         [
-            'quantity_manufactured' => 1.00,
-            'quantity_produced' => 0.95,
+            'quantity_manufactured' => 0.80,
+            'quantity_produced' => 0.75,
             'quantity_rejected' => 0.05,
             'materials' => [[
                 'material_id' => $fx['materialId'],
-                'actual_quantity' => 0.80,
-                'wastage_quantity' => 0.02,
+                // No paper weight is required from the operator.
                 'unit' => 'kg',
             ]],
         ]
@@ -414,9 +417,10 @@ it('restores unused FIFO stock when operator-entered actual material use is belo
     $consumptions = ProductionMaterialConsumption::where('production_order_id', $order->id)->get();
     $batch = PurchaseItem::findOrFail($fx['purchaseItemId']);
 
-    expect(abs((float) $consumptions->sum('actual_quantity') - 0.80))->toBeLessThan(0.0001)
-        ->and(abs((float) $consumptions->sum('wastage_quantity') - 0.02))->toBeLessThan(0.0001)
-        ->and(abs((float) $batch->qty_kg_available - 23999.20))->toBeLessThan(0.001);
+    // 1.0316 kg planned × 0.80 manufactured / 1.00 planned = 0.82528 kg.
+    expect(abs((float) $consumptions->sum('actual_quantity') - 0.82528))->toBeLessThan(0.0002)
+        ->and(abs((float) $consumptions->sum('wastage_quantity')))->toBeLessThan(0.0001)
+        ->and(abs((float) $batch->qty_kg_available - 23999.17472))->toBeLessThan(0.002);
 });
 
 it('rejects completion when manufactured quantity does not equal good plus rejected', function () {

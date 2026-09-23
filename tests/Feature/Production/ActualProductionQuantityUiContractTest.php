@@ -1,6 +1,6 @@
 <?php
 
-it('requires real output and actual material consumption at production completion', function () {
+it('uses real output, automatic roll-paper consumption and measurable-material actuals at completion', function () {
     $source = file_get_contents(resource_path('views/admin/production-orders/show.blade.php'));
 
     expect($source)
@@ -17,11 +17,16 @@ it('requires real output and actual material consumption at production completio
         ->toContain('BOM Planned')
         ->toContain('Actual Consumed')
         ->toContain('Waste within Actual')
-        ->toContain('Difference = Actual Consumed − BOM Planned.')
+        ->toContain('Roll paper: no weighing required.')
+        ->toContain('System-calculated roll paper')
+        ->toContain('data-auto-roll="1"')
+        ->toContain('data-planned-run="{{ (float) ($material[\'planned_run_quantity\'] ?? 0) }}"')
+        ->toContain('syncAutomaticRollConsumption')
+        ->toContain('Updates automatically when Manufactured Qty changes.')
         ->toContain('data-variance-target="materialVariance{{ $index }}"')
-        ->toContain('Reel details')
+        ->toContain('Reel tracking')
         ->toContain('Use physical reel declaration')
-        ->toContain('No barcode or scanner workflow is used.')
+        ->toContain('Advanced/optional. Normal production requires no reel weighing')
         ->toContain('name="materials[{{ $index }}][use_reel_selection]"')
         ->toContain('[consumed_kg]')
         ->toContain('[final_remaining_kg]')
@@ -33,7 +38,6 @@ it('requires real output and actual material consumption at production completio
         ->toContain('FIFO Actuals')
         ->toContain('id="completionOutputCheck"')
         ->toContain('class="btn btn-outline-secondary completion-quick-action use-bom-plan"')
-        ->toContain('data-current="{{ (float) $material[\'current_actual_quantity\'] }}"')
         ->toContain('id="completionSummaryPanel"')
         ->toContain('#completeProductionModal .completion-modal-content > form')
         ->toContain('#completeProductionModal .modal-body')
