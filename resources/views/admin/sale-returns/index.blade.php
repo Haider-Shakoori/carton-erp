@@ -8,10 +8,11 @@
     <link href="{{ asset('vendor/fonts/inter/inter.css') }}"
         rel="stylesheet">
     <link rel="stylesheet" href="{{ asset('css/custom.css') }}">
+    <link rel="stylesheet" href="{{ asset('css/admin-index.css') }}">
 @endsection
 
 @section('content')
-    <div class="container-fluid px-3 px-md-4">
+    <div class="container-fluid px-3 px-md-4 erp-index-ui">
 
         {{-- PAGE HEADER --}}
         <div class="page-header">
@@ -130,7 +131,7 @@
                     <i class="bi bi-search me-1"></i> {{ __('ui.search') }}
                 </button>
 
-                @if (request()->anyFilled(['search', 'status']) && request('status') != 'all')
+                @if (request()->filled('search') || (request()->filled('status') && request('status') !== 'all'))
                     <a href="{{ route('admin.sale-returns.index') }}" class="btn-filter btn-outline-secondary">
                         <i class="bi bi-arrow-counterclockwise me-1"></i> {{ __('ui.reset') }}
                     </a>
