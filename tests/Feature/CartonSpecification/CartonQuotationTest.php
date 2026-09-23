@@ -267,6 +267,117 @@ it('adds a frozen carton specification and technical BOM to a draft sale', funct
         ->and((float) $item->total)->toBeGreaterThan(0);
 });
 
+it('previews several carton sizes with standard price and per-size override', function () {
+    $fx = cqFixture();
+    $controller = app(CartonQuotationController::class);
+
+    $payload = [
+        'product_id' => $fx['finished']->id,
+        'box_style' => 'RSC',
+        'dimension_unit' => 'cm',
+        'board_profile_id' => $fx['profile']->id,
+        'ply' => 5,
+        'printing_option' => 'none',
+        'wastage_percentage' => 5,
+        'work_percentage' => 40,
+        'sizes' => [
+            [
+                'name' => '120ml',
+                'length' => 20,
+                'width' => 15,
+                'height' => 12,
+                'quantity' => 1000,
+            ],
+            [
+                'name' => '250ml',
+                'length' => 30,
+                'width' => 20,
+                'height' => 15,
+                'quantity' => 500,
+                'quoted_unit_price' => 75,
+            ],
+        ],
+    ];
+
+    $response = $controller->calculateMany(
+        cqRequest('/admin/sales/'.$fx['sale']->id.'/carton-spec/calculate-many', 'POST', $payload),
+        $fx['sale']
+    );
+
+    $data = $response->getData(true);
+
+    expect($response->getStatusCode())->toBe(200)
+        ->and($data['success'])->toBeTrue()
+        ->and($data['data']['previews'])->toHaveCount(2)
+        ->and($data['data']['previews'][0]['size_name'])->toBe('120ml')
+        ->and((float) $data['data']['previews'][0]['standard_unit_price'])->toBeGreaterThan(0)
+        ->and((float) $data['data']['previews'][0]['price_override'])->toEqualWithDelta(0, 0.0001)
+        ->and($data['data']['previews'][1]['size_name'])->toBe('250ml')
+        ->and((float) $data['data']['previews'][1]['effective_unit_price'])->toBe(75.0)
+        ->and((float) $data['data']['previews'][1]['price_override'])
+        ->toEqualWithDelta(
+            75.0 - (float) $data['data']['previews'][1]['standard_unit_price'],
+            0.0001
+        );
+});
+
+it('adds several size-specific BOM lines to one quotation transactionally', function () {
+    $fx = cqFixture();
+    $controller = app(CartonQuotationController::class);
+
+    $payload = [
+        'product_id' => $fx['finished']->id,
+        'box_style' => 'RSC',
+        'dimension_unit' => 'cm',
+        'board_profile_id' => $fx['profile']->id,
+        'ply' => 5,
+        'printing_option' => 'none',
+        'wastage_percentage' => 5,
+        'work_percentage' => 40,
+        'sizes' => [
+            [
+                'name' => '120ml',
+                'length' => 20,
+                'width' => 15,
+                'height' => 12,
+                'quantity' => 1000,
+                'description' => '120ml customer carton',
+            ],
+            [
+                'name' => '250ml',
+                'length' => 30,
+                'width' => 20,
+                'height' => 15,
+                'quantity' => 500,
+                'quoted_unit_price' => 75,
+                'description' => '250ml customer carton',
+            ],
+        ],
+    ];
+
+    $response = $controller->addMany(
+        cqRequest('/admin/sales/'.$fx['sale']->id.'/carton-spec/add-many', 'POST', $payload),
+        $fx['sale']
+    );
+
+    $data = $response->getData(true);
+    $items = SaleItem::query()->where('sale_id', $fx['sale']->id)->orderBy('id')->get();
+
+    expect($response->getStatusCode())->toBe(200)
+        ->and($data['success'])->toBeTrue()
+        ->and($data['data']['items'])->toHaveCount(2)
+        ->and($items)->toHaveCount(2)
+        ->and($items[0]->bom->name)->toBe('120ml')
+        ->and($items[0]->price_adjustment_type)->toBe('none')
+        ->and($items[0]->quotation_description)->toBe('120ml customer carton')
+        ->and($items[1]->bom->name)->toBe('250ml')
+        ->and($items[1]->price_adjustment_type)->toBe('manual')
+        ->and((float) $items[1]->unit_price)->toBe(75.0)
+        ->and((float) $items[1]->base_price)->toBeGreaterThan(0)
+        ->and((float) $data['data']['items'][1]['price_override'])
+        ->toEqualWithDelta(75.0 - (float) $items[1]->base_price, 0.0001);
+});
+
 it('freezes the accepted specification at confirmation and ignores later profile and rate changes', function () {
     $fx = cqFixture();
     $controller = app(CartonQuotationController::class);
@@ -377,6 +488,13 @@ it('locks the simple quotation panel and the advanced technical BOM section in t
         ->toContain('id="csPrinting"')
         ->toContain('id="csQuantity"')
         ->toContain('Advanced / Technical BOM')
+        ->toContain('Quote Multiple Sizes')
+        ->toContain('id="csMultiSizeRows"')
+        ->toContain('id="csCalculateManyBtn"')
+        ->toContain('id="csAddManyBtn"')
+        ->toContain('Standard Price')
+        ->toContain('Price Override')
+        ->toContain('Customer Price')
         ->toContain('carton-spec.add');
 });
 
