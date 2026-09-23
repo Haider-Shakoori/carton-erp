@@ -133,7 +133,7 @@
                     <i class="bi bi-search me-1"></i> {{ __('ui.search') }}
                 </button>
 
-                @if (request()->anyFilled(['search', 'status']) && request('status') != 'all')
+                @if (request()->filled('search') || (request()->filled('status') && request('status') !== 'all'))
                     <a href="{{ route('admin.sales.index') }}" class="btn-filter btn-outline-secondary">
                         <i class="bi bi-arrow-counterclockwise me-1"></i> {{ __('ui.reset') }}
                     </a>
