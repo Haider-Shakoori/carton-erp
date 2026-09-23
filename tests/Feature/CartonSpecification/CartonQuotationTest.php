@@ -224,9 +224,53 @@ it('previews a carton specification without persisting anything', function () {
         ->and($data['data']['paper']['physical_kg_total'])->toBeGreaterThan(0)
         ->and($data['data']['adhesive']['kg_total'])->toBeGreaterThan(0)
         ->and($data['data']['commercial']['selling_price_afn'])->toBeGreaterThan(0)
+        ->and($data['data']['pricing']['standard_unit_price'])->toBeGreaterThan(0)
+        ->and((float) $data['data']['pricing']['customer_unit_price'])
+            ->toBe((float) $data['data']['pricing']['standard_unit_price'])
+        ->and((float) $data['data']['pricing']['price_override'])->toBe(0.0)
+        ->and($data['data']['pricing']['is_manual_override'])->toBeFalse()
         ->and($data['data']['shortages']['has_shortage'])->toBeFalse()
         ->and($data['data']['rows'])->toHaveCount(6)
         ->and([SaleItem::count(), BOM::count()])->toBe($before);
+});
+
+it('shows an agreed customer price as a separate override without changing the standard rate', function () {
+    $fx = cqFixture();
+    $controller = app(CartonQuotationController::class);
+
+    $baseResponse = $controller->calculate(
+        cqRequest(
+            '/admin/sales/'.$fx['sale']->id.'/carton-spec/calculate',
+            'POST',
+            cqSpecPayload($fx)
+        ),
+        $fx['sale']
+    );
+
+    $base = $baseResponse->getData(true)['data'];
+    $standard = (float) $base['pricing']['standard_unit_price'];
+    $customer = max($standard - 2.25, 0.01);
+
+    $overrideResponse = $controller->calculate(
+        cqRequest(
+            '/admin/sales/'.$fx['sale']->id.'/carton-spec/calculate',
+            'POST',
+            cqSpecPayload($fx, ['quoted_unit_price' => $customer])
+        ),
+        $fx['sale']
+    );
+
+    $data = $overrideResponse->getData(true)['data'];
+
+    expect((float) $data['pricing']['standard_unit_price'])
+        ->toEqualWithDelta($standard, 0.0001)
+        ->and((float) $data['pricing']['customer_unit_price'])
+        ->toEqualWithDelta($customer, 0.0001)
+        ->and((float) $data['pricing']['price_override'])
+        ->toEqualWithDelta($customer - $standard, 0.0001)
+        ->and($data['pricing']['is_manual_override'])->toBeTrue()
+        ->and((float) $data['commercial']['selling_price_afn'])
+        ->toEqualWithDelta((float) $base['commercial']['selling_price_afn'], 0.0001);
 });
 
 it('adds a frozen carton specification and technical BOM to a draft sale', function () {
@@ -366,18 +410,32 @@ it('keeps legacy sale items without a carton snapshot safe at confirmation', fun
         ->and($sale->fresh()->status)->toBe('confirmed');
 });
 
-it('locks the simple quotation panel and the advanced technical BOM section in the UI', function () {
+it('keeps the normal quotation flow simple while preserving technical and multi-size controls', function () {
     $source = file_get_contents(resource_path('views/admin/sales/show.blade.php'));
+    $start = strpos($source, 'Quick Carton Quotation');
+    $end = strpos($source, 'SALE ITEMS TABLE', $start);
+    $quickQuote = substr($source, $start, $end - $start);
 
-    expect($source)
-        ->toContain('Quick Carton Quotation')
+    expect($quickQuote)
         ->toContain('id="csProduct"')
-        ->toContain('id="csBoardProfile"')
-        ->toContain('id="csFlute"')
-        ->toContain('id="csPrinting"')
+        ->toContain('id="csLength"')
+        ->toContain('id="csWidth"')
+        ->toContain('id="csHeight"')
         ->toContain('id="csQuantity"')
-        ->toContain('Advanced / Technical BOM')
-        ->toContain('carton-spec.add');
+        ->toContain('id="csBoardProfile"')
+        ->toContain('id="csPrinting"')
+        ->toContain('Customer Price')
+        ->toContain('Standard Price')
+        ->toContain('Price Override')
+        ->toContain('Standard Work / Profit')
+        ->toContain('Advanced specification')
+        ->toContain('Technical calculation')
+        ->toContain('id="csQueueBtn"')
+        ->toContain('Add Another Size')
+        ->toContain('id="csAddAllBtn"')
+        ->toContain('Add All Sizes')
+        ->toContain('carton-spec.add')
+        ->not->toContain('Expected Profit');
 });
 
 it('creates production from the frozen specification without duplicate material deduction', function () {
