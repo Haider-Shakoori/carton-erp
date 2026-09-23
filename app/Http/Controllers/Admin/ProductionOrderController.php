@@ -1172,14 +1172,14 @@ class ProductionOrderController extends Controller
                         'wastage_quantity' => $wastageQuantity,
                         'unit' => $row['unit'] ?? ($autoRequirement['unit'] ?? null),
                         'is_roll_based' => $isRollBased,
-                        // Exact physical reel declaration is still an advanced
-                        // optional workflow. Normal roll completion stays fully
-                        // automatic and retains FIFO/reel allocation.
-                        'use_reel_selection' => $isRollBased ? false : $useReelSelection,
+                        // Exact physical reel declaration remains an advanced,
+                        // optional allocation control. It never changes the
+                        // system-calculated TOTAL paper quantity for this job.
+                        'use_reel_selection' => $useReelSelection,
                         'selection_note' => isset($row['selection_note'])
                             ? trim((string) $row['selection_note'])
                             : null,
-                        'reels' => (!$isRollBased && $useReelSelection) ? $reels : [],
+                        'reels' => $useReelSelection ? $reels : [],
                     ];
                 });
 
