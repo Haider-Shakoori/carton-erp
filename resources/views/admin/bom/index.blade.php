@@ -44,6 +44,16 @@
 
         .bom-index .filter-bar {
             justify-content: space-between;
+            min-width: 0;
+        }
+
+        .bom-index .page-header,
+        .bom-index .page-header > div,
+        .bom-index .page-header .d-flex,
+        .bom-index .card-header-custom,
+        .bom-index .bom-filter-form {
+            min-width: 0;
+            max-width: 100%;
         }
 
         .bom-index .bom-filter-form {
@@ -197,12 +207,77 @@
             color:#b91c1c;
         }
 
+        .bom-index,
+        .bom-index .table-card,
         .bom-index .table-responsive-custom {
-            overflow-x:auto;
+            min-width: 0;
+            max-width: 100%;
+        }
+
+        .bom-index .table-responsive-custom {
+            overflow-x: hidden;
         }
 
         .bom-index .table-ledger {
-            min-width: 1080px;
+            width: 100% !important;
+            min-width: 0 !important;
+            max-width: 100%;
+            table-layout: fixed;
+        }
+
+        .bom-index .table-ledger th,
+        .bom-index .table-ledger td {
+            min-width: 0 !important;
+        }
+
+        .bom-index .table-ledger th:nth-child(1),
+        .bom-index .table-ledger td:nth-child(1) { width: 3%; }
+
+        .bom-index .table-ledger th:nth-child(2),
+        .bom-index .table-ledger td:nth-child(2) { width: 16%; }
+
+        .bom-index .table-ledger th:nth-child(3),
+        .bom-index .table-ledger td:nth-child(3) { width: 15%; }
+
+        .bom-index .table-ledger th:nth-child(4),
+        .bom-index .table-ledger td:nth-child(4) { width: 13%; }
+
+        .bom-index .table-ledger th:nth-child(5),
+        .bom-index .table-ledger td:nth-child(5) { width: 6%; }
+
+        .bom-index .table-ledger th:nth-child(6),
+        .bom-index .table-ledger td:nth-child(6) { width: 9%; }
+
+        .bom-index .table-ledger th:nth-child(7),
+        .bom-index .table-ledger td:nth-child(7) { width: 10%; }
+
+        .bom-index .table-ledger th:nth-child(8),
+        .bom-index .table-ledger td:nth-child(8) { width: 8%; }
+
+        .bom-index .table-ledger th:nth-child(9),
+        .bom-index .table-ledger td:nth-child(9) { width: 7%; }
+
+        .bom-index .table-ledger th:nth-child(10),
+        .bom-index .table-ledger td:nth-child(10) { width: 13%; }
+
+        .bom-index .bom-code,
+        .bom-index .product-name,
+        .bom-index .spec-primary {
+            display: block;
+            max-width: 100%;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .bom-index .action-buttons {
+            max-width: 100%;
+            gap: .18rem !important;
+        }
+
+        .bom-index .action-buttons .action-btn {
+            width: 29px !important;
+            height: 29px !important;
         }
 
         .bom-index .action-buttons form {
@@ -347,7 +422,9 @@
 
             .bom-index .table-ledger .bom-responsive-row > td {
                 display: block;
-                min-width: 0;
+                width: auto !important;
+                min-width: 0 !important;
+                max-width: none;
                 padding: .72rem .8rem !important;
                 border: 0 !important;
                 border-bottom: 1px solid #f1f5f9 !important;
