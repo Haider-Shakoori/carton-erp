@@ -138,10 +138,11 @@
             }
         }
     </style>
+    <link rel="stylesheet" href="{{ asset('css/admin-index.css') }}">
 @endsection
 
 @section('content')
-    <div class="container-fluid px-3 px-md-4">
+    <div class="container-fluid px-3 px-md-4 erp-index-ui">
 
         {{-- ============================================================
         PAGE HEADER
@@ -159,7 +160,7 @@
                     </p>
                 </div>
 
-                <div class="d-flex flex-column flex-lg-row gap-2 align-items-lg-center">
+                <div class="d-flex flex-column flex-sm-row gap-2 align-items-sm-center">
                     @can('view stock')
                         <a href="{{ route('admin.stock-reels.index') }}" class="btn btn-outline-dark">
                             <i class="bi bi-minecart-loaded me-1"></i> Physical Reels
@@ -171,29 +172,6 @@
                             <i class="bi bi-clipboard-check me-1"></i> Reconciliation
                         </a>
                     @endcan
-
-                    {{-- Search - Using Bootstrap default styles --}}
-                    <div class="search-wrapper">
-                    <form action="{{ route('admin.stock.index') }}" method="GET" class="d-flex">
-                        <div class="input-group">
-                            <span class="input-group-text bg-white border-end-0">
-                                <i class="bi bi-search text-muted"></i>
-                            </span>
-                            <input type="text" name="search" class="form-control border-start-0"
-                                placeholder="{{ __('ui.search_products') }}" value="{{ request('search') }}"
-                                style="border-left: none; box-shadow: none;">
-                            @if (request('search'))
-                                <a href="{{ route('admin.stock.index') }}" class="btn btn-outline-secondary border-start-0"
-                                    style="border-left: none;">
-                                    <i class="bi bi-x-circle-fill"></i>
-                                </a>
-                            @endif
-                            <button type="submit" class="btn btn-primary">
-                                <i class="bi bi-search me-1"></i> {{ __('ui.search') }}
-                            </button>
-                        </div>
-                    </form>
-                    </div>
                 </div>
             </div>
         </div>
@@ -252,6 +230,33 @@ STATS CARDS - Premium Glassmorphism (Icon + Value on top row)
                 </div>
                 <div class="stat-label">Sale Value</div>
             </div>
+        </div>
+
+        <div class="filter-bar">
+            <form action="{{ route('admin.stock.index') }}" method="GET"
+                  class="d-flex flex-wrap align-items-center gap-2 w-100">
+                <div class="input-group flex-grow-1" style="max-width: 440px;">
+                    <span class="input-group-text">
+                        <i class="bi bi-search"></i>
+                    </span>
+                    <input type="search"
+                           name="search"
+                           class="form-control"
+                           placeholder="{{ __('ui.search_products') }}"
+                           value="{{ request('search') }}">
+                </div>
+                <button type="submit" class="btn-filter btn-primary">
+                    <i class="bi bi-search me-1"></i> {{ __('ui.search') }}
+                </button>
+                @if(request()->filled('search'))
+                    <a href="{{ route('admin.stock.index') }}" class="btn-filter btn-outline-secondary">
+                        <i class="bi bi-arrow-counterclockwise me-1"></i> {{ __('ui.reset') }}
+                    </a>
+                @endif
+                <span class="ms-auto text-muted" style="font-size:.68rem;font-weight:600;">
+                    {{ $stocks->total() }} inventory profiles
+                </span>
+            </form>
         </div>
 
         {{-- ============================================================
@@ -380,7 +385,7 @@ STATS CARDS - Premium Glassmorphism (Icon + Value on top row)
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="7">
+                            <td colspan="8">
                                 <div class="empty-state text-center py-4">
                                     <i class="bi bi-inboxes" style="font-size: 2.5rem; color: #cbd5e1;"></i>
                                     <p class="mt-2 text-muted">No inventory records found</p>

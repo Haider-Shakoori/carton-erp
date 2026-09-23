@@ -19,10 +19,11 @@
         }
     </style>
 
+    <link rel="stylesheet" href="{{ asset('css/admin-index.css') }}">
 @endsection
 
 @section('content')
-    <div class="container-fluid px-3 px-md-4">
+    <div class="container-fluid px-3 px-md-4 erp-index-ui">
 
         {{-- ============================================================
         PAGE HEADER
@@ -152,7 +153,7 @@
                     <i class="bi bi-search me-1"></i> {{ __('ui.search') }}
                 </button>
 
-                @if (request()->anyFilled(['search', 'status']) && request('status') != 'all')
+                @if (request()->filled('search') || (request()->filled('status') && request('status') !== 'all'))
                     <a href="{{ route('admin.purchase-orders.index') }}" class="btn-filter btn-outline-secondary"
                         style="white-space: nowrap;">
                         <i class="bi bi-arrow-counterclockwise me-1"></i> {{ __('ui.reset') }}
@@ -196,7 +197,7 @@
                             <th class="text-center" style="min-width: 80px;">{{ __('ui.items') }}</th>
                             <th class="text-center" style="min-width: 120px;">{{ __('ui.purchase_date') }}</th>
                             <th class="text-center" style="min-width: 120px;">{{ __('ui.arrival_date') }}</th>
-                            <th class="text-end" style="min-width: 130px;">{{ __('ui.total') }} ({{ $currencySymbol ?? '$' }})</th>
+                            <th class="text-end" style="min-width: 130px;">{{ __('ui.total') }} · Order Currency</th>
                             <th class="text-end" style="min-width: 120px;">{{ __('ui.expense_usd') }}</th>
                             <th class="text-end" style="min-width: 120px;">{{ __('ui.usd_amount') }}</th>
                             <th class="text-end" style="width: 1%;">{{ __('ui.actions') }}</th>

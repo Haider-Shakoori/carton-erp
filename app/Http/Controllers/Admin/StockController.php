@@ -33,7 +33,7 @@ class StockController extends Controller
             ->when($request->search, function ($query, $search) {
                 $query->where('name', 'like', "%{$search}%");
             })
-            ->paginate(15);
+            ->paginate(15)->withQueryString();
 
         // Pre-fetch all arrived purchase items (with their purchase + expenses)
         // for the paginated products in a single batch to avoid per-product N+1.
@@ -45,6 +45,52 @@ class StockController extends Controller
             ->with(['purchase.expenses'])
             ->get()
             ->groupBy('product_id');
+
+        // Global inventory KPIs for the active business workspace.
+        // The view has always displayed these cards, but the controller did not
+        // supply them. Use the stored landed-cost fields so the cards reflect
+        // the same cost basis used by inventory/production.
+        $globalItems = PurchaseItem::query()
+            ->whereHas('purchase', function ($query) {
+                $query->where('status', 'arrived');
+            })
+            ->get();
+
+        $globalStats = [
+            'total_purchase_value_with_expenses' => $globalItems->sum(function (PurchaseItem $item): float {
+                $storedTotal = (float) ($item->usd_total_cost ?? 0);
+
+                return $storedTotal > 0
+                    ? $storedTotal
+                    : (float) ($item->usd_total ?? 0);
+            }),
+            'total_stock_value_with_expenses' => $globalItems->sum(function (PurchaseItem $item): float {
+                $landed = (float) ($item->usd_cost_per_item ?? 0);
+                if ($landed <= 0) {
+                    $landed = (float) ($item->cost_per_unit ?? 0);
+                }
+                if ($landed <= 0) {
+                    $landed = (float) ($item->usd_unit_price ?? 0);
+                }
+
+                return max((float) ($item->qty_available ?? 0), 0) * $landed;
+            }),
+            'total_wastage_value_with_expenses' => $globalItems->sum(function (PurchaseItem $item): float {
+                $landed = (float) ($item->usd_cost_per_item ?? 0);
+                if ($landed <= 0) {
+                    $landed = (float) ($item->cost_per_unit ?? 0);
+                }
+                if ($landed <= 0) {
+                    $landed = (float) ($item->usd_unit_price ?? 0);
+                }
+
+                return max((float) ($item->qty_wasted ?? 0), 0) * $landed;
+            }),
+            'total_sale_value' => $globalItems->sum(function (PurchaseItem $item): float {
+                return max((float) ($item->qty_sold ?? 0), 0)
+                    * max((float) ($item->sale_price_usd ?? 0), 0);
+            }),
+        ];
 
         // Calculate totals for each product
         foreach ($stocks as $product) {
@@ -73,7 +119,7 @@ class StockController extends Controller
             $product->total_stock_value = $totalStockValue;
         }
 
-        return view('admin.stock.index', compact('stocks'));
+        return view('admin.stock.index', compact('stocks', 'globalStats'));
     }
 
 
