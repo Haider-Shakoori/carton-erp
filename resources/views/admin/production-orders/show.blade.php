@@ -1205,13 +1205,22 @@
                                         <span class="badge bg-light text-dark border">BOM remains the planned baseline</span>
                                     </div>
                                     <div class="text-muted small mb-2">
-                                        Paper reels are calculated automatically from the actual manufactured quantity.
-                                        Enter shop-floor actuals only for materials that can realistically be measured.
+                                        Formula-based paper and mixing materials are calculated automatically from the actual manufactured quantity.
+                                        A measured actual is only needed when the factory genuinely measures a non-roll material.
                                     </div>
                                 <div class="alert alert-info py-2 px-3 mb-3 small">
-                                    <strong>Roll paper: no weighing required.</strong>
-                                    The ERP scales the frozen BOM requirement to Manufactured Qty (good + rejected) and reconciles FIFO/reel inventory automatically.
-                                    Measurable mixing/auxiliary materials can still be corrected manually.
+                                    <strong>Standard consumption is deducted from stock automatically.</strong>
+                                    The ERP scales the frozen production requirement to Manufactured Qty (good + rejected), then reconciles FIFO inventory at completion.
+                                    <details class="mt-2">
+                                        <summary class="fw-semibold" style="cursor:pointer;">Standard formula</summary>
+                                        <div class="mt-2">
+                                            <div><strong>Paper:</strong> {{ config('carton.standard_consumption.paper_formula') }}</div>
+                                            <div class="mt-1"><strong>Adhesive:</strong> {{ config('carton.standard_consumption.adhesive_formula') }}</div>
+                                            <div class="mt-1 text-muted">
+                                                Glue parameters and ingredient recipe fractions remain configurable and are snapshotted into the BOM.
+                                            </div>
+                                        </div>
+                                    </details>
                                 </div>
 
                                 @error('materials')<div class="alert alert-danger py-2">{{ $message }}</div>@enderror
@@ -1234,13 +1243,18 @@
                                                 @php
                                                     $hasReels = !empty($material['reel_options']);
                                                     $isRollBased = (bool) ($material['is_roll_based'] ?? false);
+                                                    $isFormulaBased = (bool) ($material['is_formula_based'] ?? false);
+                                                    $usesStandardFormula = $isRollBased || $isFormulaBased;
+                                                    $useMeasuredActual = !$isRollBased && $isFormulaBased
+                                                        ? (bool) old('materials.'.$index.'.use_measured_actual', false)
+                                                        : false;
                                                     $useReelSelection = $hasReels
                                                         ? (bool) old('materials.'.$index.'.use_reel_selection', false)
                                                         : false;
-                                                    $actualInputValue = $isRollBased
+                                                    $actualInputValue = $usesStandardFormula
                                                         ? old('materials.'.$index.'.actual_quantity', $material['planned_quantity'])
                                                         : old('materials.'.$index.'.actual_quantity', $material['current_actual_quantity']);
-                                                    $wastageInputValue = $isRollBased
+                                                    $wastageInputValue = $usesStandardFormula
                                                         ? old('materials.'.$index.'.wastage_quantity', $material['planned_wastage_quantity'] ?? 0)
                                                         : old('materials.'.$index.'.wastage_quantity', $material['current_wastage_quantity']);
                                                     $initialVariance = is_numeric($actualInputValue)
@@ -1252,10 +1266,15 @@
                                                         <div class="fw-semibold">{{ $material['material_name'] }}</div>
                                                         @if($isRollBased)
                                                             <div class="small text-success fw-semibold">
-                                                                <i class="bi bi-magic me-1"></i> System-calculated roll paper
+                                                                <i class="bi bi-magic me-1"></i> Standard formula · roll paper
+                                                            </div>
+                                                        @elseif($isFormulaBased)
+                                                            <div class="small text-success fw-semibold">
+                                                                <i class="bi bi-calculator me-1"></i>
+                                                                Standard formula · {{ implode(', ', $material['formula_types'] ?? []) ?: 'BOM formula' }}
                                                             </div>
                                                         @else
-                                                            <div class="small text-muted">Measurable production material</div>
+                                                            <div class="small text-muted">Measured/manual production material</div>
                                                         @endif
                                                         <input type="hidden" name="materials[{{ $index }}][material_id]" value="{{ $material['material_id'] }}">
                                                         <input type="hidden" name="materials[{{ $index }}][unit]" value="{{ $material['unit'] }}">
@@ -1267,10 +1286,10 @@
                                                     <td>
                                                         @if($isRollBased)
                                                             <input type="hidden"
-                                                                   class="actual-consumption-input auto-roll-consumption"
+                                                                   class="actual-consumption-input auto-formula-consumption"
                                                                    name="materials[{{ $index }}][actual_quantity]"
                                                                    value="{{ $actualInputValue }}"
-                                                                   data-auto-roll="1"
+                                                                   data-auto-formula="1"
                                                                    data-planned="{{ (float) $material['planned_quantity'] }}"
                                                                    data-planned-run="{{ (float) ($material['planned_run_quantity'] ?? 0) }}"
                                                                    data-unit="{{ $material['unit'] }}"
@@ -1279,12 +1298,45 @@
                                                             <div class="border rounded-3 px-3 py-2 bg-light">
                                                                 <div class="d-flex align-items-center justify-content-between gap-2">
                                                                     <span class="small text-muted">Calculated</span>
-                                                                    <strong class="text-primary auto-roll-consumption-display">
+                                                                    <strong class="text-primary auto-formula-consumption-display">
                                                                         {{ number_format((float) $actualInputValue, 4) }} {{ $material['unit'] }}
                                                                     </strong>
                                                                 </div>
                                                             </div>
-                                                            <div class="form-text">Updates automatically when Manufactured Qty changes.</div>
+                                                            <div class="form-text">Automatically follows Manufactured Qty.</div>
+                                                        @elseif($isFormulaBased)
+                                                            <div class="form-check form-switch mb-2">
+                                                                <input class="form-check-input measured-actual-toggle"
+                                                                       type="checkbox"
+                                                                       role="switch"
+                                                                       id="useMeasuredActual{{ $index }}"
+                                                                       name="materials[{{ $index }}][use_measured_actual]"
+                                                                       value="1"
+                                                                       data-input="formulaActual{{ $index }}"
+                                                                       data-waste-input="formulaWaste{{ $index }}"
+                                                                       @checked($useMeasuredActual)>
+                                                                <label class="form-check-label small fw-semibold" for="useMeasuredActual{{ $index }}">
+                                                                    Use measured actual
+                                                                </label>
+                                                            </div>
+                                                            <input type="number"
+                                                                   id="formulaActual{{ $index }}"
+                                                                   class="form-control actual-consumption-input auto-formula-consumption @error('materials.'.$index.'.actual_quantity') is-invalid @enderror"
+                                                                   name="materials[{{ $index }}][actual_quantity]"
+                                                                   value="{{ $actualInputValue }}"
+                                                                   min="0"
+                                                                   step="0.000001"
+                                                                   data-auto-formula="{{ $useMeasuredActual ? '0' : '1' }}"
+                                                                   data-planned="{{ (float) $material['planned_quantity'] }}"
+                                                                   data-planned-run="{{ (float) ($material['planned_run_quantity'] ?? 0) }}"
+                                                                   data-unit="{{ $material['unit'] }}"
+                                                                   data-variance-target="materialVariance{{ $index }}"
+                                                                   data-variance-status-target="materialVarianceStatus{{ $index }}"
+                                                                   @readonly(!$useMeasuredActual)>
+                                                            @error('materials.'.$index.'.actual_quantity')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                                                            <div class="form-text">
+                                                                Standard formula is default; enable the switch only when a measured value is available.
+                                                            </div>
                                                         @else
                                                             <div class="d-flex align-items-center gap-2">
                                                                 <input type="number"
@@ -1309,18 +1361,20 @@
                                                         @endif
                                                     </td>
                                                     <td>
-                                                        @if($isRollBased)
-                                                            <input type="hidden"
-                                                                   class="auto-roll-wastage"
+                                                        @if($usesStandardFormula)
+                                                            <input type="number"
+                                                                   id="formulaWaste{{ $index }}"
+                                                                   class="form-control formula-wastage-input"
                                                                    name="materials[{{ $index }}][wastage_quantity]"
                                                                    value="{{ $wastageInputValue }}"
+                                                                   min="0"
+                                                                   step="0.000001"
+                                                                   data-auto-formula="{{ $useMeasuredActual ? '0' : '1' }}"
                                                                    data-planned-wastage="{{ (float) ($material['planned_wastage_quantity'] ?? 0) }}"
-                                                                   data-planned-run="{{ (float) ($material['planned_run_quantity'] ?? 0) }}">
-                                                            <div class="small text-muted">
-                                                                Included in system formula
-                                                                <div class="fw-semibold text-dark auto-roll-wastage-display">
-                                                                    {{ number_format((float) $wastageInputValue, 4) }} {{ $material['unit'] }}
-                                                                </div>
+                                                                   data-planned-run="{{ (float) ($material['planned_run_quantity'] ?? 0) }}"
+                                                                   @readonly(!$useMeasuredActual || $isRollBased)>
+                                                            <div class="form-text">
+                                                                {{ $isRollBased ? 'Included in the paper standard formula.' : 'Formula waste is automatic; editable with measured actual.' }}
                                                             </div>
                                                         @else
                                                             <input type="number"
