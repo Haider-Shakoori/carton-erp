@@ -338,7 +338,7 @@
                     <tr>
                         <th style="width:34px"></th>
                         <th>Product</th>
-                        <th>Qty</th>
+                        <th>{{ $sale->status === 'draft' ? 'Qty' : 'Invoice Qty' }}</th>
                         <th>Standard Price<br><span class="fw-normal">({{ $soxCurrencyCode }})</span></th>
                         <th>Manual Override Price<br><span class="fw-normal">({{ $soxCurrencyCode }})</span></th>
                         <th>Effective Selling Price<br><span class="fw-normal">({{ $soxCurrencyCode }})</span></th>
@@ -377,7 +377,15 @@
                                 <div class="sox-product">{{ $soxLine->product->name ?? '-' }}</div>
                                 <div class="sox-product-meta">{{ $soxLine->bom->code ?? (is_array($soxLine->manual_bom_snapshot) ? 'Manual BOM' : 'No BOM') }}</div>
                             </td>
-                            <td><strong>{{ number_format((float) $soxLine->qty, 2) }}</strong><div class="sox-product-meta">{{ $soxLine->product->unit ?? 'pcs' }}</div></td>
+                            <td>
+                                <strong>{{ number_format((float) $soxLine->qty, 2) }}</strong>
+                                <div class="sox-product-meta">{{ $soxLine->product->unit ?? 'pcs' }}</div>
+                                @if($sale->status !== 'draft')
+                                    <div class="sox-product-meta">
+                                        Ordered: {{ number_format((float) ($soxLine->ordered_qty ?? $soxLine->qty), 2) }}
+                                    </div>
+                                @endif
+                            </td>
                             <td>{{ number_format($soxStandardPrice, 4) }}</td>
                             <td>
                                 @if($sale->status === 'draft')
