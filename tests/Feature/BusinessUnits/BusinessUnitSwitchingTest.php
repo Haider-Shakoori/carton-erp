@@ -118,13 +118,15 @@ it('renders and persists business-unit settings through the real settings HTTP f
         ->actingAs($user)
         ->get(route('admin.settings.index'));
 
-    $response
-        ->assertOk()
-        ->assertSee('3D Carton')
-        ->assertSee('Syrup Pack');
-
     $carton = BusinessUnit::query()->where('code', '3d_carton')->firstOrFail();
     $syrup = BusinessUnit::query()->where('code', 'syrup_pack')->firstOrFail();
+
+    $response
+        ->assertOk()
+        ->assertSee('id="defaultBusinessUnitId"', false)
+        ->assertSee('<option value="'.$carton->id.'"', false)
+        ->assertSee('<option value="'.$syrup->id.'"', false)
+        ->assertDontSee('No business units available — run database migrations.');
 
     expect(BusinessUnit::query()->count())->toBe(2)
         ->and((int) $setting->fresh()->default_business_unit_id)->toBe($carton->id);
@@ -225,8 +227,7 @@ it('exposes the setting toggle and top navigation business switcher contract', f
     expect($settings)
         ->toContain('name="separate_business_units_enabled"')
         ->toContain('Enable separate business units')
-        ->toContain('3D Carton')
-        ->toContain('Syrup Pack')
+        ->toContain('$settingsBusinessUnits')
         ->toContain('name="default_business_unit_id"');
 
     expect($layout)
