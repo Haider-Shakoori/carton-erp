@@ -681,6 +681,8 @@ Route::middleware(['auth', InitializeBusinessUnitContext::class])->prefix('admin
     Route::get('bom/get-by-product', [BOMController::class, 'getBOMByProduct'])->name('bom.get-by-product')->middleware('permission.feedback:view bom');
     Route::get('/bom', [BOMController::class, 'index'])->name('bom.index')->middleware('permission.feedback:view bom');
     Route::get('/bom/create', [BOMController::class, 'create'])->name('bom.create')->middleware('permission.feedback:create bom');
+    Route::get('/bom/create/advanced', [BOMController::class, 'advancedCreate'])->name('bom.create-advanced')->middleware('permission.feedback:create bom');
+    Route::post('/bom/simple', [BOMController::class, 'storeSimple'])->name('bom.store-simple')->middleware('permission.feedback:create bom');
     Route::post('/bom', [BOMController::class, 'store'])->name('bom.store')->middleware('permission.feedback:create bom');
     Route::get('/bom/{bom}', [BOMController::class, 'show'])->name('bom.show')->middleware('permission.feedback:view bom');
     Route::get('/bom/{bom}/edit', [BOMController::class, 'edit'])->name('bom.edit')->middleware('permission.feedback:update bom');
