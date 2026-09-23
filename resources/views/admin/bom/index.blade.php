@@ -460,7 +460,10 @@
     <script src="{{ asset('vendor/datatables/js/jquery.dataTables.min.js') }}"></script>
     <script>
         $(document).ready(function() {
-            // Initialize DataTable
+            // DataTables does not support colspan rows inside tbody. When the
+            // active business has no BOMs, keep the server-rendered empty state
+            // and do not initialize DataTables against that placeholder row.
+            @if($boms->count() > 0)
             const table = $('#bom-table').DataTable({
                 pageLength: 15,
                 lengthChange: false,
@@ -494,6 +497,7 @@
             $(window).resize(function() {
                 table.columns.adjust();
             });
+            @endif
         });
 
         // ─── SWEET ALERT FOR DELETE CONFIRMATION ───
