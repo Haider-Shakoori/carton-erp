@@ -1,6 +1,6 @@
 <?php
 
-it('uses real output, automatic roll-paper consumption and measurable-material actuals at completion', function () {
+it('uses real output and standard formula material consumption at completion', function () {
     $source = file_get_contents(resource_path('views/admin/production-orders/show.blade.php'));
 
     expect($source)
@@ -24,11 +24,12 @@ it('uses real output, automatic roll-paper consumption and measurable-material a
         ->toContain('data-auto-formula="1"')
         ->toContain('data-planned-run="{{ (float) ($material[\'planned_run_quantity\'] ?? 0) }}"')
         ->toContain('syncStandardFormulaConsumption')
-        ->toContain('Updates automatically when Manufactured Qty changes.')
+        ->toContain('Automatically follows Manufactured Qty.')
         ->toContain('data-variance-target="materialVariance{{ $index }}"')
         ->toContain('Reel tracking')
         ->toContain('Use physical reel declaration')
         ->toContain('Advanced/optional. Normal production requires no reel weighing')
+        ->toContain('name="materials[{{ $index }}][use_measured_actual]"')
         ->toContain('name="materials[{{ $index }}][use_reel_selection]"')
         ->toContain('[consumed_kg]')
         ->toContain('[final_remaining_kg]')
