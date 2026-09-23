@@ -486,6 +486,11 @@ class ProductionOrderController extends Controller
                     ->unique()
                     ->values();
 
+                $materialModels = Product::query()
+                    ->whereIn('id', $materialIds->all())
+                    ->get()
+                    ->keyBy(fn (Product $product) => (int) $product->id);
+
                 $currentReelUsage = DB::table('production_reel_consumptions as prc')
                     ->join(
                         'production_material_consumptions as pmc',
@@ -550,13 +555,17 @@ class ProductionOrderController extends Controller
                 $completionMaterials = collect($plannedRows)->map(
                     function (array $row) use (
                         $currentConsumption,
-                        $reelOptionsByMaterial
+                        $reelOptionsByMaterial,
+                        $materialModels
                     ): array {
                         $materialId = (int) $row['material_id'];
                         $current = $currentConsumption->get($materialId);
                         $reelOptions = collect(
                             $reelOptionsByMaterial->get($materialId, collect())
                         )->values()->all();
+
+                        $materialModel = $materialModels->get($materialId);
+                        $isRollBased = (bool) ($materialModel?->is_roll_based ?? false);
 
                         return [
                             'material_id' => $materialId,
@@ -565,6 +574,10 @@ class ProductionOrderController extends Controller
                             'planned_quantity' => (float) ($row['quantity'] ?? 0),
                             'current_actual_quantity' => (float) ($current->actual_quantity ?? 0),
                             'current_wastage_quantity' => (float) ($current->wastage_quantity ?? 0),
+                            'is_roll_based' => $isRollBased,
+                            // Paper reels default to ERP-calculated consumption;
+                            // measurable mixing/auxiliary materials remain manual.
+                            'default_consumption_mode' => $isRollBased ? 'calculated' : 'manual',
                             'reel_options' => $reelOptions,
                         ];
                     }
