@@ -271,7 +271,7 @@ class StockController extends Controller
             // Find sale linked to this production order
             $sale = null;
             if ($productionOrder) {
-                $sale = Sale::where('production_order_id', $productionOrder->id)->first();
+                $sale = $productionOrder->resolveSale();
             }
 
             // Calculate cost details
