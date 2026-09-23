@@ -514,8 +514,10 @@
                 margin: 0;
             }
 
+            .bom-index .bom-cost-cell .money-meta,
             .bom-index .bom-rate-cell .work-chip,
-            .bom-index .bom-rate-cell .money-meta {
+            .bom-index .bom-rate-cell .money-meta,
+            .bom-index .bom-updated-cell .date-meta {
                 grid-column: 2;
                 justify-self: start;
             }
