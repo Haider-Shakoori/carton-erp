@@ -6,6 +6,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\BOM;
 use App\Models\BOMItem;
+use App\Models\BoardProfile;
 use App\Models\Currency;
 use App\Models\Product;
 use App\Models\Category;
@@ -16,6 +17,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use App\Services\CartonSpecificationService;
 
 class BOMController extends Controller
 {
@@ -38,17 +40,45 @@ class BOMController extends Controller
     {
         $products = Product::finishedGoods()
             ->where('is_active', true)
+            ->orderBy('name')
             ->get();
 
-        // ─── FIX: Get materials with purchase currency information ───
+        $boardProfiles = BoardProfile::active()
+            ->with('layers.material')
+            ->orderBy('name')
+            ->get();
+
+        $setting = Setting::query()->first();
+        $exchangeRate = $this->getDefaultExchangeRate();
+
+        return view('admin.bom.create-simple', [
+            'products' => $products,
+            'boardProfiles' => $boardProfiles,
+            'boxStyles' => (array) config('carton.box_styles', []),
+            'printingOptions' => (array) config('carton.printing', []),
+            'lengthUnits' => array_keys((array) config('carton.length_units', ['inch' => 1])),
+            'defaultWorkPercentage' => (float) ($setting->default_work_percentage ?? 40),
+            'defaultWastagePercentage' => (float) config('carton.default_wastage_percentage', 5),
+            'exchangeRate' => $exchangeRate,
+        ]);
+    }
+
+    /**
+     * Preserve the original power-user BOM builder for exceptional/manual jobs.
+     */
+    public function advancedCreate()
+    {
+        $products = Product::finishedGoods()
+            ->where('is_active', true)
+            ->get();
+
         $materials = Product::rawMaterials()
             ->where('is_active', true)
             ->with(['category'])
             ->get()
-            ->map(function($material) {
-                // Get the latest purchase for this material to determine currency
+            ->map(function ($material) {
                 $latestPurchaseItem = $material->purchaseItems()
-                    ->whereHas('purchase', function($q) {
+                    ->whereHas('purchase', function ($q) {
                         $q->where('status', 'arrived');
                     })
                     ->with(['purchase.currency'])
@@ -62,7 +92,6 @@ class BOMController extends Controller
                         $material->purchase_currency
                     );
                 } else {
-                    // Default to AFN if no purchase exists
                     $material->purchase_currency = 'AFN';
                     $material->purchase_currency_id = null;
                 }
@@ -71,20 +100,11 @@ class BOMController extends Controller
             });
 
         $categories = Category::where('is_active', true)->get();
-
-        // Get system currency
         $defaultCurrency = Currency::where('is_default', 1)->first();
         $afnCurrency = Currency::where('code', 'AFN')->first();
         $usdCurrency = Currency::where('code', 'USD')->first();
-
         $currencySymbol = $defaultCurrency ? $defaultCurrency->symbol : '؋';
-        $exchangeRate = 1;
-
-        if ($afnCurrency && $usdCurrency && $usdCurrency->exchange_rate > 0) {
-            $exchangeRate = $afnCurrency->exchange_rate / $usdCurrency->exchange_rate;
-        } else {
-            $exchangeRate = 85; // Default fallback
-        }
+        $exchangeRate = $this->getDefaultExchangeRate();
 
         return view('admin.bom.create', compact(
             'products',
@@ -96,6 +116,71 @@ class BOMController extends Controller
             'afnCurrency',
             'usdCurrency'
         ));
+    }
+
+    /**
+     * Create a production-grade BOM from the client's small set of known inputs.
+     * The canonical carton engine expands board layers, adhesive recipe, landed
+     * rates, wastage and commercial work/profit into the technical BOM.
+     */
+    public function storeSimple(Request $request, CartonSpecificationService $specification)
+    {
+        $validated = $request->validate([
+            'product_id' => 'required|exists:products,id',
+            'length' => 'required|numeric|min:0.01',
+            'width' => 'required|numeric|min:0.01',
+            'height' => 'required|numeric|min:0.01',
+            'dimension_unit' => 'required|string|in:mm,cm,inch',
+            'board_profile_id' => 'required|exists:board_profiles,id',
+            'printing_option' => 'required|string|max:50',
+            'quantity' => 'nullable|numeric|min:1',
+            'quotation_description' => 'nullable|string|max:2000',
+            // Advanced overrides remain possible without cluttering normal mode.
+            'box_style' => 'nullable|string|max:20',
+            'flute_type' => 'nullable|string|max:20',
+            'wastage_percentage' => 'nullable|numeric|min:0|max:100',
+            'work_percentage' => 'nullable|numeric|min:0|max:1000',
+            'print_cost_afn' => 'nullable|numeric|min:0',
+        ]);
+
+        try {
+            $setting = Setting::query()->first();
+            $input = array_merge($validated, [
+                'box_style' => $validated['box_style'] ?? config('carton.default_box_style', 'RSC'),
+                'quantity' => 1,
+                'work_percentage' => $validated['work_percentage']
+                    ?? (float) ($setting->default_work_percentage ?? 40),
+                'wastage_percentage' => $validated['wastage_percentage']
+                    ?? (float) config('carton.default_wastage_percentage', 5),
+                'profit_margin_percentage' => 0,
+            ]);
+
+            $result = $specification->calculate($input, $this->getDefaultExchangeRate());
+            $bom = $specification->persistTechnicalBom(
+                $result,
+                (int) $validated['product_id'],
+                Auth::id()
+            );
+
+            if (! empty($validated['quotation_description'])) {
+                $bom->description = trim((string) $validated['quotation_description'])
+                    . ' | ' . $bom->description;
+                $bom->saveQuietly();
+            }
+
+            return redirect()
+                ->route('bom.show', $bom)
+                ->with('success', 'BOM created from the simplified carton specification.');
+        } catch (\Throwable $e) {
+            Log::error('Simplified BOM creation failed', [
+                'request' => $request->except(['_token']),
+                'error' => $e->getMessage(),
+            ]);
+
+            return back()
+                ->withInput()
+                ->with('error', $e->getMessage());
+        }
     }
 
     /**
