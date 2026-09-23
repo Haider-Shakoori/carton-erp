@@ -493,10 +493,11 @@
             }
         }
     </style>
+    <link rel="stylesheet" href="{{ asset('css/admin-index.css') }}">
 @endsection
 
 @section('content')
-    <div class="container-fluid px-3 px-md-4">
+    <div class="container-fluid px-3 px-md-4 erp-index-ui">
 
         {{-- ─── PAGE HEADER ─── --}}
         <div class="page-header" style="animation: fade-up 0.5s ease forwards; opacity: 0;">
