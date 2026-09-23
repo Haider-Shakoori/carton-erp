@@ -3,6 +3,8 @@
 @section('title', __('Settings'))
 
 @section('content')
+<form action="{{ route('admin.settings.update') }}" method="POST" enctype="multipart/form-data" id="settingsForm">
+    @csrf
 <div class="row g-4">
     <!-- Company Info -->
     <div class="col-12">
@@ -11,9 +13,6 @@
                 <h5 class="mb-0 fw-bold">🧾 Company Information</h5>
             </div>
             <div class="card-body">
-                <form action="{{ route('admin.settings.update') }}" method="POST" enctype="multipart/form-data">
-                    @csrf
-
                     <div class="row g-4">
                         <div class="col-md-4">
                             <label class="form-label fw-semibold">{{ __('ui.company_name') }}</label>
@@ -127,12 +126,14 @@
                         <select class="form-select @error('default_business_unit_id') is-invalid @enderror"
                                 id="defaultBusinessUnitId"
                                 name="default_business_unit_id">
-                            @foreach($businessUnits as $businessUnit)
+                            @forelse($businessUnits as $businessUnit)
                                 <option value="{{ $businessUnit->id }}"
                                     @selected((int) old('default_business_unit_id', $setting->default_business_unit_id) === (int) $businessUnit->id)>
                                     {{ $businessUnit->name }}
                                 </option>
-                            @endforeach
+                            @empty
+                                <option value="" disabled selected>No business units available — run database migrations.</option>
+                            @endforelse
                         </select>
                         @error('default_business_unit_id')
                             <div class="invalid-feedback">{{ $message }}</div>
@@ -231,8 +232,8 @@
         </div>
     </div>
 
-    </form>
 </div>
+</form>
 @endsection
 
 @section('js')
