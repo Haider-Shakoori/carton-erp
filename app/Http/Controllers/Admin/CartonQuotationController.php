@@ -94,6 +94,131 @@ class CartonQuotationController extends Controller
     }
 
     /**
+     * Preview several carton sizes under one shared board/printing specification.
+     */
+    public function calculateMany(Request $request, Sale $sale)
+    {
+        $validated = $this->validateMultiSpec($request);
+
+        try {
+            $previews = collect($validated['sizes'])->map(function (array $size) use ($validated, $sale) {
+                $spec = $this->multiSpecPayload($validated, $size);
+                $result = $this->specification->calculate($spec, (float) $sale->exchange_rate);
+                $preview = $this->previewPayload($result, $sale);
+
+                $standardPrice = $this->calculatedSaleCurrencyPrice($result, $sale);
+                $quotedPrice = filled($size['quoted_unit_price'] ?? null)
+                    ? (float) $size['quoted_unit_price']
+                    : null;
+                $effectivePrice = $quotedPrice !== null && $quotedPrice > 0
+                    ? $quotedPrice
+                    : $standardPrice;
+
+                $preview['size_name'] = $size['name'] ?? null;
+                $preview['standard_unit_price'] = round($standardPrice, 4);
+                $preview['quoted_unit_price'] = $quotedPrice !== null ? round($quotedPrice, 4) : null;
+                $preview['effective_unit_price'] = round($effectivePrice, 4);
+                $preview['price_override'] = round($effectivePrice - $standardPrice, 4);
+
+                return $preview;
+            })->values();
+
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'previews' => $previews,
+                    'count' => $previews->count(),
+                ],
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 422);
+        }
+    }
+
+    /**
+     * Add several size-specific carton lines to a draft sale in one transaction.
+     */
+    public function addMany(Request $request, Sale $sale)
+    {
+        $validated = $this->validateMultiSpec($request);
+
+        if ($sale->status !== 'draft') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Cannot add items to a confirmed sale.',
+            ], 422);
+        }
+
+        $product = Product::find((int) $validated['product_id']);
+        if (! $product) {
+            return response()->json([
+                'success' => false,
+                'message' => 'The selected finished product was not found.',
+            ], 422);
+        }
+
+        try {
+            $created = DB::transaction(function () use ($validated, $sale, $product) {
+                return collect($validated['sizes'])->map(function (array $size) use ($validated, $sale, $product) {
+                    $spec = $this->multiSpecPayload($validated, $size);
+                    $result = $this->specification->calculate($spec, (float) $sale->exchange_rate);
+
+                    $saleItem = $this->persistQuotationLine(
+                        $sale,
+                        $product,
+                        $spec,
+                        $result,
+                        $size['quoted_unit_price'] ?? null,
+                        $size['description'] ?? null,
+                        $size['name'] ?? null
+                    );
+
+                    return [
+                        'sale_item_id' => (int) $saleItem->id,
+                        'bom_id' => (int) $saleItem->bom_id,
+                        'name' => $size['name'] ?? null,
+                        'quantity' => (float) $saleItem->qty,
+                        'standard_unit_price' => round((float) $saleItem->base_price, 4),
+                        'effective_unit_price' => round((float) $saleItem->unit_price, 4),
+                        'price_override' => round(
+                            (float) $saleItem->unit_price - (float) $saleItem->base_price,
+                            4
+                        ),
+                    ];
+                })->values()->all();
+            });
+
+            $sale->refresh();
+            $sale->recalculateTotals();
+
+            return response()->json([
+                'success' => true,
+                'message' => count($created) . ' carton size'
+                    . (count($created) === 1 ? '' : 's')
+                    . ' added to the quotation.',
+                'data' => [
+                    'items' => $created,
+                    'sale_total' => (float) $sale->fresh()->grand_total,
+                    'usd_total' => (float) $sale->fresh()->usd_grand_total,
+                ],
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Multi-size carton quotation failed', [
+                'sale_id' => $sale->id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Error adding carton sizes: ' . $e->getMessage(),
+            ], 422);
+        }
+    }
+
+    /**
      * Persist the generated technical BOM, freeze the specification on a sale
      * item and use the frozen accepted price for the quotation line.
      */
@@ -234,6 +359,158 @@ class CartonQuotationController extends Controller
                 'message' => 'Error adding carton specification: ' . $e->getMessage(),
             ], 500);
         }
+    }
+
+    private function validateMultiSpec(Request $request): array
+    {
+        return $request->validate([
+            'product_id' => 'required|exists:products,id',
+            'box_style' => 'nullable|string|max:20',
+            'dimension_unit' => ['required', 'string', Rule::in(array_keys((array) config('carton.length_units', ['inch' => 1])))],
+            'board_profile_id' => 'required|exists:board_profiles,id',
+            'ply' => 'nullable|integer|min:1|max:11',
+            'flute_type' => 'nullable|string|max:20',
+            'printing_option' => 'nullable|string|max:40',
+            'print_cost_afn' => 'nullable|numeric|min:0',
+            'wastage_percentage' => 'nullable|numeric|min:0|max:100',
+            'work_percentage' => 'nullable|numeric|min:0|max:100',
+            'profit_margin_percentage' => 'nullable|numeric|min:0|max:1000',
+            'sizes' => 'required|array|min:1|max:25',
+            'sizes.*.name' => 'nullable|string|max:255',
+            'sizes.*.length' => 'required|numeric|gt:0',
+            'sizes.*.width' => 'required|numeric|gt:0',
+            'sizes.*.height' => 'required|numeric|gt:0',
+            'sizes.*.quantity' => 'required|numeric|gt:0',
+            'sizes.*.quoted_unit_price' => 'nullable|numeric|min:0',
+            'sizes.*.description' => 'nullable|string|max:2000',
+        ]);
+    }
+
+    private function multiSpecPayload(array $validated, array $size): array
+    {
+        return [
+            'product_id' => $validated['product_id'],
+            'box_style' => $validated['box_style'] ?? null,
+            'length' => $size['length'],
+            'width' => $size['width'],
+            'height' => $size['height'],
+            'dimension_unit' => $validated['dimension_unit'],
+            'board_profile_id' => $validated['board_profile_id'],
+            'ply' => $validated['ply'] ?? null,
+            'flute_type' => $validated['flute_type'] ?? null,
+            'printing_option' => $validated['printing_option'] ?? null,
+            'print_cost_afn' => $validated['print_cost_afn'] ?? null,
+            'quantity' => $size['quantity'],
+            'wastage_percentage' => $validated['wastage_percentage'] ?? null,
+            'work_percentage' => $validated['work_percentage'] ?? 40,
+            'profit_margin_percentage' => $validated['profit_margin_percentage'] ?? 0,
+            'quoted_unit_price' => $size['quoted_unit_price'] ?? null,
+            'quotation_description' => $size['description'] ?? null,
+        ];
+    }
+
+    private function calculatedSaleCurrencyPrice(array $result, Sale $sale): float
+    {
+        $isUsd = strtoupper((string) ($sale->currency?->code ?? 'AFN')) === 'USD';
+
+        return $isUsd
+            ? (float) $result['commercial']['selling_price_usd_per_unit']
+            : (float) $result['commercial']['selling_price_afn_per_unit'];
+    }
+
+    private function persistQuotationLine(
+        Sale $sale,
+        Product $product,
+        array $validated,
+        array $result,
+        mixed $quotedUnitPrice = null,
+        ?string $description = null,
+        ?string $sizeName = null
+    ): SaleItem {
+        $saleCurrencyCode = strtoupper((string) ($sale->currency?->code ?? 'AFN'));
+        $isUsd = $saleCurrencyCode === 'USD';
+        $rate = max((float) $result['exchange_rate'], 0.000001);
+        $calculatedUnitPrice = $this->calculatedSaleCurrencyPrice($result, $sale);
+
+        $quoted = filled($quotedUnitPrice) ? (float) $quotedUnitPrice : 0.0;
+        $unitPrice = round($quoted > 0 ? $quoted : $calculatedUnitPrice, 4);
+
+        if ($unitPrice <= 0) {
+            throw new \RuntimeException(
+                'Could not determine a selling price. Configure landed material rates or enter a customer price.'
+            );
+        }
+
+        $quantity = (float) $result['quantity'];
+        $bom = $this->specification->persistTechnicalBom(
+            $result,
+            (int) $product->id,
+            Auth::id()
+        );
+
+        if (filled($sizeName)) {
+            $bom->forceFill(['name' => trim((string) $sizeName)])->saveQuietly();
+        }
+
+        $accepted = [
+            'unit_price' => $unitPrice,
+            'total' => round($unitPrice * $quantity, 2),
+            'currency' => $saleCurrencyCode,
+            'exchange_rate' => $rate,
+            'quantity' => $quantity,
+            'is_manual_price' => $quoted > 0,
+        ];
+
+        $snapshot = $this->specification->snapshot($result, $accepted, 'quotation');
+        $totalCostUsd = (float) $result['physical']['material_cost_usd_total'];
+        $usdUnitPrice = $isUsd ? $unitPrice : $unitPrice / $rate;
+        $usdTotal = $usdUnitPrice * $quantity;
+        $profitUsd = $usdTotal - $totalCostUsd;
+
+        return SaleItem::create([
+            'sale_id' => $sale->id,
+            'product_id' => $product->id,
+            'bom_id' => $bom->id,
+            'purchase_item_id' => null,
+            'sale_currency_id' => $sale->currency_id,
+            'qty' => $quantity,
+            'ordered_qty' => $quantity,
+            'cost_per_unit_usd' => $quantity > 0 ? $totalCostUsd / $quantity : 0,
+            'total_cost_usd' => $totalCostUsd,
+            'unit_price' => $unitPrice,
+            'base_price' => $calculatedUnitPrice,
+            'original_unit_price' => $calculatedUnitPrice,
+            'final_price' => $unitPrice,
+            'price_adjustment_type' => $quoted > 0 ? 'manual' : 'none',
+            'total' => $accepted['total'],
+            'discount' => 0,
+            'tax' => 0,
+            'usd_unit_price' => $usdUnitPrice,
+            'usd_total' => $usdTotal,
+            'usd_discount' => 0,
+            'usd_tax' => 0,
+            'rate' => $rate,
+            'profit_usd' => $profitUsd,
+            'profit_afn' => $profitUsd * $rate,
+            'profit_percentage' => $usdTotal > 0 ? ($profitUsd / $usdTotal) * 100 : 0,
+            'remarks' => sprintf(
+                'Carton specification quotation | Size: %s | Box style: %s | Profile: %s v%s | Ply: %d | Materials: %d',
+                filled($sizeName) ? trim((string) $sizeName) : sprintf(
+                    '%s×%s×%s %s',
+                    $result['spec']['length'],
+                    $result['spec']['width'],
+                    $result['spec']['height'],
+                    $result['spec']['dimension_unit']
+                ),
+                $result['spec']['box_style'],
+                $result['profile']['name'] ?? '',
+                $result['profile']['version'] ?? '1.0',
+                $result['spec']['ply'],
+                count($result['rows'])
+            ),
+            'quotation_description' => $description,
+            'carton_spec_snapshot' => $snapshot,
+        ]);
     }
 
     private function validateSpec(Request $request): array
