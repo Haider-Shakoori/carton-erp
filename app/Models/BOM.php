@@ -17,6 +17,7 @@ class BOM extends Model
     protected $table = 'boms';
 
     protected $fillable = [
+        'business_unit_id',
         'name',
         'code',
         'product_id',
@@ -70,6 +71,21 @@ class BOM extends Model
         parent::boot();
 
         static::creating(function ($bom) {
+            // In normal separated-mode requests the shared trait assigns the
+            // active workspace first. During seed/import/unified flows there is
+            // no active session, so classify finished-good BOMs by product to
+            // prevent NULL BOMs leaking when separation is later enabled.
+            if (empty($bom->business_unit_id) && $bom->product_id) {
+                $product = Product::with('category')->find($bom->product_id);
+                $businessCode = $product?->intendedBusinessUnitCode();
+
+                if ($businessCode) {
+                    $bom->business_unit_id = BusinessUnit::query()
+                        ->where('code', $businessCode)
+                        ->value('id');
+                }
+            }
+
             if (empty($bom->code)) {
                 $bom->code = 'BOM-' . strtoupper(Str::random(8));
             }
