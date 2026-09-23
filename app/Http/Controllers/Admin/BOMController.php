@@ -55,7 +55,10 @@ class BOMController extends Controller
             'boardProfiles' => $boardProfiles,
             'boxStyles' => (array) config('carton.box_styles', []),
             'printingOptions' => (array) config('carton.printing', []),
-            'lengthUnits' => array_keys((array) config('carton.length_units', ['inch' => 1])),
+            'lengthUnits' => collect(array_keys((array) config('carton.length_units', ['inch' => 1])))
+                ->filter(fn (string $unit) => in_array($unit, ['inch', 'cm', 'mm'], true))
+                ->values()
+                ->all(),
             'defaultWorkPercentage' => (float) config('carton.standard_work_percentage', 40),
             'defaultWastagePercentage' => (float) config('carton.default_wastage_percentage', 5),
             'exchangeRate' => $exchangeRate,
