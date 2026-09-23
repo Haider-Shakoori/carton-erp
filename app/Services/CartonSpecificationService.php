@@ -121,7 +121,7 @@ class CartonSpecificationService
             && $input['work_percentage'] !== null
             && $input['work_percentage'] !== ''
                 ? max((float) $input['work_percentage'], 0.0)
-                : 40.0;
+                : (float) config('carton.standard_work_percentage', 40);
 
         $profitMargin = array_key_exists('profit_margin_percentage', $input)
             && $input['profit_margin_percentage'] !== null
