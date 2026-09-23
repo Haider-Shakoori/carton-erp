@@ -323,6 +323,18 @@
                 width: 100%;
             }
 
+            .bom-index .bom-empty-row {
+                display: block;
+                width: 100%;
+            }
+
+            .bom-index .bom-empty-row > td {
+                display: block !important;
+                width: 100%;
+                border: 0 !important;
+                background: transparent !important;
+            }
+
             .bom-index .table-ledger .bom-responsive-row {
                 display: grid;
                 grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -392,8 +404,18 @@
                 flex-wrap: wrap;
             }
 
+            .bom-index .pagination-wrap {
+                overflow: hidden;
+            }
+
             .bom-index .pagination {
+                max-width: 100%;
                 flex-wrap: wrap;
+                justify-content: flex-end;
+            }
+
+            .bom-index .pagination .page-item {
+                max-width: 100%;
             }
         }
 
@@ -510,6 +532,17 @@
                 flex-direction: column;
                 align-items: center;
                 text-align: center;
+            }
+
+            .bom-index .pagination {
+                justify-content: center;
+            }
+
+            .bom-index .pagination .page-link {
+                min-width: 28px;
+                min-height: 28px;
+                padding: .15rem .38rem;
+                font-size: .62rem;
             }
         }
     </style>
@@ -923,7 +956,7 @@
                             </td>
                         </tr>
                     @empty
-                        <tr>
+                        <tr class="bom-empty-row">
                             <td colspan="10">
                                 <div class="empty-state">
                                     <i class="bi bi-diagram-3"></i>
