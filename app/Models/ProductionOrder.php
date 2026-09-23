@@ -237,10 +237,58 @@ class ProductionOrder extends Model
     }
 
     /**
+     * Resolve the owning sale while remaining compatible with legacy records
+     * that only stored sales.production_order_id or a SaleItem ID in notes.
+     */
+    public function resolveSale(array $with = []): ?Sale
+    {
+        $query = $this->sale();
+        if ($with !== []) {
+            $query->with($with);
+        }
+
+        $sale = $query->first();
+        if ($sale) {
+            return $sale;
+        }
+
+        $legacy = Sale::query()->where('production_order_id', $this->id);
+        if ($with !== []) {
+            $legacy->with($with);
+        }
+
+        $sale = $legacy->first();
+        if ($sale) {
+            return $sale;
+        }
+
+        $saleItemId = $this->sale_item_id;
+        if (! $saleItemId && preg_match('/SaleItem ID:\s*(\d+)/i', (string) $this->notes, $matches)) {
+            $saleItemId = (int) $matches[1];
+        }
+
+        if ($saleItemId) {
+            $item = SaleItem::query()->find((int) $saleItemId);
+            if ($item) {
+                $itemSale = Sale::query();
+                if ($with !== []) {
+                    $itemSale->with($with);
+                }
+
+                return $itemSale->find($item->sale_id);
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * Check if this production order is linked to a sale.
      */
     public function hasSale()
     {
-        return $this->sale_id !== null || $this->sale()->exists();
+        return $this->sale_id !== null
+            || Sale::query()->where('production_order_id', $this->id)->exists()
+            || $this->resolveSale() !== null;
     }
 }
