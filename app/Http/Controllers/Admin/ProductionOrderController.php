@@ -1057,9 +1057,12 @@ class ProductionOrderController extends Controller
                 'quantity_rejected' => 'required|numeric|min:0|max:999999999.99',
                 'materials' => 'required|array|min:1',
                 'materials.*.material_id' => 'required|integer|distinct|exists:products,id',
-                'materials.*.actual_quantity' => 'required|numeric|min:0|max:999999999.999999',
+                'materials.*.consumption_mode' => 'nullable|string|in:calculated,manual',
+                'materials.*.actual_quantity' => 'nullable|numeric|min:0|max:999999999.999999',
                 'materials.*.wastage_quantity' => 'nullable|numeric|min:0|max:999999999.999999',
                 'materials.*.unit' => 'nullable|string|max:50',
+                'materials.*.reel_mode' => 'nullable|string|in:fifo,continue,finished,advanced',
+                'materials.*.selected_reel_id' => 'nullable|integer|exists:purchase_item_reels,id',
                 'materials.*.use_reel_selection' => 'nullable|boolean',
                 'materials.*.selection_note' => 'nullable|string|max:1000',
                 'materials.*.reels' => 'nullable|array|max:100',
@@ -1097,38 +1100,119 @@ class ProductionOrderController extends Controller
                     ->values();
             }
 
-            $submittedMaterials = collect($validated['materials'])
-                ->map(function (array $row): array {
-                    $useReelSelection = (bool) (
-                        $row['use_reel_selection'] ?? false
-                    );
+            // The BOM/specification remains the authoritative estimator. For
+            // roll-based paper the operator does not have to guess kilograms:
+            // completion can derive the target directly from actual manufactured
+            // output. Manual mode remains available for measurable materials and
+            // exceptional corrections.
+            $calculatedByMaterial = collect(
+                app(\App\Services\ProductionQuantityService::class)
+                    ->requirementsForQuantity($productionOrder, $manufacturedQuantity)
+            )->keyBy(fn (array $row) => (int) $row['material_id']);
 
-                    $reels = collect($row['reels'] ?? [])
-                        ->filter(function (array $reel): bool {
-                            return filled($reel['consumed_kg'] ?? null)
-                                || filled($reel['final_remaining_kg'] ?? null);
-                        })
-                        ->map(function (array $reel): array {
-                            return [
-                                'reel_id' => (int) ($reel['reel_id'] ?? 0),
-                                'consumed_kg' => filled($reel['consumed_kg'] ?? null)
-                                    ? (float) $reel['consumed_kg']
-                                    : null,
-                                'final_remaining_kg' => filled(
-                                    $reel['final_remaining_kg'] ?? null
-                                )
-                                    ? (float) $reel['final_remaining_kg']
-                                    : null,
+            $submittedMaterials = collect($validated['materials'])
+                ->map(function (array $row, int $index) use (
+                    $calculatedByMaterial,
+                    $productionOrder
+                ): array {
+                    $materialId = (int) $row['material_id'];
+                    $consumptionMode = (string) ($row['consumption_mode'] ?? 'manual');
+                    $calculated = $calculatedByMaterial->get($materialId);
+
+                    if ($consumptionMode === 'calculated') {
+                        if (! $calculated) {
+                            throw \Illuminate\Validation\ValidationException::withMessages([
+                                "materials.{$index}.actual_quantity" => 'The ERP could not calculate material consumption for this production material.',
+                            ]);
+                        }
+
+                        $actualQuantity = (float) ($calculated['quantity'] ?? 0);
+                        $wastageQuantity = (float) ($calculated['wastage_quantity'] ?? 0);
+                    } else {
+                        if (! array_key_exists('actual_quantity', $row)
+                            || $row['actual_quantity'] === null
+                            || $row['actual_quantity'] === '') {
+                            throw \Illuminate\Validation\ValidationException::withMessages([
+                                "materials.{$index}.actual_quantity" => 'Enter actual consumption or switch this material to system-calculated consumption.',
+                            ]);
+                        }
+
+                        $actualQuantity = (float) $row['actual_quantity'];
+                        $wastageQuantity = (float) ($row['wastage_quantity'] ?? 0);
+                    }
+
+                    $reelMode = (string) ($row['reel_mode'] ?? 'fifo');
+                    $selectedReelId = (int) ($row['selected_reel_id'] ?? 0);
+                    $useReelSelection = false;
+                    $reels = [];
+
+                    if (in_array($reelMode, ['continue', 'finished'], true)) {
+                        if ($selectedReelId <= 0) {
+                            throw \Illuminate\Validation\ValidationException::withMessages([
+                                "materials.{$index}.selected_reel_id" => 'Select the physical reel used for this paper material.',
+                            ]);
+                        }
+
+                        $useReelSelection = true;
+
+                        if ($reelMode === 'finished') {
+                            // A finished reel is the one shop-floor event that
+                            // gives us a trustworthy physical endpoint without
+                            // weighing between jobs. Consume its entire remaining
+                            // ERP balance and close it at zero; the difference
+                            // from theoretical usage becomes production variance.
+                            $actualQuantity = $this->reelAvailableForProductionRun(
+                                $selectedReelId,
+                                $productionOrder->id,
+                                $materialId
+                            );
+                            $wastageQuantity = 0.0;
+                            $reels[] = [
+                                'reel_id' => $selectedReelId,
+                                'consumed_kg' => null,
+                                'final_remaining_kg' => 0.0,
                             ];
-                        })
-                        ->values()
-                        ->all();
+                        } else {
+                            $reels[] = [
+                                'reel_id' => $selectedReelId,
+                                'consumed_kg' => $actualQuantity,
+                                'final_remaining_kg' => null,
+                            ];
+                        }
+                    } elseif ($reelMode === 'advanced') {
+                        $useReelSelection = (bool) (
+                            $row['use_reel_selection'] ?? true
+                        );
+
+                        $reels = collect($row['reels'] ?? [])
+                            ->filter(function (array $reel): bool {
+                                return filled($reel['consumed_kg'] ?? null)
+                                    || filled($reel['final_remaining_kg'] ?? null);
+                            })
+                            ->map(function (array $reel): array {
+                                return [
+                                    'reel_id' => (int) ($reel['reel_id'] ?? 0),
+                                    'consumed_kg' => filled($reel['consumed_kg'] ?? null)
+                                        ? (float) $reel['consumed_kg']
+                                        : null,
+                                    'final_remaining_kg' => filled(
+                                        $reel['final_remaining_kg'] ?? null
+                                    )
+                                        ? (float) $reel['final_remaining_kg']
+                                        : null,
+                                ];
+                            })
+                            ->values()
+                            ->all();
+                    }
 
                     return [
-                        'material_id' => (int) $row['material_id'],
-                        'actual_quantity' => (float) $row['actual_quantity'],
-                        'wastage_quantity' => (float) ($row['wastage_quantity'] ?? 0),
+                        'material_id' => $materialId,
+                        'actual_quantity' => $actualQuantity,
+                        'wastage_quantity' => $wastageQuantity,
                         'unit' => $row['unit'] ?? null,
+                        'consumption_mode' => $consumptionMode,
+                        'reel_mode' => $reelMode,
                         'use_reel_selection' => $useReelSelection,
                         'selection_note' => isset($row['selection_note'])
                             ? trim((string) $row['selection_note'])
@@ -1142,7 +1226,7 @@ class ProductionOrderController extends Controller
             if ($expectedMaterialIds->diff($submittedIds)->isNotEmpty()
                 || $submittedIds->diff($expectedMaterialIds)->isNotEmpty()) {
                 throw \Illuminate\Validation\ValidationException::withMessages([
-                    'materials' => 'Actual material consumption must be entered for exactly the materials allocated to this production order.',
+                    'materials' => 'Completion must include exactly the materials allocated to this production order.',
                 ]);
             }
 
@@ -1215,7 +1299,29 @@ class ProductionOrderController extends Controller
                 );
             }
 
-            $message .= ' Stock and actual production cost were reconciled to the material quantities entered at completion. Materials without an explicit physical reel declaration retain FIFO allocation.';
+            $calculatedCount = $submittedMaterials
+                ->where('consumption_mode', 'calculated')
+                ->count();
+
+            $finishedReelCount = $submittedMaterials
+                ->where('reel_mode', 'finished')
+                ->count();
+
+            $message .= $calculatedCount > 0
+                ? sprintf(
+                    ' %d material line(s) were system-calculated from actual manufactured output; manual declarations were used only where selected.',
+                    $calculatedCount
+                )
+                : ' Material quantities were reconciled from the manual declarations entered at completion.';
+
+            if ($finishedReelCount > 0) {
+                $message .= sprintf(
+                    ' %d finished reel(s) were reconciled to zero remaining balance; their theoretical-to-physical difference is retained as production variance.',
+                    $finishedReelCount
+                );
+            }
+
+            $message .= ' Materials without an explicit physical reel selection retain FIFO reel allocation.';
 
             if ($sale) {
                 $message .= ' The final invoice quantity uses the good/usable finished quantity.';
@@ -1246,6 +1352,74 @@ class ProductionOrderController extends Controller
                 ->withInput()
                 ->with('error', 'Failed to complete production: ' . $e->getMessage());
         }
+    }
+
+    /**
+     * Available weight for one physical reel as if this production run's
+     * provisional allocation were first restored. This is the correct basis
+     * when the operator declares that the reel physically finished during the
+     * current run.
+     */
+    private function reelAvailableForProductionRun(
+        int $reelId,
+        int $productionOrderId,
+        int $materialId
+    ): float {
+        $reel = PurchaseItemReel::query()
+            ->with('purchaseItem')
+            ->find($reelId);
+
+        if (! $reel || ! $reel->purchaseItem) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'materials' => 'The selected physical reel could not be found.',
+            ]);
+        }
+
+        if ((int) $reel->purchaseItem->product_id !== $materialId) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'materials' => sprintf(
+                    'Reel %s does not belong to the selected production material.',
+                    $reel->reel_code
+                ),
+            ]);
+        }
+
+        if ($reel->isBlockedFromProduction()) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'materials' => sprintf(
+                    'Reel %s is %s and cannot be consumed.',
+                    $reel->reel_code,
+                    $reel->status
+                ),
+            ]);
+        }
+
+        $usedByThisRun = (float) DB::table('production_reel_consumptions as prc')
+            ->join(
+                'production_material_consumptions as pmc',
+                'pmc.id',
+                '=',
+                'prc.production_material_consumption_id'
+            )
+            ->where('pmc.production_order_id', $productionOrderId)
+            ->where('prc.purchase_item_reel_id', $reelId)
+            ->sum('prc.quantity_kg');
+
+        $availableForRun = max(
+            (float) $reel->system_remaining_weight_kg + $usedByThisRun,
+            0
+        );
+
+        if ($availableForRun <= 0.000001) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'materials' => sprintf(
+                    'Reel %s has no remaining weight available for this production run.',
+                    $reel->reel_code
+                ),
+            ]);
+        }
+
+        return $availableForRun;
     }
 
     public function cancelProduction(ProductionOrder $productionOrder)
