@@ -6207,7 +6207,6 @@
     {{-- ─── QUICK CARTON QUOTATION SCRIPT ─── --}}
     <script>
         (function () {
-            var csSaleId = {{ (int) $sale->id }};
             var csCurrency = @json($currencyCode);
             var csOptionsUrl = @json(route('admin.sales.carton-spec.options'));
             var csCalculateUrl = @json(route('admin.sales.carton-spec.calculate', $sale->id));
@@ -6215,6 +6214,7 @@
             var csToken = @json(csrf_token());
             var csOptions = null;
             var csPreview = null;
+            var csQueue = [];
 
             if (!document.getElementById('cartonSpecSection')) {
                 return;
@@ -6227,6 +6227,15 @@
                     minimumFractionDigits: decimals,
                     maximumFractionDigits: decimals
                 });
+            }
+
+            function csEscape(value) {
+                return String(value == null ? '' : value)
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/'/g, '&#039;');
             }
 
             function csFillSelect(element, items, placeholder) {
@@ -6259,20 +6268,28 @@
                     document.getElementById('csProfileHelp').textContent = '';
                     return;
                 }
+
                 document.getElementById('csPly').value = profile.ply;
+
                 if (profile.flute_type) {
                     var flute = document.getElementById('csFlute');
                     if (flute.querySelector('option[value="' + profile.flute_type + '"]')) {
                         flute.value = profile.flute_type;
                     }
                 }
+
                 if (!document.getElementById('csWastage').dataset.touched) {
                     document.getElementById('csWastage').value = profile.wastage_percentage;
                 }
+
                 var layers = (profile.layers || []).map(function (layer) {
-                    return (layer.gsm || 0) + ' GSM x ' + layer.multiplication_layer;
+                    return (layer.gsm || 0) + ' GSM × ' + layer.multiplication_layer;
                 }).join(' + ');
-                document.getElementById('csProfileHelp').textContent = 'v' + profile.version + ' - ' + layers;
+
+                document.getElementById('csProfileHelp').textContent =
+                    profile.name + ' · ' + profile.ply + ' ply'
+                    + (profile.flute_type ? ' · ' + profile.flute_type + ' flute' : '')
+                    + (layers ? ' · ' + layers : '');
             }
 
             function csShowError(message) {
@@ -6281,36 +6298,87 @@
                 box.style.display = message ? 'block' : 'none';
             }
 
+            function csInvalidate() {
+                csPreview = null;
+                document.getElementById('csAddBtn').disabled = true;
+                document.getElementById('csQueueBtn').disabled = true;
+            }
+
+            function csPayload() {
+                return {
+                    _token: csToken,
+                    product_id: document.getElementById('csProduct').value,
+                    box_style: document.getElementById('csBoxStyle').value,
+                    length: document.getElementById('csLength').value,
+                    width: document.getElementById('csWidth').value,
+                    height: document.getElementById('csHeight').value,
+                    dimension_unit: document.getElementById('csUnit').value,
+                    board_profile_id: document.getElementById('csBoardProfile').value,
+                    ply: document.getElementById('csPly').value || null,
+                    flute_type: document.getElementById('csFlute').value || null,
+                    printing_option: document.getElementById('csPrinting').value,
+                    print_cost_afn: document.getElementById('csPrintCost').value || null,
+                    quantity: document.getElementById('csQuantity').value,
+                    wastage_percentage: document.getElementById('csWastage').value,
+                    quoted_unit_price: document.getElementById('csQuotedPrice').value || null,
+                    quotation_description: document.getElementById('csDescription').value || null
+                };
+            }
+
+            function csProductLabel() {
+                var select = document.getElementById('csProduct');
+                return select.options[select.selectedIndex]
+                    ? select.options[select.selectedIndex].textContent.trim()
+                    : 'Product';
+            }
+
             function csRenderPreview(preview) {
                 csPreview = preview;
-                var unitPrice = csCurrency === 'USD'
-                    ? preview.commercial.selling_price_usd
-                    : preview.commercial.selling_price_afn;
-                var orderValue = csCurrency === 'USD'
-                    ? preview.commercial.order_total_usd
-                    : preview.commercial.order_total_afn;
-                var quantity = preview.quantity || 1;
+                var pricing = preview.pricing || {};
+                var quantity = Number(preview.quantity || 1);
+                var override = Number(pricing.price_override || 0);
 
-                document.getElementById('csUnitPrice').textContent = csNumber(unitPrice, 4);
-                document.getElementById('csOrderValue').textContent = csNumber(orderValue, 2);
-                document.getElementById('csPaperKg').textContent = csNumber(preview.paper.physical_kg_total, 3) + ' kg';
-                document.getElementById('csAdhesiveKg').textContent = csNumber(preview.adhesive.kg_total, 3) + ' kg';
-                document.getElementById('csMaterialCost').textContent = csNumber(preview.physical.material_cost_afn_total, 2);
-                document.getElementById('csWorkProfit').textContent = csNumber(preview.commercial.work_profit_afn * quantity, 2);
-                document.getElementById('csExpectedProfit').textContent = csNumber(preview.expected_profit_afn, 2);
+                document.getElementById('csStandardPrice').textContent =
+                    csNumber(pricing.standard_unit_price, 4);
+
+                var overrideEl = document.getElementById('csPriceOverride');
+                overrideEl.textContent =
+                    (override > 0 ? '+' : (override < 0 ? '-' : ''))
+                    + csNumber(Math.abs(override), 4);
+                overrideEl.style.color = override > 0
+                    ? '#059669'
+                    : (override < 0 ? '#dc2626' : '#64748b');
+
+                document.getElementById('csCustomerPrice').textContent =
+                    csNumber(pricing.customer_unit_price, 4);
+                document.getElementById('csOrderValue').textContent =
+                    csNumber(pricing.customer_order_total, 2);
+                document.getElementById('csPaperKg').textContent =
+                    csNumber(preview.paper.physical_kg_total, 3) + ' kg';
+                document.getElementById('csAdhesiveKg').textContent =
+                    csNumber(preview.adhesive.kg_total, 3) + ' kg';
+                document.getElementById('csWorkProfit').textContent =
+                    csNumber(preview.commercial.work_profit_afn * quantity, 2);
 
                 var stock = document.getElementById('csStockStatus');
                 var shortageBox = document.getElementById('csShortageList');
+
                 if (preview.shortages && preview.shortages.has_shortage) {
                     stock.textContent = 'Shortage';
                     stock.style.color = '#dc2626';
+
                     var lines = (preview.shortages.materials || [])
                         .filter(function (row) { return !row.is_available; })
                         .map(function (row) {
-                            return row.material_name + ': need ' + csNumber(row.required_quantity, 3)
-                                + ' kg, available ' + csNumber(row.available_quantity, 3) + ' kg';
+                            return row.material_name + ': need '
+                                + csNumber(row.required_quantity, 3)
+                                + ' kg, available '
+                                + csNumber(row.available_quantity, 3) + ' kg';
                         });
-                    shortageBox.innerHTML = '<i class="bi bi-exclamation-triangle me-1"></i>' + lines.join('<br>');
+
+                    shortageBox.innerHTML =
+                        '<i class="bi bi-exclamation-triangle me-1"></i>'
+                        + lines.join('<br>');
                     shortageBox.style.display = 'block';
                 } else {
                     stock.textContent = 'Available';
@@ -6320,10 +6388,12 @@
 
                 var body = document.getElementById('csAdvancedRows');
                 body.innerHTML = '';
+
                 (preview.rows || []).forEach(function (row) {
                     var tr = document.createElement('tr');
-                    tr.innerHTML = '<td>' + (row.material_name || '-') + '</td>'
-                        + '<td>' + row.component_type + '</td>'
+                    tr.innerHTML =
+                        '<td>' + csEscape(row.material_name || '-') + '</td>'
+                        + '<td>' + csEscape(row.component_type || '-') + '</td>'
                         + '<td class="text-end">' + (row.paper_gsm || '-') + '</td>'
                         + '<td class="text-end">' + (row.multiplication_layer || '-') + '</td>'
                         + '<td class="text-end">' + csNumber(row.kg_per_unit, 6) + '</td>'
@@ -6336,33 +6406,17 @@
 
                 document.getElementById('csSummary').style.display = 'block';
                 document.getElementById('csAddBtn').disabled = false;
+                document.getElementById('csQueueBtn').disabled = false;
             }
 
             function csCalculate() {
                 csShowError('');
-                document.getElementById('csAddBtn').disabled = true;
-                var payload = {
-                    _token: csToken,
-                    product_id: document.getElementById('csProduct').value,
-                    box_style: document.getElementById('csBoxStyle').value,
-                    length: document.getElementById('csLength').value,
-                    width: document.getElementById('csWidth').value,
-                    height: document.getElementById('csHeight').value,
-                    dimension_unit: document.getElementById('csUnit').value,
-                    board_profile_id: document.getElementById('csBoardProfile').value,
-                    ply: document.getElementById('csPly').value || null,
-                    flute_type: document.getElementById('csFlute').value || null,
-                    printing_option: document.getElementById('csPrinting').value,
-                    quantity: document.getElementById('csQuantity').value,
-                    wastage_percentage: document.getElementById('csWastage').value,
-                    quoted_unit_price: document.getElementById('csQuotedPrice').value || null,
-                    quotation_description: document.getElementById('csDescription').value || null
-                };
+                csInvalidate();
 
                 $.ajax({
                     url: csCalculateUrl,
                     type: 'POST',
-                    data: payload,
+                    data: csPayload(),
                     success: function (response) {
                         if (response.success) {
                             csRenderPreview(response.data);
@@ -6382,102 +6436,250 @@
                 });
             }
 
-            function csAdd() {
+            function csPostLine(payload) {
+                return new Promise(function (resolve, reject) {
+                    $.ajax({
+                        url: csAddUrl,
+                        type: 'POST',
+                        data: payload,
+                        success: function (response) {
+                            if (response.success) {
+                                resolve(response);
+                            } else {
+                                reject(new Error(response.message || 'Could not add carton size.'));
+                            }
+                        },
+                        error: function (xhr) {
+                            var message = 'Could not add carton size.';
+                            if (xhr.responseJSON && xhr.responseJSON.message) {
+                                message = xhr.responseJSON.message;
+                            } else if (xhr.responseJSON && xhr.responseJSON.errors) {
+                                message = Object.values(xhr.responseJSON.errors).flat().join(' ');
+                            }
+                            reject(new Error(message));
+                        }
+                    });
+                });
+            }
+
+            async function csAddCurrent() {
                 if (!csPreview) {
                     csShowError('Calculate the specification before adding it to the sale.');
                     return;
                 }
+
                 csShowError('');
-                document.getElementById('csAddBtn').disabled = true;
-                $.ajax({
-                    url: csAddUrl,
-                    type: 'POST',
-                    data: {
-                        _token: csToken,
-                        product_id: document.getElementById('csProduct').value,
-                        box_style: document.getElementById('csBoxStyle').value,
-                        length: document.getElementById('csLength').value,
-                        width: document.getElementById('csWidth').value,
-                        height: document.getElementById('csHeight').value,
-                        dimension_unit: document.getElementById('csUnit').value,
-                        board_profile_id: document.getElementById('csBoardProfile').value,
-                        ply: document.getElementById('csPly').value || null,
-                        flute_type: document.getElementById('csFlute').value || null,
-                        printing_option: document.getElementById('csPrinting').value,
-                        quantity: document.getElementById('csQuantity').value,
-                        wastage_percentage: document.getElementById('csWastage').value,
-                        quoted_unit_price: document.getElementById('csQuotedPrice').value || null,
-                        quotation_description: document.getElementById('csDescription').value || null
-                    },
-                    success: function (response) {
-                        if (response.success) {
-                            Swal.fire({
-                                icon: 'success',
-                                title: @json(__('ui.added')),
-                                text: response.message,
-                                timer: 1500,
-                                showConfirmButton: false
-                            }).then(function () {
-                                location.reload();
-                            });
-                        } else {
-                            document.getElementById('csAddBtn').disabled = false;
-                            csShowError(response.message || 'Could not add the specification.');
-                        }
-                    },
-                    error: function (xhr) {
-                        document.getElementById('csAddBtn').disabled = false;
-                        var message = 'Could not add the specification.';
-                        if (xhr.responseJSON && xhr.responseJSON.message) {
-                            message = xhr.responseJSON.message;
-                        } else if (xhr.responseJSON && xhr.responseJSON.errors) {
-                            message = Object.values(xhr.responseJSON.errors).flat().join(' ');
-                        }
-                        csShowError(message);
-                    }
-                });
+                var button = document.getElementById('csAddBtn');
+                button.disabled = true;
+
+                try {
+                    var response = await csPostLine(csPayload());
+                    await Swal.fire({
+                        icon: 'success',
+                        title: @json(__('ui.added')),
+                        text: response.message,
+                        timer: 1200,
+                        showConfirmButton: false
+                    });
+                    location.reload();
+                } catch (error) {
+                    button.disabled = false;
+                    csShowError(error.message);
+                }
             }
 
-            document.getElementById('csBoardProfile').addEventListener('change', csApplyProfile);
+            function csQueueCurrent() {
+                if (!csPreview) {
+                    csShowError('Calculate this size before adding it to the size list.');
+                    return;
+                }
+
+                var payload = Object.assign({}, csPayload());
+                var profile = csCurrentProfile();
+                var pricing = csPreview.pricing || {};
+
+                csQueue.push({
+                    payload: payload,
+                    product: csProductLabel(),
+                    description: payload.quotation_description || '',
+                    dimensions: payload.length + ' × ' + payload.width + ' × ' + payload.height + ' ' + payload.dimension_unit,
+                    profile: profile ? profile.name : 'Board profile',
+                    quantity: Number(payload.quantity || 0),
+                    customer_price: Number(pricing.customer_unit_price || 0),
+                    total: Number(pricing.customer_order_total || 0)
+                });
+
+                csRenderQueue();
+
+                // Keep product/board/printing as reusable defaults; only clear
+                // the fields that normally change for the next customer size.
+                document.getElementById('csLength').value = '';
+                document.getElementById('csWidth').value = '';
+                document.getElementById('csHeight').value = '';
+                document.getElementById('csQuantity').value = '1';
+                document.getElementById('csQuotedPrice').value = '';
+                document.getElementById('csDescription').value = '';
+                document.getElementById('csSummary').style.display = 'none';
+                csInvalidate();
+                document.getElementById('csLength').focus();
+            }
+
+            function csRenderQueue() {
+                var panel = document.getElementById('csQueuePanel');
+                var body = document.getElementById('csQueueRows');
+
+                if (!csQueue.length) {
+                    panel.style.display = 'none';
+                    body.innerHTML = '';
+                    return;
+                }
+
+                panel.style.display = '';
+                body.innerHTML = csQueue.map(function (row, index) {
+                    var productText = csEscape(row.product);
+                    if (row.description) {
+                        productText += '<div class="small text-muted">' + csEscape(row.description) + '</div>';
+                    }
+
+                    return '<tr>'
+                        + '<td><strong>' + productText + '</strong></td>'
+                        + '<td>' + csEscape(row.dimensions) + '</td>'
+                        + '<td>' + csEscape(row.profile) + '</td>'
+                        + '<td class="text-end">' + csNumber(row.quantity, 0) + '</td>'
+                        + '<td class="text-end">' + csNumber(row.customer_price, 4) + ' ' + csEscape(csCurrency) + '</td>'
+                        + '<td class="text-end fw-bold">' + csNumber(row.total, 2) + ' ' + csEscape(csCurrency) + '</td>'
+                        + '<td class="text-end"><button type="button" class="btn btn-sm btn-outline-danger cs-remove-queued" data-index="' + index + '" title="Remove size"><i class="bi bi-x-lg"></i></button></td>'
+                        + '</tr>';
+                }).join('');
+            }
+
+            async function csAddAll() {
+                if (!csQueue.length) {
+                    csShowError('Add at least one calculated size first.');
+                    return;
+                }
+
+                var button = document.getElementById('csAddAllBtn');
+                button.disabled = true;
+                button.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Adding…';
+                csShowError('');
+
+                var completed = 0;
+
+                try {
+                    for (var i = 0; i < csQueue.length; i++) {
+                        await csPostLine(csQueue[i].payload);
+                        completed++;
+                    }
+
+                    await Swal.fire({
+                        icon: 'success',
+                        title: 'Sizes added',
+                        text: completed + ' carton size' + (completed === 1 ? '' : 's') + ' added to the sale.',
+                        timer: 1400,
+                        showConfirmButton: false
+                    });
+
+                    location.reload();
+                } catch (error) {
+                    button.disabled = false;
+                    button.innerHTML = '<i class="bi bi-cart-check me-1"></i> Add All Sizes';
+                    csShowError(
+                        (completed ? completed + ' size(s) were added before the next size failed. ' : '')
+                        + error.message
+                        + (completed ? ' Reload the page before retrying to avoid duplicates.' : '')
+                    );
+                }
+            }
+
+            document.getElementById('csBoardProfile').addEventListener('change', function () {
+                csApplyProfile();
+                csInvalidate();
+            });
+
             document.getElementById('csWastage').addEventListener('input', function () {
                 this.dataset.touched = '1';
+                csInvalidate();
             });
+
+            [
+                'csProduct', 'csLength', 'csWidth', 'csHeight', 'csQuantity',
+                'csPrinting', 'csQuotedPrice', 'csDescription', 'csBoxStyle',
+                'csUnit', 'csFlute', 'csPrintCost'
+            ].forEach(function (id) {
+                var element = document.getElementById(id);
+                if (!element) { return; }
+                element.addEventListener('change', csInvalidate);
+                if (element.tagName === 'INPUT') {
+                    element.addEventListener('input', csInvalidate);
+                }
+            });
+
             document.getElementById('csCalculateBtn').addEventListener('click', csCalculate);
-            document.getElementById('csAddBtn').addEventListener('click', csAdd);
+            document.getElementById('csAddBtn').addEventListener('click', csAddCurrent);
+            document.getElementById('csQueueBtn').addEventListener('click', csQueueCurrent);
+            document.getElementById('csAddAllBtn').addEventListener('click', csAddAll);
+
+            document.getElementById('csQueueRows').addEventListener('click', function (event) {
+                var button = event.target.closest('.cs-remove-queued');
+                if (!button) { return; }
+                csQueue.splice(Number(button.dataset.index), 1);
+                csRenderQueue();
+            });
 
             $.get(csOptionsUrl, function (response) {
                 if (!response.success) { return; }
                 csOptions = response.data;
 
                 csFillSelect(document.getElementById('csBoxStyle'), csOptions.box_styles, null);
-                csFillSelect(document.getElementById('csFlute'),
-                    [{ value: '', label: 'None' }].concat(csOptions.flutes), null);
+                csFillSelect(
+                    document.getElementById('csFlute'),
+                    [{ value: '', label: 'Automatic / None' }].concat(csOptions.flutes),
+                    null
+                );
                 csFillSelect(document.getElementById('csPrinting'), csOptions.printing, null);
-                csFillSelect(document.getElementById('csUnit'),
+                csFillSelect(
+                    document.getElementById('csUnit'),
                     (csOptions.units || []).map(function (unit) {
                         return { value: unit, label: unit.toUpperCase() };
-                    }), null);
+                    }),
+                    null
+                );
 
                 var profileItems = (csOptions.profiles || []).map(function (profile) {
                     return {
                         value: String(profile.id),
-                        label: profile.name + ' (v' + profile.version + ')'
+                        label: profile.name
                     };
                 });
-                csFillSelect(document.getElementById('csBoardProfile'), profileItems, 'Select board profile...');
 
-                document.getElementById('csBoxStyle').value = csOptions.default_box_style || 'RSC';
+                csFillSelect(
+                    document.getElementById('csBoardProfile'),
+                    profileItems,
+                    'Select board profile...'
+                );
+
+                document.getElementById('csBoxStyle').value =
+                    csOptions.default_box_style || 'RSC';
+
                 var unitSelect = document.getElementById('csUnit');
-                if (unitSelect.querySelector('option[value="cm"]')) {
+                if (unitSelect.querySelector('option[value="inch"]')) {
+                    unitSelect.value = 'inch';
+                } else if (unitSelect.querySelector('option[value="cm"]')) {
                     unitSelect.value = 'cm';
                 }
+
                 if (csOptions.profiles && csOptions.profiles.length === 1) {
-                    document.getElementById('csBoardProfile').value = String(csOptions.profiles[0].id);
+                    document.getElementById('csBoardProfile').value =
+                        String(csOptions.profiles[0].id);
                 }
+
                 csApplyProfile();
 
                 if (!profileItems.length) {
-                    csShowError('No active board profiles are configured. Run the board profile seeder, then reload this page.');
+                    csShowError(
+                        'No active board profiles are configured. Run the board profile seeder, then reload this page.'
+                    );
                 }
             }).fail(function (xhr) {
                 var message = 'Could not load carton quotation options.';
