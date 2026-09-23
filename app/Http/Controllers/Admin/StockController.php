@@ -33,7 +33,7 @@ class StockController extends Controller
             ->when($request->search, function ($query, $search) {
                 $query->where('name', 'like', "%{$search}%");
             })
-            ->paginate(15);
+            ->paginate(15)->withQueryString();
 
         // Pre-fetch all arrived purchase items (with their purchase + expenses)
         // for the paginated products in a single batch to avoid per-product N+1.
