@@ -1349,9 +1349,20 @@ class ProductionOrderController extends Controller
             $productionOrder->save();
 
             // ─── Update the associated sale if exists ───
+            // A cancelled production order is terminal. For multi-line sales,
+            // keep the sale-level produced flag aligned with completion logic:
+            // it becomes true only when no linked production order remains open.
             $sale = $productionOrder->resolveSale();
             if ($sale) {
-                $sale->is_produced = false;
+                $openProductionExists = ProductionOrder::query()
+                    ->where('sale_id', $sale->id)
+                    ->whereNotIn('status', [
+                        ProductionOrder::STATUS_COMPLETED,
+                        ProductionOrder::STATUS_CANCELLED,
+                    ])
+                    ->exists();
+
+                $sale->is_produced = ! $openProductionExists;
                 $sale->save();
             }
 
