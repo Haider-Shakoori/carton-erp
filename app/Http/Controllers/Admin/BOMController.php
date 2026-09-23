@@ -171,6 +171,14 @@ class BOMController extends Controller
             $created = DB::transaction(function () use ($validated, $exchangeRate, $specification) {
                 return collect($validated['sizes'])->map(function (array $size) use ($validated, $exchangeRate, $specification) {
                     $result = $specification->calculate($this->simpleSpecPayload($validated, $size), $exchangeRate);
+
+                    if ((bool) ($result['physical']['has_missing_landed_cost'] ?? false)) {
+                        throw new \RuntimeException(
+                            'One or more board/adhesive materials do not have a valid arrived landed cost. '
+                            . 'Add the material to inventory before saving this BOM.'
+                        );
+                    }
+
                     $bom = $specification->persistTechnicalBom(
                         $result,
                         (int) $validated['product_id'],
