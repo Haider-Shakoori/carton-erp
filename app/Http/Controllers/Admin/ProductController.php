@@ -45,9 +45,8 @@ class ProductController extends Controller
 
         // Keep the modal selectors complete even when the category table grows.
         $categoryOptions = Category::query()
-            ->where('is_active', true)
             ->orderBy('name')
-            ->get(['id', 'name']);
+            ->get(['id', 'name', 'is_active']);
 
         $lowStockCount = $rawProducts->filter(function (Product $product): bool {
             $currentStock = (float) ($product->catalog_current_stock ?? 0);
@@ -99,6 +98,7 @@ class ProductController extends Controller
         try {
             $validated = $request->validate([
                 'product_id' => 'nullable|exists:products,id',
+                'type' => 'nullable|string|in:raw,raw_material,finished,finished_good,equipment,service',
                 'name' => 'required|string|max:255',
                 'category_id' => 'required|exists:categories,id',
                 'unit' => 'nullable|string|max:100',
@@ -115,6 +115,12 @@ class ProductController extends Controller
                 $validated['default_kg_per_roll'] = null;
             }
 
+            $requestedType = $validated['type'] ?? Product::TYPE_RAW_MATERIAL;
+            $validated['type'] = match ($requestedType) {
+                'raw' => Product::TYPE_RAW_MATERIAL,
+                'finished' => Product::TYPE_FINISHED_GOOD,
+                default => $requestedType,
+            };
             $validated['min_stock_alert'] = $request->min_stock_alert ?? 0;
             $validated['is_active'] = $request->has('is_active');
 
@@ -162,6 +168,7 @@ class ProductController extends Controller
     {
         try {
             $validated = $request->validate([
+                'type' => 'nullable|string|in:raw,raw_material,finished,finished_good,equipment,service',
                 'name' => 'required|string|max:255',
                 'category_id' => 'required|exists:categories,id',
                 'unit' => 'nullable|string|max:100',
@@ -178,6 +185,12 @@ class ProductController extends Controller
                 $validated['default_kg_per_roll'] = null;
             }
 
+            $requestedType = $validated['type'] ?? Product::TYPE_RAW_MATERIAL;
+            $validated['type'] = match ($requestedType) {
+                'raw' => Product::TYPE_RAW_MATERIAL,
+                'finished' => Product::TYPE_FINISHED_GOOD,
+                default => $requestedType,
+            };
             $validated['min_stock_alert'] = $request->min_stock_alert ?? 0;
             $validated['is_active'] = $request->has('is_active');
 
