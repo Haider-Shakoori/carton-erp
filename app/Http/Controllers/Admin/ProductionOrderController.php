@@ -1158,6 +1158,10 @@ class ProductionOrderController extends Controller
                     // quantity is therefore calculated from the frozen BOM and
                     // ACTUAL MANUFACTURED quantity (good + rejected). Operator
                     // actuals remain available only for measurable materials.
+                    $actualProvided = array_key_exists('actual_quantity', $row)
+                        && $row['actual_quantity'] !== null
+                        && $row['actual_quantity'] !== '';
+
                     $actualQuantity = $isRollBased
                         ? (float) ($autoRequirement['quantity'] ?? 0)
                         : (float) ($row['actual_quantity'] ?? 0);
@@ -1172,6 +1176,7 @@ class ProductionOrderController extends Controller
                         'wastage_quantity' => $wastageQuantity,
                         'unit' => $row['unit'] ?? ($autoRequirement['unit'] ?? null),
                         'is_roll_based' => $isRollBased,
+                        'actual_provided' => $actualProvided,
                         // Exact physical reel declaration remains an advanced,
                         // optional allocation control. It never changes the
                         // system-calculated TOTAL paper quantity for this job.
@@ -1193,7 +1198,7 @@ class ProductionOrderController extends Controller
             }
 
             foreach ($submittedMaterials as $index => $row) {
-                if (! $row['is_roll_based'] && $row['actual_quantity'] < 0.000001) {
+                if (! $row['is_roll_based'] && ! $row['actual_provided']) {
                     throw \Illuminate\Validation\ValidationException::withMessages([
                         "materials.{$index}.actual_quantity" => 'Enter the actual quantity used for this measurable material.',
                     ]);
