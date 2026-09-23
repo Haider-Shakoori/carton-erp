@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Admin\ProductionOrderController;
 use App\Models\PurchaseItem;
 use App\Models\PurchaseItemReel;
 use App\Models\ProductionMaterialConsumption;
@@ -629,6 +630,94 @@ it('initializes legacy partially used batches from current reel weights without 
         ->and((float) $historical->total_cost_usd)->toBe((float) $before['total_cost_usd'])
         ->and($historical->reelConsumptions()->count())->toBe(0)
         ->and($batch->fresh()->availableKg())->toBe(900.0);
+});
+
+it('closes a physically finished reel at zero and retains its excess use as production variance', function () {
+    $fx = reelTrackingFixture();
+    $reelService = app(ReelInventoryService::class);
+    $stock = app(StockDeductionService::class);
+
+    $reelService->initializeBatch($fx['batch']);
+
+    DB::table('production_order_materials')->insert([
+        'production_order_id' => $fx['productionOrderId'],
+        'product_id' => $fx['materialId'],
+        'required_quantity' => 100,
+        'available_quantity' => 1000,
+        'shortage_quantity' => 0,
+        'unit' => 'kg',
+        'cost_per_unit' => $fx['batch']->landedCostPerKg(),
+        'total_cost' => 100 * $fx['batch']->landedCostPerKg(),
+        'consumed_quantity' => 0,
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+
+    // Production start has provisionally allocated 100 kg from the first
+    // 500 kg reel, leaving 400 kg visible on that reel.
+    $stock->deductMaterials(
+        $fx['productionOrderId'],
+        null,
+        [[
+            'material_id' => $fx['materialId'],
+            'quantity' => 100,
+            'planned_quantity' => 100,
+            'wastage_quantity' => 0,
+            'unit' => 'kg',
+        ]]
+    );
+
+    $reel = $fx['batch']->fresh()->reels()
+        ->orderBy('sequence_no')
+        ->firstOrFail();
+
+    expect((float) $reel->system_remaining_weight_kg)->toBe(400.0);
+
+    $order = ProductionOrder::findOrFail($fx['productionOrderId']);
+
+    $request = \Illuminate\Http\Request::create(
+        '/admin/production-orders/'.$order->id.'/complete',
+        'POST',
+        [
+            'quantity_manufactured' => 100,
+            'quantity_produced' => 100,
+            'quantity_rejected' => 0,
+            'materials' => [[
+                'material_id' => $fx['materialId'],
+                'consumption_mode' => 'calculated',
+                'reel_mode' => 'finished',
+                'selected_reel_id' => $reel->id,
+                'unit' => 'kg',
+            ]],
+        ]
+    );
+
+    $response = app(ProductionOrderController::class)
+        ->completeProduction($order, $request);
+
+    $reel->refresh();
+    $batch = $fx['batch']->fresh();
+    $consumption = ProductionMaterialConsumption::query()
+        ->where('production_order_id', $order->id)
+        ->where('material_id', $fx['materialId'])
+        ->firstOrFail();
+
+    expect($response->getSession()->get('success'))
+        ->toContain('finished reel')
+        ->and((float) $consumption->actual_quantity)->toBe(500.0)
+        ->and((float) $reel->system_remaining_weight_kg)->toBe(0.0)
+        ->and($reel->status)->toBe(PurchaseItemReel::STATUS_CONSUMED)
+        ->and($batch->availableKg())->toBe(500.0)
+        ->and((float) $consumption->actual_quantity - 100.0)->toBe(400.0);
+
+    $lineage = ProductionReelConsumption::query()
+        ->where('production_material_consumption_id', $consumption->id)
+        ->firstOrFail();
+
+    expect((int) $lineage->purchase_item_reel_id)->toBe((int) $reel->id)
+        ->and((float) $lineage->quantity_kg)->toBe(500.0)
+        ->and((float) $lineage->after_weight_kg)->toBe(0.0)
+        ->and($lineage->allocation_method)->toBe('operator_selected');
 });
 
 it('replaces provisional FIFO with the operator selected reel at production completion', function () {
