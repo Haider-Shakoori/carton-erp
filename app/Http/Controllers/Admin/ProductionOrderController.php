@@ -610,9 +610,7 @@ class ProductionOrderController extends Controller
         }
 
         // ─── GET LINKED SALE ───
-        $sale = Sale::where('production_order_id', $productionOrder->id)
-            ->with(['currency', 'items', 'items.bom'])
-            ->first();
+        $sale = $productionOrder->resolveSale(['currency', 'items', 'items.bom']);
 
         // ─── CURRENCY SETUP ───
         if ($sale) {
@@ -871,9 +869,7 @@ class ProductionOrderController extends Controller
         }
 
         try {
-            $sale = Sale::where('production_order_id', $productionOrder->id)
-                ->with('items')
-                ->first();
+            $sale = $productionOrder->resolveSale(['items']);
 
             $result = app(\App\Services\ProductionQuantityService::class)
                 ->start($productionOrder, $sale, $plannedQuantity);
@@ -1027,9 +1023,7 @@ class ProductionOrderController extends Controller
         // explicit completion form and therefore requires the actual materials.
         if ($request === null) {
             try {
-                $sale = Sale::where('production_order_id', $productionOrder->id)
-                    ->with(['items', 'currency'])
-                    ->first();
+                $sale = $productionOrder->resolveSale(['items', 'currency']);
 
                 $legacyGoodQty = (float) $productionOrder->quantity_ordered;
 
@@ -1251,9 +1245,7 @@ class ProductionOrderController extends Controller
                 }
             }
 
-            $sale = Sale::where('production_order_id', $productionOrder->id)
-                ->with(['items', 'currency'])
-                ->first();
+            $sale = $productionOrder->resolveSale(['items', 'currency']);
 
             $result = app(\App\Services\ProductionQuantityService::class)->complete(
                 $productionOrder,
@@ -1357,7 +1349,7 @@ class ProductionOrderController extends Controller
             $productionOrder->save();
 
             // ─── Update the associated sale if exists ───
-            $sale = Sale::where('production_order_id', $productionOrder->id)->first();
+            $sale = $productionOrder->resolveSale();
             if ($sale) {
                 $sale->is_produced = false;
                 $sale->save();
