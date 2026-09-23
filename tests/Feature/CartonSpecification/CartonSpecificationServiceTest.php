@@ -276,6 +276,21 @@ it('grows adhesive consumption with carton dimensions', function () {
         ->toBeGreaterThan((float) $small['adhesive']['kg_per_unit']);
 });
 
+it('uses the canonical client 40 percent work setting when the caller omits it', function () {
+    $fx = cartonSpecFixtures();
+    $service = app(CartonSpecificationService::class);
+    $input = cartonSpecInput($fx);
+    unset($input['work_percentage']);
+
+    $result = $service->calculate($input);
+    $expectedWork = (float) $result['commercial']['paper_basis_afn_per_unit'] * 0.40;
+
+    expect((float) config('carton.standard_work_percentage'))->toBe(40.0)
+        ->and((float) $result['spec']['work_percentage'])->toBe(40.0)
+        ->and((float) $result['commercial']['work_profit_afn_per_unit'])
+        ->toEqualWithDelta($expectedWork, 0.0001);
+});
+
 it('applies the client 40 percent work only to the paper commercial basis', function () {
     $fx = cartonSpecFixtures();
     $service = app(CartonSpecificationService::class);
