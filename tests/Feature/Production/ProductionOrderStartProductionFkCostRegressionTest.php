@@ -383,6 +383,54 @@ it('completes production from operator-entered output and actual material consum
         ->and(abs((float) $batch->qty_kg_available - 23998.80))->toBeLessThan(0.001);
 });
 
+it('calculates roll-paper consumption from manufactured output when the operator does not know kilograms', function () {
+    $fx = startProductionFixtures();
+    Auth::login($fx['user']);
+
+    $order = makeOrder('FK-CALCULATED-COMPLETE-001', $fx);
+    addSnapshotRows($order, $fx['materialId']);
+
+    (new ProductionOrderController())->startProduction($order);
+    $order->refresh();
+
+    $manufactured = 0.80;
+    $expected = collect(
+        app(\App\Services\ProductionQuantityService::class)
+            ->requirementsForQuantity($order, $manufactured)
+    )->firstWhere('material_id', $fx['materialId']);
+
+    $request = \Illuminate\Http\Request::create(
+        '/admin/production-orders/'.$order->id.'/complete',
+        'POST',
+        [
+            'quantity_manufactured' => $manufactured,
+            'quantity_produced' => 0.75,
+            'quantity_rejected' => 0.05,
+            'materials' => [[
+                'material_id' => $fx['materialId'],
+                'consumption_mode' => 'calculated',
+                'reel_mode' => 'fifo',
+                'unit' => 'kg',
+            ]],
+        ]
+    );
+
+    $response = (new ProductionOrderController())
+        ->completeProduction($order, $request);
+
+    $consumptions = ProductionMaterialConsumption::query()
+        ->where('production_order_id', $order->id)
+        ->get();
+
+    expect($response->getSession()->get('success'))
+        ->toContain('system-calculated from actual manufactured output')
+        ->and((float) $consumptions->sum('actual_quantity'))
+        ->toEqualWithDelta((float) $expected['quantity'], 0.0001)
+        ->and((float) $order->fresh()->quantity_manufactured)->toBe(0.80)
+        ->and((float) $order->fresh()->quantity_produced)->toBe(0.75)
+        ->and((float) $order->fresh()->quantity_rejected)->toBe(0.05);
+});
+
 it('restores unused FIFO stock when operator-entered actual material use is below the start allocation', function () {
     $fx = startProductionFixtures();
     Auth::login($fx['user']);
