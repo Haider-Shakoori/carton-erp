@@ -378,6 +378,104 @@ it('adds several size-specific BOM lines to one quotation transactionally', func
         ->toEqualWithDelta(75.0 - (float) $items[1]->base_price, 0.0001);
 });
 
+it('updates the correct invoice line and sale total from actual quantity on a multi-size sale', function () {
+    $fx = cqFixture();
+    $controller = app(CartonQuotationController::class);
+
+    $payload = [
+        'product_id' => $fx['finished']->id,
+        'box_style' => 'RSC',
+        'dimension_unit' => 'cm',
+        'board_profile_id' => $fx['profile']->id,
+        'ply' => 5,
+        'printing_option' => 'none',
+        'wastage_percentage' => 5,
+        'work_percentage' => 40,
+        'sizes' => [
+            [
+                'name' => 'Invoice Size A',
+                'length' => 20,
+                'width' => 15,
+                'height' => 12,
+                'quantity' => 100,
+            ],
+            [
+                'name' => 'Invoice Size B',
+                'length' => 30,
+                'width' => 20,
+                'height' => 15,
+                'quantity' => 50,
+                'quoted_unit_price' => 75,
+            ],
+        ],
+    ];
+
+    $response = $controller->addMany(
+        cqRequest('/admin/sales/'.$fx['sale']->id.'/carton-spec/add-many', 'POST', $payload),
+        $fx['sale']
+    );
+    expect($response->getData(true)['success'])->toBeTrue();
+
+    $sale = $fx['sale']->fresh(['items']);
+    $items = $sale->items->sortBy('id')->values();
+    $first = $items[0];
+    $second = $items[1];
+
+    app(\App\Services\ProductionService::class)->createProductionFromSale($sale);
+
+    $orders = \App\Models\ProductionOrder::query()
+        ->where('sale_id', $sale->id)
+        ->orderBy('id')
+        ->get();
+
+    expect($orders)->toHaveCount(2)
+        ->and((int) $orders[0]->sale_item_id)->toBe((int) $first->id)
+        ->and((int) $orders[1]->sale_item_id)->toBe((int) $second->id)
+        ->and((int) $sale->fresh()->production_order_id)->toBe((int) $orders[0]->id);
+
+    $secondOrder = $orders[1];
+    $quantityService = app(\App\Services\ProductionQuantityService::class);
+
+    $quantityService->start($secondOrder, null, 50);
+    $completed = $quantityService->complete(
+        $secondOrder->fresh(),
+        40,
+        null,
+        40,
+        0,
+        null
+    );
+
+    $sale = $sale->fresh(['items']);
+    $first = $sale->items->firstWhere('id', $first->id);
+    $second = $sale->items->firstWhere('id', $second->id);
+
+    $expectedSecondTotal = (float) $second->unit_price * 40;
+    $expectedGrandTotal = (float) $first->total + $expectedSecondTotal;
+
+    expect((float) $second->ordered_qty)->toBe(50.0)
+        ->and((float) $second->qty)->toBe(40.0)
+        ->and((float) $second->total)->toEqualWithDelta($expectedSecondTotal, 0.01)
+        ->and((float) $first->ordered_qty)->toBe(100.0)
+        ->and((float) $first->qty)->toBe(100.0)
+        ->and((float) $sale->subtotal)->toEqualWithDelta($expectedGrandTotal, 0.01)
+        ->and((float) $sale->grand_total)->toEqualWithDelta($expectedGrandTotal, 0.01)
+        ->and((float) data_get($completed, 'invoice.invoice_quantity'))->toBe(40.0)
+        ->and((float) data_get($completed, 'invoice.grand_total'))->toEqualWithDelta($expectedGrandTotal, 0.01)
+        ->and((bool) $sale->is_produced)->toBeFalse();
+
+    $invoiceTransaction = \App\Models\Transaction::query()
+        ->where('type', 'sale')
+        ->where('table_name', 'sales')
+        ->where('table_row_id', $sale->id)
+        ->where('transaction_type', 'debit')
+        ->where('status', 'active')
+        ->firstOrFail();
+
+    expect((float) $invoiceTransaction->amount)
+        ->toEqualWithDelta($expectedGrandTotal, 0.01);
+});
+
 it('freezes the accepted specification at confirmation and ignores later profile and rate changes', function () {
     $fx = cqFixture();
     $controller = app(CartonQuotationController::class);
