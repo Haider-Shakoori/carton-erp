@@ -8,10 +8,11 @@
     <link href="{{ asset('vendor/fonts/inter/inter.css') }}"
           rel="stylesheet">
     <link rel="stylesheet" href="{{ asset('css/custom.css') }}">
+    <link rel="stylesheet" href="{{ asset('css/admin-index.css') }}">
 @endsection
 
 @section('content')
-    <div class="container-fluid px-3 px-md-4">
+    <div class="container-fluid px-3 px-md-4 erp-index-ui">
 
         {{-- PAGE HEADER --}}
         <div class="page-header">
