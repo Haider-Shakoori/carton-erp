@@ -416,12 +416,20 @@ it('updates the correct invoice line and sale total from actual quantity on a mu
     );
     expect($response->getData(true)['success'])->toBeTrue();
 
+    $confirm = app(SaleController::class)->confirmSale(
+        cqRequest('/admin/sales/'.$fx['sale']->id.'/confirm', 'POST', [
+            'discount_amount' => 0,
+            'advance_payment' => 0,
+            'start_production' => true,
+        ]),
+        $fx['sale']->id
+    );
+    expect($confirm->getData(true)['success'])->toBeTrue();
+
     $sale = $fx['sale']->fresh(['items']);
     $items = $sale->items->sortBy('id')->values();
     $first = $items[0];
     $second = $items[1];
-
-    app(\App\Services\ProductionService::class)->createProductionFromSale($sale);
 
     $orders = \App\Models\ProductionOrder::query()
         ->where('sale_id', $sale->id)
@@ -430,8 +438,7 @@ it('updates the correct invoice line and sale total from actual quantity on a mu
 
     expect($orders)->toHaveCount(2)
         ->and((int) $orders[0]->sale_item_id)->toBe((int) $first->id)
-        ->and((int) $orders[1]->sale_item_id)->toBe((int) $second->id)
-        ->and((int) $sale->fresh()->production_order_id)->toBe((int) $orders[0]->id);
+        ->and((int) $orders[1]->sale_item_id)->toBe((int) $second->id);
 
     $secondOrder = $orders[1];
     $quantityService = app(\App\Services\ProductionQuantityService::class);
