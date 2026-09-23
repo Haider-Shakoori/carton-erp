@@ -234,20 +234,282 @@
             margin-top:.85rem;
         }
 
-        @media (max-width: 768px) {
+        @media (max-width: 991.98px) {
+            .bom-index {
+                padding-left: .75rem !important;
+                padding-right: .75rem !important;
+            }
+
+            .bom-index .page-header {
+                padding: 1rem;
+            }
+
+            .bom-index .page-header > .d-flex {
+                align-items: stretch !important;
+            }
+
+            .bom-index .page-header .d-flex.gap-2.flex-wrap {
+                width: 100%;
+            }
+
+            .bom-index .page-header .d-flex.gap-2.flex-wrap .btn {
+                flex: 1 1 180px;
+            }
+
             .bom-index .filter-bar {
-                align-items:stretch;
+                align-items: stretch;
+            }
+
+            .bom-index .status-filter-group {
+                width: 100%;
+                display: grid;
+                grid-template-columns: repeat(4, minmax(0, 1fr));
+                gap: .25rem;
+                overflow: visible;
+            }
+
+            .bom-index .status-filter-btn {
+                justify-content: center;
+                white-space: nowrap;
             }
 
             .bom-index .bom-filter-form,
             .bom-index .bom-search {
-                width:100%;
-                margin-left:0;
+                width: 100%;
+                margin-left: 0;
             }
 
-            .bom-index .bom-filter-form .form-select,
+            .bom-index .bom-filter-form {
+                display: grid;
+                grid-template-columns: minmax(0, 1fr) minmax(145px, .55fr) minmax(110px, .4fr) auto auto;
+            }
+
+            .bom-index .bom-filter-form .bom-search {
+                min-width: 0;
+            }
+
+            .bom-index .bom-filter-form .form-select {
+                width: 100% !important;
+                min-width: 0 !important;
+            }
+
+            .bom-index .card-header-custom {
+                align-items: flex-start;
+            }
+
+            .bom-index .filter-note {
+                width: 100%;
+            }
+
+            .bom-index .table-responsive-custom {
+                overflow: visible;
+                padding: .75rem;
+                background: #f8fafc;
+            }
+
+            .bom-index .table-ledger {
+                display: block;
+                min-width: 0 !important;
+                width: 100%;
+            }
+
+            .bom-index .table-ledger thead {
+                display: none;
+            }
+
+            .bom-index .table-ledger tbody {
+                display: grid;
+                gap: .75rem;
+                width: 100%;
+            }
+
+            .bom-index .table-ledger .bom-responsive-row {
+                display: grid;
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                overflow: hidden;
+                border: 1px solid var(--bom-border);
+                border-radius: 14px;
+                background: #fff;
+                box-shadow: 0 4px 14px rgba(15, 23, 42, .035);
+            }
+
+            .bom-index .table-ledger .bom-responsive-row > td {
+                display: block;
+                min-width: 0;
+                padding: .72rem .8rem !important;
+                border: 0 !important;
+                border-bottom: 1px solid #f1f5f9 !important;
+                background: #fff !important;
+                text-align: left !important;
+            }
+
+            .bom-index .table-ledger .bom-responsive-row > td[data-mobile-label]::before {
+                content: attr(data-mobile-label);
+                display: block;
+                margin-bottom: .3rem;
+                color: #94a3b8;
+                font-size: .56rem;
+                font-weight: 800;
+                letter-spacing: .045em;
+                text-transform: uppercase;
+            }
+
+            .bom-index .bom-row-number {
+                display: none !important;
+            }
+
+            .bom-index .bom-main-cell {
+                grid-column: 1 / -1;
+                padding: .85rem .9rem !important;
+                background:
+                    radial-gradient(circle at top right, rgba(79, 70, 229, .07), transparent 38%),
+                    #fff !important;
+            }
+
+            .bom-index .bom-main-cell .bom-code {
+                font-size: .82rem;
+            }
+
+            .bom-index .bom-main-cell .bom-name {
+                max-width: 100%;
+                font-size: .69rem;
+            }
+
+            .bom-index .bom-product-cell,
+            .bom-index .bom-spec-cell {
+                min-height: 88px;
+            }
+
+            .bom-index .bom-materials-cell,
+            .bom-index .bom-cost-cell,
+            .bom-index .bom-rate-cell,
+            .bom-index .bom-status-cell {
+                min-height: 92px;
+            }
+
+            .bom-index .bom-actions-cell .action-buttons {
+                justify-content: flex-end !important;
+                flex-wrap: wrap;
+            }
+
+            .bom-index .pagination {
+                flex-wrap: wrap;
+            }
+        }
+
+        @media (max-width: 700px) {
+            .bom-index .bom-filter-form {
+                grid-template-columns: 1fr 1fr;
+            }
+
+            .bom-index .bom-filter-form .bom-search {
+                grid-column: 1 / -1;
+            }
+
+            .bom-index .bom-filter-form .btn-filter,
             .bom-index .bom-filter-form .btn {
-                flex:1 1 135px;
+                width: 100%;
+            }
+        }
+
+        @media (max-width: 575.98px) {
+            .bom-index {
+                padding-left: .55rem !important;
+                padding-right: .55rem !important;
+            }
+
+            .bom-index .page-header {
+                border-radius: 12px;
+                padding: .85rem;
+            }
+
+            .bom-index .page-header h1 {
+                font-size: 1.25rem;
+            }
+
+            .bom-index .page-header h1 > i {
+                width: 36px;
+                height: 36px;
+                font-size: .9rem;
+            }
+
+            .bom-index .page-header .d-flex.gap-2.flex-wrap {
+                display: grid !important;
+                grid-template-columns: 1fr;
+            }
+
+            .bom-index .page-header .btn {
+                width: 100%;
+            }
+
+            .bom-index .status-filter-group {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+
+            .bom-index .bom-filter-form {
+                grid-template-columns: 1fr;
+            }
+
+            .bom-index .bom-filter-form .bom-search {
+                grid-column: auto;
+            }
+
+            .bom-index .table-responsive-custom {
+                padding: .55rem;
+            }
+
+            .bom-index .table-ledger tbody {
+                gap: .6rem;
+            }
+
+            .bom-index .table-ledger .bom-responsive-row {
+                grid-template-columns: 1fr;
+                border-radius: 12px;
+            }
+
+            .bom-index .bom-product-cell,
+            .bom-index .bom-spec-cell,
+            .bom-index .bom-materials-cell,
+            .bom-index .bom-cost-cell,
+            .bom-index .bom-rate-cell,
+            .bom-index .bom-status-cell {
+                min-height: 0;
+            }
+
+            .bom-index .bom-materials-cell,
+            .bom-index .bom-cost-cell,
+            .bom-index .bom-rate-cell,
+            .bom-index .bom-status-cell,
+            .bom-index .bom-updated-cell,
+            .bom-index .bom-actions-cell {
+                display: grid !important;
+                grid-template-columns: minmax(105px, .42fr) minmax(0, 1fr);
+                align-items: center;
+                column-gap: .6rem;
+            }
+
+            .bom-index .bom-responsive-row > td[data-mobile-label]::before {
+                margin: 0;
+            }
+
+            .bom-index .bom-rate-cell .work-chip,
+            .bom-index .bom-rate-cell .money-meta {
+                grid-column: 2;
+                justify-self: start;
+            }
+
+            .bom-index .bom-status-cell > div {
+                grid-column: 2;
+            }
+
+            .bom-index .bom-actions-cell .action-buttons {
+                justify-content: flex-start !important;
+            }
+
+            .bom-index .pagination-wrap {
+                flex-direction: column;
+                align-items: center;
+                text-align: center;
             }
         }
     </style>
@@ -484,12 +746,12 @@
                             ];
                         @endphp
 
-                        <tr>
-                            <td class="text-muted fw-semibold">
+                        <tr class="bom-responsive-row">
+                            <td class="text-muted fw-semibold bom-row-number">
                                 {{ ($boms->firstItem() ?? 1) + $loop->index }}
                             </td>
 
-                            <td>
+                            <td class="bom-main-cell">
                                 <a href="{{ route('bom.show', $bom) }}" class="bom-code">
                                     {{ $bom->code }}
                                 </a>
@@ -502,7 +764,7 @@
                                 </span>
                             </td>
 
-                            <td>
+                            <td class="bom-product-cell" data-mobile-label="Product">
                                 <div class="product-name">{{ $bom->product->name ?? 'Product unavailable' }}</div>
                                 <div class="product-meta">
                                     {{ $bom->product->unit ?? 'finished unit' }}
@@ -512,7 +774,7 @@
                                 </div>
                             </td>
 
-                            <td>
+                            <td class="bom-spec-cell" data-mobile-label="Specification">
                                 @if($dimensionItem)
                                     <div class="spec-primary">
                                         {{ number_format((float) $dimensionItem->length_inch, 2) }}
@@ -535,21 +797,21 @@
                                 </div>
                             </td>
 
-                            <td class="text-center">
+                            <td class="text-center bom-materials-cell" data-mobile-label="Materials">
                                 <span class="material-count">
                                     <i class="bi bi-boxes"></i>
                                     {{ $bom->items->count() }}
                                 </span>
                             </td>
 
-                            <td class="text-end">
+                            <td class="text-end bom-cost-cell" data-mobile-label="Physical Cost">
                                 <div class="money-main">
                                     {{ $materialCostAfn > 0 ? '؋'.number_format($materialCostAfn, 2) : '—' }}
                                 </div>
                                 <div class="money-meta">material / unit</div>
                             </td>
 
-                            <td class="text-end">
+                            <td class="text-end bom-rate-cell" data-mobile-label="Standard Rate">
                                 <div class="money-main rate">
                                     {{ $standardRateAfn > 0 ? '؋'.number_format($standardRateAfn, 2) : '—' }}
                                 </div>
@@ -564,7 +826,7 @@
                                 @endif
                             </td>
 
-                            <td class="text-center">
+                            <td class="text-center bom-status-cell" data-mobile-label="Status">
                                 <span class="status-badge {{ $bom->status }}">
                                     <i class="bi {{ $status['icon'] }}"></i>
                                     {{ $status['label'] }}
@@ -587,7 +849,7 @@
                                 </div>
                             </td>
 
-                            <td>
+                            <td class="bom-updated-cell" data-mobile-label="Updated">
                                 <div class="fw-semibold" style="color:#475569;font-size:.68rem;">
                                     {{ $bom->updated_at?->format('d M Y') ?? '—' }}
                                 </div>
@@ -596,7 +858,7 @@
                                 </div>
                             </td>
 
-                            <td class="text-end">
+                            <td class="text-end bom-actions-cell" data-mobile-label="Actions">
                                 <div class="action-buttons">
                                     <a href="{{ route('bom.show', $bom) }}"
                                        class="action-btn"
