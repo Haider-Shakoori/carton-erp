@@ -313,12 +313,15 @@ class ProductionQuantityService
 
         $order->loadMissing(['materials.product', 'bom.items.material']);
         $orderedQty = max((float) $order->quantity_ordered, self::EPSILON);
+        $consumptionMetadata = $this->standardConsumptionMetadata($order);
 
         if ($order->materials->isNotEmpty()) {
             $ratio = $quantity / $orderedQty;
 
             return $order->materials
-                ->map(function ($material) use ($ratio) {
+                ->map(function ($material) use ($ratio, $consumptionMetadata) {
+                    $meta = $consumptionMetadata->get((int) $material->product_id, []);
+
                     return [
                         'material_id' => (int) $material->product_id,
                         'quantity' => (float) $material->required_quantity * $ratio,
@@ -327,6 +330,9 @@ class ProductionQuantityService
                         'unit' => $material->unit ?: 'unit',
                         'material_name' => $material->product->name
                             ?? ('Material #' . $material->product_id),
+                        'is_formula_based' => (bool) ($meta['is_formula_based'] ?? false),
+                        'formula_types' => $meta['formula_types'] ?? [],
+                        'consumption_source' => (string) ($meta['consumption_source'] ?? 'manual'),
                     ];
                 })
                 ->groupBy('material_id')
@@ -340,6 +346,9 @@ class ProductionQuantityService
                         'wastage_quantity' => (float) $group->sum('wastage_quantity'),
                         'unit' => $first['unit'],
                         'material_name' => $first['material_name'],
+                        'is_formula_based' => (bool) ($first['is_formula_based'] ?? false),
+                        'formula_types' => $first['formula_types'] ?? [],
+                        'consumption_source' => (string) ($first['consumption_source'] ?? 'manual'),
                     ];
                 })
                 ->values()
@@ -352,7 +361,9 @@ class ProductionQuantityService
         }
 
         return $bom->items
-            ->map(function ($item) use ($quantity) {
+            ->map(function ($item) use ($quantity, $consumptionMetadata) {
+                $meta = $consumptionMetadata->get((int) $item->material_id, []);
+
                 return [
                     'material_id' => (int) $item->material_id,
                     'quantity' => $item->calculateStockRequirement($quantity, true),
@@ -365,6 +376,9 @@ class ProductionQuantityService
                     'unit' => $item->material?->is_roll_based ? 'kg' : ($item->unit ?: 'unit'),
                     'material_name' => $item->material?->name
                         ?? ('Material #' . $item->material_id),
+                    'is_formula_based' => (bool) ($meta['is_formula_based'] ?? false),
+                    'formula_types' => $meta['formula_types'] ?? [],
+                    'consumption_source' => (string) ($meta['consumption_source'] ?? 'manual'),
                 ];
             })
             ->groupBy('material_id')
@@ -378,10 +392,56 @@ class ProductionQuantityService
                     'wastage_quantity' => (float) $group->sum('wastage_quantity'),
                     'unit' => $first['unit'],
                     'material_name' => $first['material_name'],
+                    'is_formula_based' => (bool) ($first['is_formula_based'] ?? false),
+                    'formula_types' => $first['formula_types'] ?? [],
+                    'consumption_source' => (string) ($first['consumption_source'] ?? 'manual'),
                 ];
             })
             ->values()
             ->all();
+    }
+
+    /**
+     * Identify materials whose normal consumption comes from an approved BOM
+     * formula. The frozen production-order quantities remain authoritative;
+     * this metadata only controls the completion workflow.
+     */
+    private function standardConsumptionMetadata(ProductionOrder $order): \Illuminate\Support\Collection
+    {
+        $automaticFormulaTypes = collect((array) config(
+            'carton.standard_consumption.automatic_formula_types',
+            ['carton_3d', 'cut_roll', 'adhesive_mix', 'fixed_percentage', 'fixed_rate']
+        ));
+
+        if (! $order->bom || $order->bom->items->isEmpty()) {
+            return collect();
+        }
+
+        return $order->bom->items
+            ->groupBy(fn ($item) => (int) $item->material_id)
+            ->map(function ($items) use ($automaticFormulaTypes): array {
+                $formulaTypes = $items
+                    ->filter(fn ($item) => (bool) $item->is_formula_based)
+                    ->pluck('formula_type')
+                    ->filter()
+                    ->map(fn ($type) => (string) $type)
+                    ->unique()
+                    ->values();
+
+                $allRowsFormulaBased = $items->isNotEmpty()
+                    && $items->every(function ($item) use ($automaticFormulaTypes): bool {
+                        return (bool) $item->is_formula_based
+                            && $automaticFormulaTypes->contains((string) $item->formula_type);
+                    });
+
+                return [
+                    'is_formula_based' => $allRowsFormulaBased,
+                    'formula_types' => $formulaTypes->all(),
+                    'consumption_source' => $allRowsFormulaBased
+                        ? 'standard_formula'
+                        : 'manual',
+                ];
+            });
     }
 
     /**
