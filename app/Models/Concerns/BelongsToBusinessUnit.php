@@ -31,10 +31,10 @@ trait BelongsToBusinessUnit
 
             $qualifiedColumn = $builder->getModel()->qualifyColumn('business_unit_id');
 
-            $builder->where(function (Builder $query) use ($qualifiedColumn, $activeBusinessUnitId): void {
-                $query->where($qualifiedColumn, $activeBusinessUnitId)
-                    ->orWhereNull($qualifiedColumn);
-            });
+            // Separate-business mode is a hard workspace boundary.
+            // Legacy NULL rows are repaired by migration and must not leak into
+            // every business workspace.
+            $builder->where($qualifiedColumn, $activeBusinessUnitId);
         });
     }
 
