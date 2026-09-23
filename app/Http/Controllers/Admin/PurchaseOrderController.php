@@ -53,7 +53,7 @@ class PurchaseOrderController extends Controller
         }
 
         // Get paginated results
-        $purchaseOrders = $query->latest()->paginate(15);
+        $purchaseOrders = $query->latest()->paginate(15)->withQueryString();
 
         // Simple stats
         $stats = [
