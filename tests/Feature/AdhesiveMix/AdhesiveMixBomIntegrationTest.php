@@ -457,6 +457,125 @@ it('flows dimension-driven adhesive through requirements, FIFO and actual produc
         ->and($adhesiveTotalUsd)->toBeGreaterThan(0);
 });
 
+it('uses standard formula consumption to reconcile paper and adhesive stock at completion', function () {
+    $fx = adhesiveBomFixture();
+    $bom = adhesiveStoreBom($fx, 'QA Standard Consumption BOM');
+    [$sale, $production] = adhesiveSaleAndProduction($fx, $bom, 100);
+
+    $controller = new ProductionOrderController();
+    $start = $controller->startProduction($production);
+    expect($start->getSession()->get('success'))->not->toBeNull();
+
+    $production->refresh();
+
+    $expected = collect(
+        app(ProductionQuantityService::class)
+            ->requirementsForQuantity($production, 80)
+    )->keyBy('material_id');
+
+    $materials = $production->materials()
+        ->get()
+        ->map(function ($row) {
+            return [
+                'material_id' => (int) $row->product_id,
+                // Deliberately bogus value. Formula-based materials must ignore
+                // it unless use_measured_actual is explicitly enabled.
+                'actual_quantity' => 999,
+                'wastage_quantity' => 500,
+                'unit' => $row->unit,
+            ];
+        })
+        ->values()
+        ->all();
+
+    $response = $controller->completeProduction(
+        $production->fresh(),
+        adhesiveBomRequest('/admin/production-orders/'.$production->id.'/complete', 'POST', [
+            'quantity_manufactured' => 80,
+            'quantity_produced' => 75,
+            'quantity_rejected' => 5,
+            'materials' => $materials,
+        ])
+    );
+
+    expect($response->getStatusCode())->toBe(302);
+
+    $consumed = DB::table('production_material_consumptions')
+        ->where('production_order_id', $production->id)
+        ->selectRaw('material_id, SUM(actual_quantity) AS actual_quantity')
+        ->groupBy('material_id')
+        ->get()
+        ->keyBy(fn ($row) => (int) $row->material_id);
+
+    foreach ($expected as $materialId => $requirement) {
+        expect((float) data_get($consumed->get((int) $materialId), 'actual_quantity', 0))
+            ->toEqualWithDelta((float) $requirement['quantity'], 0.001);
+    }
+
+    foreach ($fx['mixing'] as $material) {
+        $requirement = $expected->get($material->id);
+
+        expect($requirement)->not->toBeNull()
+            ->and((bool) ($requirement['is_formula_based'] ?? false))->toBeTrue()
+            ->and($requirement['consumption_source'] ?? null)->toBe('standard_formula');
+    }
+
+    expect($production->fresh()->status)->toBe('completed');
+});
+
+it('allows an explicit measured override for a formula-based mixing material', function () {
+    $fx = adhesiveBomFixture();
+    $bom = adhesiveStoreBom($fx, 'QA Measured Adhesive Override BOM');
+    [$sale, $production] = adhesiveSaleAndProduction($fx, $bom, 100);
+
+    $controller = new ProductionOrderController();
+    $controller->startProduction($production);
+    $production->refresh();
+
+    $expected = collect(
+        app(ProductionQuantityService::class)
+            ->requirementsForQuantity($production, 100)
+    )->keyBy('material_id');
+
+    $cornId = $fx['mixing']['corn_flour']->id;
+    $measuredCorn = (float) $expected[$cornId]['quantity'] + 0.25;
+
+    $materials = $production->materials()
+        ->get()
+        ->map(function ($row) use ($cornId, $measuredCorn) {
+            $isCorn = (int) $row->product_id === (int) $cornId;
+
+            return [
+                'material_id' => (int) $row->product_id,
+                'actual_quantity' => $isCorn ? $measuredCorn : null,
+                'wastage_quantity' => 0,
+                'use_measured_actual' => $isCorn ? 1 : 0,
+                'unit' => $row->unit,
+            ];
+        })
+        ->values()
+        ->all();
+
+    $response = $controller->completeProduction(
+        $production->fresh(),
+        adhesiveBomRequest('/admin/production-orders/'.$production->id.'/complete', 'POST', [
+            'quantity_manufactured' => 100,
+            'quantity_produced' => 100,
+            'quantity_rejected' => 0,
+            'materials' => $materials,
+        ])
+    );
+
+    expect($response->getStatusCode())->toBe(302);
+
+    $cornConsumed = (float) DB::table('production_material_consumptions')
+        ->where('production_order_id', $production->id)
+        ->where('material_id', $cornId)
+        ->sum('actual_quantity');
+
+    expect($cornConsumed)->toEqualWithDelta($measuredCorn, 0.001);
+});
+
 it('detects an adhesive stock shortage before production starts', function () {
     $fx = adhesiveBomFixture();
     $bom = adhesiveStoreBom($fx, 'QA Adhesive Shortage BOM');
