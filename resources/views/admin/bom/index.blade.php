@@ -202,7 +202,7 @@
         }
 
         .bom-index .table-ledger {
-            min-width: 1120px;
+            min-width: 1080px;
         }
 
         .bom-index .action-buttons form {
@@ -234,7 +234,7 @@
             margin-top:.85rem;
         }
 
-        @media (max-width: 991.98px) {
+        @media (max-width: 1199.98px) {
             .bom-index {
                 padding-left: .75rem !important;
                 padding-right: .75rem !important;
