@@ -92,7 +92,7 @@
                             <select class="form-select @error('product_id') is-invalid @enderror" name="product_id" id="simpleProduct" required>
                                 <option value="">Select finished product…</option>
                                 @foreach($products as $product)
-                                    <option value="{{ $product->id }}" @selected((string) old('product_id') === (string) $product->id)>
+                                    <option value="{{ $product->id }}" @selected((string) old('product_id', $simpleBomDefaults['product_id'] ?? '') === (string) $product->id)>
                                         {{ $product->name }}
                                     </option>
                                 @endforeach
@@ -115,7 +115,7 @@
                             <label class="simple-bom-label">Unit</label>
                             <select class="form-select" name="dimension_unit" id="simpleUnit">
                                 @foreach($lengthUnits as $unit)
-                                    <option value="{{ $unit }}" @selected(old('dimension_unit', 'inch') === $unit)>{{ strtoupper($unit) }}</option>
+                                    <option value="{{ $unit }}" @selected(old('dimension_unit', $simpleBomDefaults['dimension_unit'] ?? 'inch') === $unit)>{{ strtoupper($unit) }}</option>
                                 @endforeach
                             </select>
                         </div>
@@ -140,7 +140,7 @@
                                             data-flute="{{ $profile->flute_type }}"
                                             data-waste="{{ $profile->wastage_percentage }}"
                                             data-description="{{ $profile->description }}"
-                                            @selected((string) old('board_profile_id') === (string) $profile->id)>
+                                            @selected((string) old('board_profile_id', $simpleBomDefaults['board_profile_id'] ?? '') === (string) $profile->id)>
                                         {{ $profile->name }} · {{ $profile->ply }} Ply{{ $profile->flute_type ? ' · '.$profile->flute_type : '' }}
                                     </option>
                                 @endforeach
@@ -151,7 +151,7 @@
                             <label class="simple-bom-label">Printing</label>
                             <select class="form-select" name="printing_option" id="simplePrinting">
                                 @foreach($printingOptions as $key => $option)
-                                    <option value="{{ $key }}" @selected(old('printing_option', 'none') === $key)>
+                                    <option value="{{ $key }}" @selected(old('printing_option', $simpleBomDefaults['printing_option'] ?? 'none') === $key)>
                                         {{ $option['label'] ?? ucfirst($key) }}
                                     </option>
                                 @endforeach
@@ -179,7 +179,7 @@
                                         <label class="simple-bom-label">Box Style</label>
                                         <select class="form-select" name="box_style" id="simpleBoxStyle">
                                             @foreach($boxStyles as $key => $style)
-                                                <option value="{{ $key }}" @selected(old('box_style', config('carton.default_box_style', 'RSC')) === $key)>
+                                                <option value="{{ $key }}" @selected(old('box_style', $simpleBomDefaults['box_style'] ?? config('carton.default_box_style', 'RSC')) === $key)>
                                                     {{ $style['label'] ?? $key }}
                                                 </option>
                                             @endforeach
@@ -187,15 +187,15 @@
                                     </div>
                                     <div class="col-md-3">
                                         <label class="simple-bom-label">Wastage %</label>
-                                        <input type="number" class="form-control" name="wastage_percentage" id="simpleWaste" value="{{ old('wastage_percentage', $defaultWastagePercentage) }}" min="0" max="100" step="0.1">
+                                        <input type="number" class="form-control" name="wastage_percentage" id="simpleWaste" value="{{ old('wastage_percentage', $simpleBomDefaults['wastage_percentage'] ?? $defaultWastagePercentage) }}" min="0" max="100" step="0.1">
                                     </div>
                                     <div class="col-md-3">
                                         <label class="simple-bom-label">Standard Work / Profit %</label>
-                                        <input type="number" class="form-control" name="work_percentage" id="simpleWork" value="{{ old('work_percentage', $defaultWorkPercentage) }}" min="0" step="0.1">
+                                        <input type="number" class="form-control" name="work_percentage" id="simpleWork" value="{{ old('work_percentage', $simpleBomDefaults['work_percentage'] ?? $defaultWorkPercentage) }}" min="0" step="0.1">
                                     </div>
                                     <div class="col-md-3">
                                         <label class="simple-bom-label">Custom Print Cost (AFN)</label>
-                                        <input type="number" class="form-control" name="print_cost_afn" id="simplePrintCost" value="{{ old('print_cost_afn') }}" min="0" step="0.01" placeholder="Use printing preset">
+                                        <input type="number" class="form-control" name="print_cost_afn" id="simplePrintCost" value="{{ old('print_cost_afn', $simpleBomDefaults['print_cost_afn'] ?? '') }}" min="0" step="0.01" placeholder="Use printing preset">
                                     </div>
                                 </div>
                             </div>
@@ -285,7 +285,10 @@
                 <button type="button" class="btn btn-outline-primary" id="calculateSimpleBom">
                     <i class="bi bi-calculator me-1"></i> Calculate
                 </button>
-                <button type="submit" class="btn btn-primary" id="saveSimpleBom">
+                <button type="submit" class="btn btn-outline-primary" name="save_action" value="another">
+                    <i class="bi bi-copy me-1"></i> Save & Add Another Size
+                </button>
+                <button type="submit" class="btn btn-primary" id="saveSimpleBom" name="save_action" value="save">
                     <i class="bi bi-check2-circle me-1"></i> Calculate & Save BOM
                 </button>
             </div>
