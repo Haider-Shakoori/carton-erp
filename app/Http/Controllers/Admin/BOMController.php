@@ -24,14 +24,63 @@ class BOMController extends Controller
     /**
      * Display a listing of BOMs.
      */
-    public function index()
+    public function index(Request $request)
     {
-        // Use paginate() instead of get() to get a LengthAwarePaginator
-        $boms = BOM::with(['product', 'createdBy', 'items'])
-            ->latest()
-            ->paginate(15); // Changed from get() to paginate(15)
+        // Keep this page fully server-driven. Mixing DataTables client
+        // pagination with Laravel pagination caused duplicated paging/search
+        // behaviour and made the status cards reflect only the current page.
+        $statsQuery = BOM::query();
 
-        return view('admin.bom.index', compact('boms'));
+        $stats = [
+            'total' => (clone $statsQuery)->count(),
+            'active' => (clone $statsQuery)->where('status', 'active')->count(),
+            'draft' => (clone $statsQuery)->where('status', 'draft')->count(),
+            'archived' => (clone $statsQuery)->where('status', 'archived')->count(),
+            'locked' => (clone $statsQuery)->whereNotNull('locked_at')->count(),
+        ];
+
+        $query = BOM::query()
+            ->with([
+                'product:id,name,unit',
+                'createdBy:id,name',
+                'items.material:id,name',
+            ]);
+
+        $status = strtolower((string) $request->input('status', 'all'));
+        if (in_array($status, ['draft', 'active', 'archived'], true)) {
+            $query->where('status', $status);
+        }
+
+        $search = trim((string) $request->input('search', ''));
+        if ($search !== '') {
+            $query->where(function ($builder) use ($search) {
+                $builder
+                    ->where('code', 'like', '%' . $search . '%')
+                    ->orWhere('name', 'like', '%' . $search . '%')
+                    ->orWhereHas('product', function ($productQuery) use ($search) {
+                        $productQuery->where('name', 'like', '%' . $search . '%');
+                    });
+            });
+        }
+
+        match ((string) $request->input('sort', 'latest')) {
+            'oldest' => $query->oldest('created_at'),
+            'name' => $query->orderBy('name')->orderByDesc('id'),
+            'rate_high' => $query->orderByDesc('selling_price_afn')->orderByDesc('id'),
+            'rate_low' => $query->orderBy('selling_price_afn')->orderByDesc('id'),
+            default => $query->latest('updated_at'),
+        };
+
+        $perPage = (int) $request->input('per_page', 15);
+        if (! in_array($perPage, [15, 30, 50], true)) {
+            $perPage = 15;
+        }
+
+        $boms = $query
+            ->paginate($perPage)
+            ->withQueryString();
+
+        return view('admin.bom.index', compact('boms', 'stats'));
     }
     /**
      * Show the form for creating a new BOM.
