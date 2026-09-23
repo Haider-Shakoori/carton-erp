@@ -234,13 +234,13 @@
         .bom-index .table-ledger td:nth-child(1) { width: 3%; }
 
         .bom-index .table-ledger th:nth-child(2),
-        .bom-index .table-ledger td:nth-child(2) { width: 17%; }
+        .bom-index .table-ledger td:nth-child(2) { width: 16%; }
 
         .bom-index .table-ledger th:nth-child(3),
-        .bom-index .table-ledger td:nth-child(3) { width: 16%; }
+        .bom-index .table-ledger td:nth-child(3) { width: 15%; }
 
         .bom-index .table-ledger th:nth-child(4),
-        .bom-index .table-ledger td:nth-child(4) { width: 14%; }
+        .bom-index .table-ledger td:nth-child(4) { width: 13%; }
 
         .bom-index .table-ledger th:nth-child(5),
         .bom-index .table-ledger td:nth-child(5) { width: 6%; }
@@ -258,7 +258,7 @@
         .bom-index .table-ledger td:nth-child(9) { width: 7%; }
 
         .bom-index .table-ledger th:nth-child(10),
-        .bom-index .table-ledger td:nth-child(10) { width: 10%; }
+        .bom-index .table-ledger td:nth-child(10) { width: 13%; }
 
         .bom-index .bom-code,
         .bom-index .product-name,
@@ -272,6 +272,12 @@
 
         .bom-index .action-buttons {
             max-width: 100%;
+            gap: .18rem !important;
+        }
+
+        .bom-index .action-buttons .action-btn {
+            width: 29px !important;
+            height: 29px !important;
         }
 
         .bom-index .action-buttons form {
@@ -416,7 +422,9 @@
 
             .bom-index .table-ledger .bom-responsive-row > td {
                 display: block;
-                min-width: 0;
+                width: auto !important;
+                min-width: 0 !important;
+                max-width: none;
                 padding: .72rem .8rem !important;
                 border: 0 !important;
                 border-bottom: 1px solid #f1f5f9 !important;
