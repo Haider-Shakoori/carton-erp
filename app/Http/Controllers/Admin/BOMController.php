@@ -48,7 +48,6 @@ class BOMController extends Controller
             ->orderBy('name')
             ->get();
 
-        $setting = Setting::query()->first();
         $exchangeRate = $this->getDefaultExchangeRate();
 
         return view('admin.bom.create-simple', [
@@ -57,7 +56,7 @@ class BOMController extends Controller
             'boxStyles' => (array) config('carton.box_styles', []),
             'printingOptions' => (array) config('carton.printing', []),
             'lengthUnits' => array_keys((array) config('carton.length_units', ['inch' => 1])),
-            'defaultWorkPercentage' => (float) ($setting->default_work_percentage ?? 40),
+            'defaultWorkPercentage' => (float) config('carton.standard_work_percentage', 40),
             'defaultWastagePercentage' => (float) config('carton.default_wastage_percentage', 5),
             'exchangeRate' => $exchangeRate,
         ]);
@@ -144,12 +143,11 @@ class BOMController extends Controller
         ]);
 
         try {
-            $setting = Setting::query()->first();
             $input = array_merge($validated, [
                 'box_style' => $validated['box_style'] ?? config('carton.default_box_style', 'RSC'),
                 'quantity' => 1,
                 'work_percentage' => $validated['work_percentage']
-                    ?? (float) ($setting->default_work_percentage ?? 40),
+                    ?? (float) config('carton.standard_work_percentage', 40),
                 'wastage_percentage' => $validated['wastage_percentage']
                     ?? (float) config('carton.default_wastage_percentage', 5),
                 'profit_margin_percentage' => 0,
@@ -204,12 +202,11 @@ class BOMController extends Controller
         ]);
 
         try {
-            $setting = Setting::query()->first();
             $input = array_merge($validated, [
                 'box_style' => $validated['box_style'] ?? config('carton.default_box_style', 'RSC'),
                 'quantity' => 1,
                 'work_percentage' => $validated['work_percentage']
-                    ?? (float) ($setting->default_work_percentage ?? 40),
+                    ?? (float) config('carton.standard_work_percentage', 40),
                 'wastage_percentage' => $validated['wastage_percentage']
                     ?? (float) config('carton.default_wastage_percentage', 5),
                 'profit_margin_percentage' => 0,
