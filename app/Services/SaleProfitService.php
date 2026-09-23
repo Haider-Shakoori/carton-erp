@@ -145,6 +145,46 @@ class SaleProfitService
         // its own work_percentage, paper rate by layers, and print) and summed.
         $commercial = $this->commercialBomCalculation($sale, $grossSalesAfn, $effectiveWorkPercentage);
 
+        // A manual selling-price override is a COMMERCIAL profit adjustment.
+        // It must never be treated as production cost. The client's standard
+        // work/profit remains the base commercial profit; a manual price changes
+        // that profit by the delta between the accepted unit price and the
+        // BOM/system unit price.
+        $hasManualPriceOverride = false;
+        $priceOverrideUsd = 0.0;
+        $saleCurrencyCode = strtoupper((string) ($sale->currency?->code ?? 'AFN'));
+
+        foreach ($sale->items as $saleItem) {
+            if (($saleItem->price_adjustment_type ?? 'none') !== 'manual') {
+                continue;
+            }
+
+            $hasManualPriceOverride = true;
+
+            $baseUnitPrice = (float) ($saleItem->original_unit_price ?? 0);
+            if ($baseUnitPrice <= 0) {
+                $baseUnitPrice = (float) ($saleItem->base_price ?? 0);
+            }
+
+            $finalUnitPrice = (float) ($saleItem->final_price ?? 0);
+            if ($finalUnitPrice <= 0) {
+                $finalUnitPrice = (float) ($saleItem->unit_price ?? 0);
+            }
+
+            if ($baseUnitPrice <= 0) {
+                continue;
+            }
+
+            $localDelta = ($finalUnitPrice - $baseUnitPrice) * (float) ($saleItem->qty ?? 0);
+            $priceOverrideUsd += $saleCurrencyCode === 'USD'
+                ? $localDelta
+                : $localDelta / $exchangeRate;
+        }
+
+        $priceOverrideAfn = $priceOverrideUsd * $exchangeRate;
+        $commercialProfitAfn = (float) $commercial['standard_work_profit'] + $priceOverrideAfn;
+        $commercialProfitUsd = $commercialProfitAfn / $exchangeRate;
+
         // For MANUAL-BOM sales the persisted manual net rate IS the canonical Excel
         // quotation total (net rate × qty). The USD-rounded total_cost_usd (stored at
         // 2dp) inflates the AFN reconstruction (e.g. 9.35 × 66 = 617.10 vs 616.80), so
@@ -306,6 +346,12 @@ class SaleProfitService
             'commercial_print_afn' => round($commercial['print_total'], 2),
             'commercial_net_rate_afn' => round($commercial['net_rate'], 2),
             'standard_work_profit_afn' => round($commercial['standard_work_profit'], 2),
+            'standard_work_profit_usd' => round($commercial['standard_work_profit'] / $exchangeRate, 2),
+            'has_manual_price_override' => $hasManualPriceOverride,
+            'price_override_afn' => round($priceOverrideAfn, 2),
+            'price_override_usd' => round($priceOverrideUsd, 2),
+            'commercial_profit_afn' => round($commercialProfitAfn, 2),
+            'commercial_profit_usd' => round($commercialProfitUsd, 2),
             'standard_profit_on_material_percentage' => round($effectiveWorkPercentage, 2),
             'standard_profit_margin_on_revenue_percentage' => (($commercial['net_rate'] ?? $grossSalesAfn) > 0 && $standardActualWorkAfn > 0)
                 ? round(($standardActualWorkAfn / $commercial['net_rate']) * 100, 2)
