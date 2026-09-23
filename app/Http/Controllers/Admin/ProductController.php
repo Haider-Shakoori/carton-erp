@@ -115,7 +115,7 @@ class ProductController extends Controller
                 $validated['default_kg_per_roll'] = null;
             }
 
-            $requestedType = $validated['type'] ?? Product::TYPE_RAW_MATERIAL;
+            $requestedType = $validated['type'] ?? Product::TYPE_FINISHED_GOOD;
             $validated['type'] = match ($requestedType) {
                 'raw' => Product::TYPE_RAW_MATERIAL,
                 'finished' => Product::TYPE_FINISHED_GOOD,
@@ -185,7 +185,7 @@ class ProductController extends Controller
                 $validated['default_kg_per_roll'] = null;
             }
 
-            $requestedType = $validated['type'] ?? Product::TYPE_RAW_MATERIAL;
+            $requestedType = $validated['type'] ?? $product->type ?? Product::TYPE_FINISHED_GOOD;
             $validated['type'] = match ($requestedType) {
                 'raw' => Product::TYPE_RAW_MATERIAL,
                 'finished' => Product::TYPE_FINISHED_GOOD,
