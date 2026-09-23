@@ -765,7 +765,7 @@ it('completes above the customer order, consumes extra FIFO stock, and expands t
     expect(abs((float) $invoiceDebit->amount - (float) $sale->grand_total))->toBeLessThan(0.01);
 });
 
-it('reduces realized profit when actual material consumption exceeds plan at the same finished output', function () {
+it('keeps standard roll-paper consumption authoritative when typed kg exceeds plan', function () {
     $fx = rwCreatePurchaseFlow();
     $bom = rwCreateBom($fx);
     $sale = rwCreateSaleWithBom($fx, $bom, 'SO-RW-MATERIAL-OVERRUN-001');
@@ -798,6 +798,9 @@ it('reduces realized profit when actual material consumption exceeds plan at the
         ->get()
         ->map(fn ($row) => [
             'material_id' => (int) $row->material_id,
+            // This fixture contains roll paper only. A typed kg value must not
+            // override the standard formula because the client cannot weigh a
+            // mounted reel per job. Physical reel reconciliation is separate.
             'actual_quantity' => (float) $row->actual_quantity * 1.20,
             'wastage_quantity' => 0,
             'use_measured_actual' => true,
@@ -831,12 +834,21 @@ it('reduces realized profit when actual material consumption exceeds plan at the
         ->sum('total_cost_usd');
 
     expect(abs((float) $sale->grand_total - $revenueBefore))->toBeLessThan(0.01)
-        ->and((float) $after['actual_material_cost_usd'])
-        ->toBeGreaterThan((float) $before['actual_material_cost_usd'])
-        ->and((float) $after['actual_production_cost_afn'])
-        ->toBeGreaterThan((float) $before['actual_production_cost_afn'])
-        ->and((float) $after['actual_profit_afn'])
-        ->toBeLessThan((float) $before['actual_profit_afn'])
+        // Roll paper remains formula-driven even if a browser submits a larger
+        // "actual" kg value. This prevents invented reel weights from changing
+        // inventory/cost. Measured non-roll overrides are covered separately.
+        ->and(abs(
+            (float) $after['actual_material_cost_usd']
+            - (float) $before['actual_material_cost_usd']
+        ))->toBeLessThan(0.0001)
+        ->and(abs(
+            (float) $after['actual_production_cost_afn']
+            - (float) $before['actual_production_cost_afn']
+        ))->toBeLessThan(0.01)
+        ->and(abs(
+            (float) $after['actual_profit_afn']
+            - (float) $before['actual_profit_afn']
+        ))->toBeLessThan(0.01)
         ->and(abs((float) $saleItem->total_cost_usd - $actualMaterialUsd))
         ->toBeLessThan(0.01)
         ->and(abs(
