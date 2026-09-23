@@ -247,6 +247,10 @@ it('keeps all pre-separation operational history in 3D Carton and starts Syrup P
     $carton = BusinessUnit::query()->where('code', '3d_carton')->firstOrFail();
     $syrup = BusinessUnit::query()->where('code', 'syrup_pack')->firstOrFail();
 
+    Setting::firstOrCreate([])->update([
+        'default_business_unit_id' => $syrup->id,
+    ]);
+
     $category = Category::firstOrCreate(
         ['name' => 'Syrup Boxes'],
         ['description' => 'Existing 3D carton customer products', 'is_active' => true]
