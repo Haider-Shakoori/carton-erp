@@ -489,9 +489,12 @@ it('runs the seeded CNP 5-ply carton through real-client purchase, sale, product
         ->and((float) data_get($variance, 'output.good_quantity'))->toBe(98.0)
         ->and((float) data_get($variance, 'output.rejected_quantity'))->toBe(2.0)
         ->and($variance['materials'])->toHaveCount(6)
+        // Roll paper stayed on the standard formula, so the typed +2% browser
+        // value must not create a positive variance. The measured mixing rows
+        // were explicitly opted in at -2%, so they must create a negative one.
         ->and(collect($variance['materials'])->contains(
             fn ($row) => (float) $row['variance_quantity'] > 0.000001
-        ))->toBeTrue()
+        ))->toBeFalse()
         ->and(collect($variance['materials'])->contains(
             fn ($row) => (float) $row['variance_quantity'] < -0.000001
         ))->toBeTrue();
