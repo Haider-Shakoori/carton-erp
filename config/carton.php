@@ -24,6 +24,32 @@ return [
     // The commercial quotation basis deliberately excludes wastage.
     'default_wastage_percentage' => 5,
 
+    /*
+    |--------------------------------------------------------------------------
+    | Standard production consumption policy
+    |--------------------------------------------------------------------------
+    |
+    | Formula-based BOM rows use their frozen production-order requirement as
+    | the default actual consumption at completion, scaled to the ACTUAL
+    | manufactured quantity. This lets inventory stay accurate without asking
+    | operators to guess paper/glue quantities. Measured actuals can still
+    | override non-roll formula materials such as adhesive ingredients.
+    |
+    */
+    'standard_consumption' => [
+        'version' => '1.0',
+        'name' => 'Factory Standard Consumption',
+        'automatic_formula_types' => [
+            'carton_3d',
+            'cut_roll',
+            'adhesive_mix',
+            'fixed_percentage',
+            'fixed_rate',
+        ],
+        'paper_formula' => 'ReelLength × ReelHeight × GSM × LayerMultiplier ÷ FormulaConstant × ManufacturedQty × (1 + Waste%)',
+        'adhesive_formula' => 'BoardArea × GlueLines × DryGlueGSM ÷ Solids% × RecipeFraction × ManufacturedQty',
+    ],
+
     // Supported dimension units => inches.
     'length_units' => [
         'inch' => 1.0,
