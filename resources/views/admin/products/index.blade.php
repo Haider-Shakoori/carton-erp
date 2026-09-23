@@ -797,6 +797,16 @@
             color: var(--primary);
         }
 
+        .catalog-action-btn.dropdown-toggle::after {
+            display: none;
+        }
+
+        .modal-header.raw-materials .btn-close,
+        .modal-header.finished-goods .btn-close {
+            filter: invert(1);
+            opacity: .85;
+        }
+
         .catalog-action-menu {
             min-width: 165px;
             padding: .35rem;
