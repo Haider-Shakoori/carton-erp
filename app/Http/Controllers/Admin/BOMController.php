@@ -59,6 +59,7 @@ class BOMController extends Controller
             'defaultWorkPercentage' => (float) config('carton.standard_work_percentage', 40),
             'defaultWastagePercentage' => (float) config('carton.default_wastage_percentage', 5),
             'exchangeRate' => $exchangeRate,
+            'simpleBomDefaults' => (array) session('simple_bom_defaults', []),
         ]);
     }
 
@@ -140,6 +141,7 @@ class BOMController extends Controller
             'wastage_percentage' => 'nullable|numeric|min:0|max:100',
             'work_percentage' => 'nullable|numeric|min:0|max:1000',
             'print_cost_afn' => 'nullable|numeric|min:0',
+            'save_action' => 'nullable|string|in:save,another',
         ]);
 
         try {
@@ -164,6 +166,22 @@ class BOMController extends Controller
                 $bom->description = trim((string) $validated['quotation_description'])
                     . ' | ' . $bom->description;
                 $bom->saveQuietly();
+            }
+
+            if (($validated['save_action'] ?? 'save') === 'another') {
+                return redirect()
+                    ->route('bom.create')
+                    ->with('simple_bom_defaults', [
+                        'product_id' => (int) $validated['product_id'],
+                        'dimension_unit' => $validated['dimension_unit'],
+                        'board_profile_id' => (int) $validated['board_profile_id'],
+                        'printing_option' => $validated['printing_option'],
+                        'box_style' => $input['box_style'],
+                        'wastage_percentage' => $input['wastage_percentage'],
+                        'work_percentage' => $input['work_percentage'],
+                        'print_cost_afn' => $validated['print_cost_afn'] ?? null,
+                    ])
+                    ->with('success', 'BOM saved. Enter the next carton dimensions; the product, board and pricing standards were kept.');
             }
 
             return redirect()
