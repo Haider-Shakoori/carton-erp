@@ -184,6 +184,71 @@ class BOMController extends Controller
     }
 
     /**
+     * Preview the simplified carton BOM without writing anything.
+     */
+    public function previewSimple(Request $request, CartonSpecificationService $specification)
+    {
+        $validated = $request->validate([
+            'product_id' => 'required|exists:products,id',
+            'length' => 'required|numeric|min:0.01',
+            'width' => 'required|numeric|min:0.01',
+            'height' => 'required|numeric|min:0.01',
+            'dimension_unit' => 'required|string|in:mm,cm,inch',
+            'board_profile_id' => 'required|exists:board_profiles,id',
+            'printing_option' => 'required|string|max:50',
+            'box_style' => 'nullable|string|max:20',
+            'flute_type' => 'nullable|string|max:20',
+            'wastage_percentage' => 'nullable|numeric|min:0|max:100',
+            'work_percentage' => 'nullable|numeric|min:0|max:1000',
+            'print_cost_afn' => 'nullable|numeric|min:0',
+        ]);
+
+        try {
+            $setting = Setting::query()->first();
+            $input = array_merge($validated, [
+                'box_style' => $validated['box_style'] ?? config('carton.default_box_style', 'RSC'),
+                'quantity' => 1,
+                'work_percentage' => $validated['work_percentage']
+                    ?? (float) ($setting->default_work_percentage ?? 40),
+                'wastage_percentage' => $validated['wastage_percentage']
+                    ?? (float) config('carton.default_wastage_percentage', 5),
+                'profit_margin_percentage' => 0,
+            ]);
+
+            $result = $specification->calculate($input, $this->getDefaultExchangeRate());
+
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'profile' => $result['profile'],
+                    'spec' => $result['spec'],
+                    'paper' => $result['paper'],
+                    'adhesive' => $result['adhesive'],
+                    'physical' => $result['physical'],
+                    'commercial' => $result['commercial'],
+                    'rows' => collect($result['rows'])->map(fn (array $row) => [
+                        'material_name' => $row['material_name'],
+                        'component_type' => $row['component_type'],
+                        'role' => $row['role'],
+                        'paper_gsm' => $row['paper_gsm'],
+                        'multiplication_layer' => $row['multiplication_layer'],
+                        'kg_per_unit' => $row['kg_per_unit'],
+                        'kg_with_wastage' => $row['kg_with_wastage'],
+                        'cost_per_unit_afn' => $row['cost_per_unit_afn'],
+                        'row_net_rate_afn' => $row['row_net_rate_afn'],
+                    ])->values(),
+                    'shortages' => $result['shortages'],
+                ],
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 422);
+        }
+    }
+
+    /**
      * Display the existing BOM cost calculator.
      */
     public function calculator()
