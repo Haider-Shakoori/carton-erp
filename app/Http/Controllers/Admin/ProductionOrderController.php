@@ -486,6 +486,19 @@ class ProductionOrderController extends Controller
                     ->unique()
                     ->values();
 
+                // Roll paper is not practically weighable after every job at
+                // this factory. Mark roll-based materials explicitly so the
+                // completion UI can use system-calculated consumption instead
+                // of asking the operator to invent an "actual kg" value.
+                $rollMaterialIds = PurchaseItem::query()
+                    ->whereIn('product_id', $materialIds)
+                    ->whereRaw('LOWER(unit) = ?', ['roll'])
+                    ->whereHas('purchase', fn ($purchase) => $purchase->where('status', 'arrived'))
+                    ->pluck('product_id')
+                    ->map(fn ($id) => (int) $id)
+                    ->unique()
+                    ->values();
+
                 $currentReelUsage = DB::table('production_reel_consumptions as prc')
                     ->join(
                         'production_material_consumptions as pmc',
@@ -550,7 +563,9 @@ class ProductionOrderController extends Controller
                 $completionMaterials = collect($plannedRows)->map(
                     function (array $row) use (
                         $currentConsumption,
-                        $reelOptionsByMaterial
+                        $reelOptionsByMaterial,
+                        $rollMaterialIds,
+                        $plannedRunQty
                     ): array {
                         $materialId = (int) $row['material_id'];
                         $current = $currentConsumption->get($materialId);
@@ -563,8 +578,11 @@ class ProductionOrderController extends Controller
                             'material_name' => $row['material_name'] ?? ('Material #' . $materialId),
                             'unit' => $row['unit'] ?? 'unit',
                             'planned_quantity' => (float) ($row['quantity'] ?? 0),
+                            'planned_wastage_quantity' => (float) ($row['wastage_quantity'] ?? 0),
+                            'planned_run_quantity' => $plannedRunQty,
                             'current_actual_quantity' => (float) ($current->actual_quantity ?? 0),
                             'current_wastage_quantity' => (float) ($current->wastage_quantity ?? 0),
+                            'is_roll_based' => $rollMaterialIds->contains($materialId),
                             'reel_options' => $reelOptions,
                         ];
                     }
@@ -1044,7 +1062,7 @@ class ProductionOrderController extends Controller
                 'quantity_rejected' => 'required|numeric|min:0|max:999999999.99',
                 'materials' => 'required|array|min:1',
                 'materials.*.material_id' => 'required|integer|distinct|exists:products,id',
-                'materials.*.actual_quantity' => 'required|numeric|min:0|max:999999999.999999',
+                'materials.*.actual_quantity' => 'nullable|numeric|min:0|max:999999999.999999',
                 'materials.*.wastage_quantity' => 'nullable|numeric|min:0|max:999999999.999999',
                 'materials.*.unit' => 'nullable|string|max:50',
                 'materials.*.use_reel_selection' => 'nullable|boolean',
@@ -1084,8 +1102,22 @@ class ProductionOrderController extends Controller
                     ->values();
             }
 
+            $autoRequirements = collect(
+                app(\App\Services\ProductionQuantityService::class)
+                    ->requirementsForQuantity($productionOrder, $manufacturedQuantity)
+            )->keyBy(fn (array $row) => (int) $row['material_id']);
+
+            $rollMaterialIds = PurchaseItem::query()
+                ->whereIn('product_id', $expectedMaterialIds)
+                ->whereRaw('LOWER(unit) = ?', ['roll'])
+                ->whereHas('purchase', fn ($purchase) => $purchase->where('status', 'arrived'))
+                ->pluck('product_id')
+                ->map(fn ($id) => (int) $id)
+                ->unique()
+                ->values();
+
             $submittedMaterials = collect($validated['materials'])
-                ->map(function (array $row): array {
+                ->map(function (array $row) use ($rollMaterialIds, $autoRequirements): array {
                     $useReelSelection = (bool) (
                         $row['use_reel_selection'] ?? false
                     );
@@ -1111,16 +1143,43 @@ class ProductionOrderController extends Controller
                         ->values()
                         ->all();
 
+                    $materialId = (int) $row['material_id'];
+                    $isRollBased = $rollMaterialIds->contains($materialId);
+                    $autoRequirement = $autoRequirements->get($materialId);
+
+                    if ($isRollBased && ! $autoRequirement) {
+                        throw \Illuminate\Validation\ValidationException::withMessages([
+                            'materials' => "Could not calculate paper consumption for material #{$materialId}.",
+                        ]);
+                    }
+
+                    // Large paper reels are left on the corrugator between jobs
+                    // and cannot be weighed per production. Their completion
+                    // quantity is therefore calculated from the frozen BOM and
+                    // ACTUAL MANUFACTURED quantity (good + rejected). Operator
+                    // actuals remain available only for measurable materials.
+                    $actualQuantity = $isRollBased
+                        ? (float) ($autoRequirement['quantity'] ?? 0)
+                        : (float) ($row['actual_quantity'] ?? 0);
+
+                    $wastageQuantity = $isRollBased
+                        ? (float) ($autoRequirement['wastage_quantity'] ?? 0)
+                        : (float) ($row['wastage_quantity'] ?? 0);
+
                     return [
-                        'material_id' => (int) $row['material_id'],
-                        'actual_quantity' => (float) $row['actual_quantity'],
-                        'wastage_quantity' => (float) ($row['wastage_quantity'] ?? 0),
-                        'unit' => $row['unit'] ?? null,
-                        'use_reel_selection' => $useReelSelection,
+                        'material_id' => $materialId,
+                        'actual_quantity' => $actualQuantity,
+                        'wastage_quantity' => $wastageQuantity,
+                        'unit' => $row['unit'] ?? ($autoRequirement['unit'] ?? null),
+                        'is_roll_based' => $isRollBased,
+                        // Exact physical reel declaration is still an advanced
+                        // optional workflow. Normal roll completion stays fully
+                        // automatic and retains FIFO/reel allocation.
+                        'use_reel_selection' => $isRollBased ? false : $useReelSelection,
                         'selection_note' => isset($row['selection_note'])
                             ? trim((string) $row['selection_note'])
                             : null,
-                        'reels' => $useReelSelection ? $reels : [],
+                        'reels' => (!$isRollBased && $useReelSelection) ? $reels : [],
                     ];
                 });
 
@@ -1134,6 +1193,12 @@ class ProductionOrderController extends Controller
             }
 
             foreach ($submittedMaterials as $index => $row) {
+                if (! $row['is_roll_based'] && $row['actual_quantity'] < 0.000001) {
+                    throw \Illuminate\Validation\ValidationException::withMessages([
+                        "materials.{$index}.actual_quantity" => 'Enter the actual quantity used for this measurable material.',
+                    ]);
+                }
+
                 if ($row['wastage_quantity'] > $row['actual_quantity'] + 0.000001) {
                     throw \Illuminate\Validation\ValidationException::withMessages([
                         "materials.{$index}.wastage_quantity" => 'Actual waste cannot exceed total actual material consumed.',
@@ -1202,7 +1267,7 @@ class ProductionOrderController extends Controller
                 );
             }
 
-            $message .= ' Stock and actual production cost were reconciled to the material quantities entered at completion. Materials without an explicit physical reel declaration retain FIFO allocation.';
+            $message .= ' Stock and actual production cost were reconciled. Roll-paper consumption was calculated automatically from manufactured quantity; measurable materials used the operator actuals. Physical reel allocation remains FIFO unless reconciled separately.';
 
             if ($sale) {
                 $message .= ' The final invoice quantity uses the good/usable finished quantity.';
