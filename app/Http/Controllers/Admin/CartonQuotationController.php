@@ -83,7 +83,11 @@ class CartonQuotationController extends Controller
 
             return response()->json([
                 'success' => true,
-                'data' => $this->previewPayload($result, $sale),
+                'data' => $this->previewPayload(
+                    $result,
+                    $sale,
+                    isset($validated['quoted_unit_price']) ? (float) $validated['quoted_unit_price'] : null
+                ),
             ]);
         } catch (\Throwable $e) {
             return response()->json([
@@ -216,7 +220,7 @@ class CartonQuotationController extends Controller
                     'sale_item_id' => $saleItem->id,
                     'bom_id' => $bom->id,
                     'bom_code' => $bom->code,
-                    'preview' => $this->previewPayload($result, $sale),
+                    'preview' => $this->previewPayload($result, $sale, $unitPrice),
                     'sale_total' => (float) $sale->grand_total,
                     'usd_total' => (float) $sale->usd_grand_total,
                 ],
@@ -263,10 +267,24 @@ class CartonQuotationController extends Controller
      * The preview intentionally exposes the technical BOM rows for the
      * Advanced/Technical section but keeps the top summary simple.
      */
-    private function previewPayload(array $result, Sale $sale): array
-    {
+    private function previewPayload(
+        array $result,
+        Sale $sale,
+        ?float $quotedUnitPrice = null
+    ): array {
         $isUsd = strtoupper((string) ($sale->currency?->code ?? 'AFN')) === 'USD';
+        $currencyCode = $isUsd ? 'USD' : 'AFN';
         $rate = max((float) $result['exchange_rate'], 0.000001);
+
+        $standardUnitPrice = $isUsd
+            ? (float) $result['commercial']['selling_price_usd_per_unit']
+            : (float) $result['commercial']['selling_price_afn_per_unit'];
+
+        $customerUnitPrice = $quotedUnitPrice !== null && $quotedUnitPrice > 0
+            ? $quotedUnitPrice
+            : $standardUnitPrice;
+
+        $priceOverride = $customerUnitPrice - $standardUnitPrice;
 
         return [
             'box_style' => $result['spec']['box_style'],
@@ -310,6 +328,19 @@ class CartonQuotationController extends Controller
                 'order_total_afn' => (float) $result['commercial']['order_total_afn'],
                 'order_total_usd' => (float) $result['commercial']['order_total_usd'],
             ],
+            'pricing' => [
+                'standard_unit_price' => round($standardUnitPrice, 4),
+                'customer_unit_price' => round($customerUnitPrice, 4),
+                'price_override' => round($priceOverride, 4),
+                'currency' => $currencyCode,
+                'is_manual_override' => abs($priceOverride) > 0.000001,
+                'customer_order_total' => round(
+                    $customerUnitPrice * (float) $result['quantity'],
+                    2
+                ),
+            ],
+            // Kept for backward API compatibility; the simple quotation UI now
+            // presents Standard Price + Price Override + Customer Price instead.
             'expected_profit_afn' => (float) $result['commercial']['order_total_afn']
                 - ((float) $result['physical']['material_cost_afn_per_unit'] * (float) $result['quantity']),
             'currency' => $isUsd ? 'USD' : 'AFN',
