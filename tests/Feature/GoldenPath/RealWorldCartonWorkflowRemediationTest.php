@@ -765,6 +765,85 @@ it('completes above the customer order, consumes extra FIFO stock, and expands t
     expect(abs((float) $invoiceDebit->amount - (float) $sale->grand_total))->toBeLessThan(0.01);
 });
 
+it('reduces realized profit when actual material consumption exceeds plan at the same finished output', function () {
+    $fx = rwCreatePurchaseFlow();
+    $bom = rwCreateBom($fx);
+    $sale = rwCreateSaleWithBom($fx, $bom, 'SO-RW-MATERIAL-OVERRUN-001');
+
+    $confirm = (new SaleController())->confirmSale(
+        rwRequest('/admin/sales/'.$sale->id.'/confirm', 'POST', [
+            'discount_amount' => 0,
+            'advance_payment' => 0,
+            'start_production' => 1,
+        ]),
+        $sale->id
+    );
+
+    expect($confirm->getData(true)['success'])->toBeTrue();
+
+    $sale->refresh();
+    $production = $sale->productionOrder()->firstOrFail();
+
+    $start = (new ProductionOrderController())->startProduction($production);
+    expect($start->getSession()->get('success'))->not->toBeNull();
+
+    $sale->refresh()->load(['items', 'currency']);
+    $before = app(\App\Services\SaleProfitService::class)->calculate($sale);
+    $revenueBefore = (float) $sale->grand_total;
+
+    $overMaterials = DB::table('production_material_consumptions')
+        ->where('production_order_id', $production->id)
+        ->selectRaw('material_id, MAX(unit) AS unit, SUM(actual_quantity) AS actual_quantity')
+        ->groupBy('material_id')
+        ->get()
+        ->map(fn ($row) => [
+            'material_id' => (int) $row->material_id,
+            'actual_quantity' => (float) $row->actual_quantity * 1.20,
+            'wastage_quantity' => 0,
+            'unit' => $row->unit,
+        ])
+        ->values()
+        ->all();
+
+    $complete = (new ProductionOrderController())->completeProduction(
+        $production,
+        rwRequest(
+            '/admin/production-orders/'.$production->id.'/complete',
+            'POST',
+            [
+                'quantity_manufactured' => 100,
+                'quantity_produced' => 100,
+                'quantity_rejected' => 0,
+                'materials' => $overMaterials,
+            ]
+        )
+    );
+
+    expect($complete->getSession()->get('success'))->toContain('100.00 manufactured');
+
+    $sale->refresh()->load(['items', 'currency']);
+    $after = app(\App\Services\SaleProfitService::class)->calculate($sale);
+    $saleItem = $sale->items->firstOrFail();
+
+    $actualMaterialUsd = (float) DB::table('production_material_consumptions')
+        ->where('production_order_id', $production->id)
+        ->sum('total_cost_usd');
+
+    expect(abs((float) $sale->grand_total - $revenueBefore))->toBeLessThan(0.01)
+        ->and((float) $after['actual_material_cost_usd'])
+        ->toBeGreaterThan((float) $before['actual_material_cost_usd'])
+        ->and((float) $after['actual_production_cost_afn'])
+        ->toBeGreaterThan((float) $before['actual_production_cost_afn'])
+        ->and((float) $after['actual_profit_afn'])
+        ->toBeLessThan((float) $before['actual_profit_afn'])
+        ->and(abs((float) $saleItem->total_cost_usd - $actualMaterialUsd))
+        ->toBeLessThan(0.01)
+        ->and(abs(
+            (float) $after['actual_profit_afn']
+            - ((float) $after['gross_sales_afn'] - (float) $after['actual_production_cost_afn'])
+        ))->toBeLessThan(0.01);
+});
+
 it('starts partial production when raw material cannot support the full ordered quantity', function () {
     $fx = rwCreatePurchaseFlow();
     $bom = rwCreateBom($fx);

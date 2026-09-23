@@ -609,8 +609,27 @@
         #completeProductionModal .modal-dialog {
             max-width: min(1480px, 96vw);
         }
-        .completion-modal-content {
+        #completeProductionModal .completion-modal-content {
             background: #f8fafc;
+            max-height: calc(100vh - 2rem);
+            overflow: hidden;
+        }
+        #completeProductionModal .completion-modal-content > form {
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+            max-height: inherit;
+            overflow: hidden;
+        }
+        #completeProductionModal .modal-body {
+            min-height: 0;
+            overflow-y: auto;
+            overscroll-behavior: contain;
+            -webkit-overflow-scrolling: touch;
+        }
+        #completeProductionModal .completion-modal-header,
+        #completeProductionModal .completion-modal-footer {
+            flex: 0 0 auto;
         }
         .completion-modal-header {
             background: #fff;
@@ -1461,7 +1480,7 @@
                                             </div>
                                             <div class="completion-inventory-note">
                                                 <div class="fw-bold text-dark mb-1"><i class="bi bi-box-arrow-down me-1"></i> Inventory impact</div>
-                                                Actual Consumed is authoritative. Higher actual usage deducts additional FIFO stock; lower actual usage restores the unused provisional allocation. Actual FIFO landed cost becomes the production material cost.
+                                                Actual Consumed is authoritative. Higher actual usage deducts additional FIFO stock; lower actual usage restores the unused provisional allocation. Actual FIFO landed cost becomes the production material cost, and the linked sale's realized profit is recalculated from that actual cost.
                                             </div>
                                         </div>
                                     </aside>
