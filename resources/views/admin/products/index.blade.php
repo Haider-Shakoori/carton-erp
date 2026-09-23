@@ -1871,17 +1871,26 @@
 
             const rawTable = $('#products-table').DataTable({
                 ...tableOpts,
-                columnDefs: [{ orderable: false, targets: [1, 5, 6, 8] }]
+                columnDefs: [
+                    { orderable: false, targets: [1, 5, 6, 8] },
+                    { searchable: false, targets: [1, 8] }
+                ]
             });
 
             const finishedTable = $('#finished-goods-table').DataTable({
                 ...tableOpts,
-                columnDefs: [{ orderable: false, targets: [1, 6] }]
+                columnDefs: [
+                    { orderable: false, targets: [1, 6] },
+                    { searchable: false, targets: [1, 6] }
+                ]
             });
 
             const categoriesTable = $('#categories-table').DataTable({
                 ...tableOpts,
-                columnDefs: [{ orderable: false, targets: [5] }]
+                columnDefs: [
+                    { orderable: false, targets: [5] },
+                    { searchable: false, targets: [5] }
+                ]
             });
 
             const tableRegistry = {
