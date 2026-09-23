@@ -775,7 +775,19 @@ class ProductionQuantityService
 
         $saleItem->qty = $actualQuantity;
         $saleItem->total = (float) $saleItem->unit_price * $actualQuantity;
-        $saleItem->usd_total = (float) $saleItem->usd_unit_price * $actualQuantity;
+
+        $rate = max((float) ($sale->exchange_rate ?? $saleItem->rate ?? 1), self::EPSILON);
+        $isUsdSale = strtoupper((string) ($sale->currency?->code ?? 'AFN')) === 'USD';
+        $usdUnitPrice = (float) ($saleItem->usd_unit_price ?? 0);
+
+        if ($usdUnitPrice <= 0) {
+            $usdUnitPrice = $isUsdSale
+                ? (float) $saleItem->unit_price
+                : (float) $saleItem->unit_price / $rate;
+            $saleItem->usd_unit_price = $usdUnitPrice;
+        }
+
+        $saleItem->usd_total = $usdUnitPrice * $actualQuantity;
 
         // discount/tax are persisted as line totals in this application.
         $saleItem->discount = (float) $saleItem->discount * $ratio;
@@ -802,8 +814,23 @@ class ProductionQuantityService
             (float) $sale->usd_grand_total - (float) $sale->usd_advance_payment,
             0
         );
-        $sale->is_produced = true;
+        // Multi-line sales can have one production order per sale item.
+        // Updating one actual quantity changes the invoice immediately, but the
+        // whole sale becomes produced only after every linked order is terminal.
+        $openProductionExists = ProductionOrder::query()
+            ->where('sale_id', $sale->id)
+            ->whereNotIn('status', [
+                ProductionOrder::STATUS_COMPLETED,
+                ProductionOrder::STATUS_CANCELLED,
+            ])
+            ->exists();
+
+        $sale->is_produced = ! $openProductionExists;
         $sale->save();
+
+        // Keep the formal accounting invoice synchronized with the revised
+        // customer invoice total. postSaleInvoice is versioned/idempotent.
+        app(AccountingService::class)->postSaleInvoice($sale->fresh());
 
         $currencySymbol = $sale->currency?->symbol ?? '';
         $invoiceTransaction = Transaction::query()
@@ -862,6 +889,13 @@ class ProductionQuantityService
 
     private function resolveSaleItem(Sale $sale, ProductionOrder $order): ?SaleItem
     {
+        if ($order->sale_item_id) {
+            $direct = $sale->items()->whereKey((int) $order->sale_item_id)->first();
+            if ($direct) {
+                return $direct;
+            }
+        }
+
         if (preg_match('/SaleItem ID:\s*(\d+)/i', (string) $order->notes, $matches)) {
             $item = $sale->items()->whereKey((int) $matches[1])->first();
             if ($item) {
