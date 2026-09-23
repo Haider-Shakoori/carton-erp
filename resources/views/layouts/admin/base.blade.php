@@ -659,6 +659,65 @@
             gap: 0.5rem;
         }
 
+        .business-unit-select-wrap {
+            display: inline-flex;
+            align-items: center;
+            gap: .55rem;
+            min-height: 44px;
+            padding: .35rem .65rem;
+            border: 1px solid var(--gray-200);
+            border-radius: 10px;
+            background: white;
+            box-shadow: var(--shadow-sm);
+        }
+
+        .business-unit-select-icon {
+            color: var(--primary);
+            font-size: 1rem;
+        }
+
+        .business-unit-select-copy {
+            display: flex;
+            flex-direction: column;
+            gap: .05rem;
+            min-width: 150px;
+        }
+
+        .business-unit-select-copy small {
+            color: var(--gray-400);
+            font-size: .55rem;
+            font-weight: 700;
+            line-height: 1;
+            text-transform: uppercase;
+            letter-spacing: .05em;
+        }
+
+        .business-unit-select-copy .form-select {
+            min-width: 150px;
+            border: 0;
+            padding-top: .1rem;
+            padding-bottom: .1rem;
+            padding-left: 0;
+            padding-right: 1.75rem;
+            background-color: transparent;
+            color: var(--gray-800);
+            font-size: .78rem;
+            font-weight: 700;
+            box-shadow: none;
+            cursor: pointer;
+        }
+
+        @media (max-width: 768px) {
+            .business-unit-select-copy {
+                min-width: 118px;
+            }
+
+            .business-unit-select-copy .form-select {
+                min-width: 118px;
+                max-width: 145px;
+            }
+        }
+
         .business-unit-switcher .dropdown-toggle {
             display: inline-flex;
             align-items: center;
@@ -2107,44 +2166,25 @@ MAIN CONTENT AREA
 
             <div class="navbar-right">
                 @if(($businessUnitModeEnabled ?? false) && ($businessUnits ?? collect())->isNotEmpty())
-                    <div class="dropdown business-unit-switcher">
-                        <button class="dropdown-toggle"
-                                type="button"
-                                data-bs-toggle="dropdown"
-                                aria-expanded="false"
-                                id="businessUnitSwitcher">
-                            <i class="bi {{ $activeBusinessUnit?->icon ?: 'bi-buildings' }}"></i>
-                            <span class="business-unit-label">
-                                <small>Business</small>
-                                <span>{{ $activeBusinessUnit?->name ?? 'Select Business' }}</span>
-                            </span>
-                        </button>
-                        <ul class="dropdown-menu dropdown-menu-custom dropdown-menu-end">
-                            <li class="px-2 py-1">
-                                <div class="small text-muted fw-semibold">Switch business workspace</div>
-                            </li>
-                            @foreach($businessUnits as $businessUnit)
-                                <li>
-                                    <form action="{{ route('admin.business-units.switch', $businessUnit) }}" method="POST">
-                                        @csrf
-                                        <button type="submit"
-                                                class="dropdown-item business-unit-option {{ (int) ($activeBusinessUnit?->id ?? 0) === (int) $businessUnit->id ? 'active' : '' }}">
-                                            <i class="bi {{ $businessUnit->icon ?: 'bi-building' }}"></i>
-                                            <span class="flex-grow-1">{{ $businessUnit->name }}</span>
-                                            @if((int) ($activeBusinessUnit?->id ?? 0) === (int) $businessUnit->id)
-                                                <i class="bi bi-check2 ms-auto"></i>
-                                            @endif
-                                        </button>
-                                    </form>
-                                </li>
-                            @endforeach
-                            <li><hr class="dropdown-divider"></li>
-                            <li>
-                                <a class="dropdown-item" href="{{ route('admin.settings.index') }}">
-                                    <i class="bi bi-gear"></i> Business unit settings
-                                </a>
-                            </li>
-                        </ul>
+                    <div class="business-unit-switcher business-unit-select-wrap">
+                        <i class="bi {{ $activeBusinessUnit?->icon ?: 'bi-buildings' }} business-unit-select-icon"></i>
+                        <div class="business-unit-select-copy">
+                            <small>Business workspace</small>
+                            <select id="businessUnitSwitcher"
+                                    class="form-select form-select-sm"
+                                    aria-label="Switch business workspace">
+                                @foreach($businessUnits as $businessUnit)
+                                    <option value="{{ $businessUnit->id }}"
+                                            data-switch-url="{{ route('admin.business-units.switch', $businessUnit) }}"
+                                            @selected((int) ($activeBusinessUnit?->id ?? 0) === (int) $businessUnit->id)>
+                                        {{ $businessUnit->name }}
+                                    </option>
+                                @endforeach
+                            </select>
+                        </div>
+                        <form id="businessUnitSwitchForm" method="POST" class="d-none">
+                            @csrf
+                        </form>
                     </div>
                 @endif
 
@@ -2328,6 +2368,21 @@ SCRIPTS
     }
 
     $(document).ready(function() {
+
+        // ─── Business workspace switcher ───
+        $('#businessUnitSwitcher').on('change', function() {
+            const selected = this.options[this.selectedIndex];
+            const switchUrl = selected ? selected.dataset.switchUrl : null;
+            const form = document.getElementById('businessUnitSwitchForm');
+
+            if (!switchUrl || !form) {
+                return;
+            }
+
+            this.disabled = true;
+            form.action = switchUrl;
+            form.submit();
+        });
 
         // ─── Sidebar Toggle (Mobile) ───
         $('#sidebarToggle').on('click', function() {
