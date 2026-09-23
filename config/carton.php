@@ -24,6 +24,10 @@ return [
     // The commercial quotation basis deliberately excludes wastage.
     'default_wastage_percentage' => 5,
 
+    // Client-confirmed standard commercial work/profit percentage. This is
+    // pricing, never a production labour/overhead cost.
+    'standard_work_percentage' => 40,
+
     // Supported dimension units => inches.
     'length_units' => [
         'inch' => 1.0,
