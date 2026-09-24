@@ -12,6 +12,7 @@ use App\Models\PurchaseItem;
 use App\Models\PurchaseItemReel;
 use App\Models\Currency;
 use App\Models\Sale;
+use App\Models\SaleItem;
 use App\Models\Transaction;
 use App\Services\SaleProfitService;
 use App\Services\StockDeductionService;
@@ -260,11 +261,29 @@ class ProductionOrderController extends Controller
                 'quantity' => $request->quantity_ordered,
             ]);
 
+            $linkedSaleId = $request->sale_id ? (int) $request->sale_id : null;
+            $linkedSaleItemId = null;
+
+            if ($linkedSaleId) {
+                $candidateItems = SaleItem::query()
+                    ->where('sale_id', $linkedSaleId)
+                    ->where('product_id', (int) $request->product_id)
+                    ->when($request->bom_id, fn ($query) => $query->where('bom_id', (int) $request->bom_id))
+                    ->orderBy('id')
+                    ->pluck('id');
+
+                if ($candidateItems->count() === 1) {
+                    $linkedSaleItemId = (int) $candidateItems->first();
+                }
+            }
+
             // ─── LOG 7: Creating production order ───
             \Log::info('Production Order Store - Creating production order', [
                 'order_number' => 'PROD-' . date('Y') . '-' . strtoupper(uniqid()),
                 'product_id' => $request->product_id,
                 'bom_id' => $request->bom_id,
+                'sale_id' => $linkedSaleId,
+                'sale_item_id' => $linkedSaleItemId,
                 'quantity_ordered' => $request->quantity_ordered,
             ]);
 
@@ -610,9 +629,10 @@ class ProductionOrderController extends Controller
         }
 
         // ─── GET LINKED SALE ───
-        $sale = Sale::where('production_order_id', $productionOrder->id)
-            ->with(['currency', 'items', 'items.bom'])
-            ->first();
+        $sale = $this->resolveLinkedSale(
+            $productionOrder,
+            ['currency', 'items', 'items.bom']
+        );
 
         // ─── CURRENCY SETUP ───
         if ($sale) {
@@ -871,9 +891,7 @@ class ProductionOrderController extends Controller
         }
 
         try {
-            $sale = Sale::where('production_order_id', $productionOrder->id)
-                ->with('items')
-                ->first();
+            $sale = $this->resolveLinkedSale($productionOrder, ['items']);
 
             $result = app(\App\Services\ProductionQuantityService::class)
                 ->start($productionOrder, $sale, $plannedQuantity);
@@ -1027,9 +1045,10 @@ class ProductionOrderController extends Controller
         // explicit completion form and therefore requires the actual materials.
         if ($request === null) {
             try {
-                $sale = Sale::where('production_order_id', $productionOrder->id)
-                    ->with(['items', 'currency'])
-                    ->first();
+                $sale = $this->resolveLinkedSale(
+                    $productionOrder,
+                    ['items', 'currency']
+                );
 
                 $legacyGoodQty = (float) $productionOrder->quantity_ordered;
 
@@ -1251,9 +1270,10 @@ class ProductionOrderController extends Controller
                 }
             }
 
-            $sale = Sale::where('production_order_id', $productionOrder->id)
-                ->with(['items', 'currency'])
-                ->first();
+            $sale = $this->resolveLinkedSale(
+                $productionOrder,
+                ['items', 'currency']
+            );
 
             $result = app(\App\Services\ProductionQuantityService::class)->complete(
                 $productionOrder,
@@ -1357,7 +1377,7 @@ class ProductionOrderController extends Controller
             $productionOrder->save();
 
             // ─── Update the associated sale if exists ───
-            $sale = Sale::where('production_order_id', $productionOrder->id)->first();
+            $sale = $this->resolveLinkedSale($productionOrder);
             if ($sale) {
                 $sale->is_produced = false;
                 $sale->save();
@@ -1380,6 +1400,53 @@ class ProductionOrderController extends Controller
         }
     }
 
+
+    /**
+     * Resolve the exact sale behind a production order.
+     *
+     * New orders use production_orders.sale_id / sale_item_id. Legacy fallbacks
+     * keep older records working after upgrade.
+     */
+    private function resolveLinkedSale(ProductionOrder $productionOrder, array $with = []): ?Sale
+    {
+        if ($productionOrder->sale_id) {
+            return Sale::with($with)->find($productionOrder->sale_id);
+        }
+
+        if ($productionOrder->sale_item_id) {
+            $saleId = SaleItem::query()
+                ->whereKey($productionOrder->sale_item_id)
+                ->value('sale_id');
+
+            if ($saleId) {
+                return Sale::with($with)->find($saleId);
+            }
+        }
+
+        if (preg_match('/SaleItem ID:\s*(\d+)/i', (string) $productionOrder->notes, $matches)) {
+            $saleId = SaleItem::query()
+                ->whereKey((int) $matches[1])
+                ->value('sale_id');
+
+            if ($saleId) {
+                return Sale::with($with)->find($saleId);
+            }
+        }
+
+        $consumptionSaleId = DB::table('production_material_consumptions')
+            ->where('production_order_id', $productionOrder->id)
+            ->whereNotNull('sale_id')
+            ->orderBy('id')
+            ->value('sale_id');
+
+        if ($consumptionSaleId) {
+            return Sale::with($with)->find((int) $consumptionSaleId);
+        }
+
+        return Sale::with($with)
+            ->where('production_order_id', $productionOrder->id)
+            ->first();
+    }
 
     /**
      * Check material availability for a BOM.

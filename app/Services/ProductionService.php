@@ -123,8 +123,14 @@ class ProductionService
      */
     public function createProductionOrderFromSaleItem($saleItem, $bom, $sale)
     {
-        if ($sale->production_order_id) {
-            return ProductionOrder::findOrFail($sale->production_order_id);
+        $existing = ProductionOrder::query()
+            ->where('sale_item_id', $saleItem->id)
+            ->where('status', '!=', ProductionOrder::STATUS_CANCELLED)
+            ->orderByDesc('id')
+            ->first();
+
+        if ($existing) {
+            return $existing;
         }
 
         // ─── GET ALL DATA FROM SALEITEM ───
@@ -168,6 +174,8 @@ class ProductionService
             'order_number' => 'PROD-' . date('Y') . '-' . strtoupper(Str::random(8)),
             'product_id' => $saleItem->product_id,
             'bom_id' => $costBreakdown['bom_id'],
+            'sale_id' => $sale->id,
+            'sale_item_id' => $saleItem->id,
             'quantity_ordered' => $quantity,
             'quantity_produced' => 0,
             'status' => 'pending',
@@ -216,8 +224,14 @@ class ProductionService
      */
     public function createProductionOrderFromFrozenSpec($saleItem, $bom, $sale): ?ProductionOrder
     {
-        if ($sale->production_order_id) {
-            return ProductionOrder::findOrFail($sale->production_order_id);
+        $existing = ProductionOrder::query()
+            ->where('sale_item_id', $saleItem->id)
+            ->where('status', '!=', ProductionOrder::STATUS_CANCELLED)
+            ->orderByDesc('id')
+            ->first();
+
+        if ($existing) {
+            return $existing;
         }
 
         $snapshot = $saleItem->carton_spec_snapshot;
@@ -291,6 +305,8 @@ class ProductionService
             'order_number' => 'PROD-' . date('Y') . '-' . strtoupper(Str::random(8)),
             'product_id' => $saleItem->product_id,
             'bom_id' => $bom->id,
+            'sale_id' => $sale->id,
+            'sale_item_id' => $saleItem->id,
             'quantity_ordered' => $quantity,
             'quantity_produced' => 0,
             'status' => 'pending',

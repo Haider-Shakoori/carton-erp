@@ -564,9 +564,17 @@ class Sale extends Model
     {
         return $this->belongsTo(ProductionOrder::class, 'production_order_id');
     }
+
+    public function productionOrders()
+    {
+        return $this->hasMany(ProductionOrder::class, 'sale_id');
+    }
+
     public static function findByProductionOrder($productionOrderId)
     {
-        return self::where('production_order_id', $productionOrderId)->first();
+        return self::whereHas('productionOrders', fn ($query) => $query->whereKey($productionOrderId))
+            ->orWhere('production_order_id', $productionOrderId)
+            ->first();
     }
 
     /**

@@ -46,7 +46,8 @@ class ProductionQuantityService
                 );
             }
 
-            $sale ??= $order->sale()->with('items')->first();
+            $sale ??= $order->linkedSale()->with('items')->first()
+                ?? $order->sale()->with('items')->first();
 
             $orderedQty = (float) $order->quantity_ordered;
             if ($orderedQty <= self::EPSILON) {
@@ -197,7 +198,8 @@ class ProductionQuantityService
                 throw new RuntimeException('Only in-progress production orders can be completed.');
             }
 
-            $sale ??= $order->sale()->with(['items', 'currency'])->first();
+            $sale ??= $order->linkedSale()->with(['items', 'currency'])->first()
+                ?? $order->sale()->with(['items', 'currency'])->first();
             $saleItem = $sale ? $this->resolveSaleItem($sale, $order) : null;
 
             app(ProductionControlService::class)
@@ -802,7 +804,19 @@ class ProductionQuantityService
             (float) $sale->usd_grand_total - (float) $sale->usd_advance_payment,
             0
         );
-        $sale->is_produced = true;
+        $linkedOrders = ProductionOrder::query()
+            ->where('sale_id', $sale->id)
+            ->get(['id', 'status']);
+
+        // Keep the sale pending until every linked sale-line production order
+        // has actually completed. Legacy single-order sales without explicit
+        // sale_id links retain the historical completion behavior.
+        $sale->is_produced = $linkedOrders->isEmpty()
+            ? true
+            : $linkedOrders->every(
+                fn (ProductionOrder $linkedOrder) =>
+                    $linkedOrder->status === ProductionOrder::STATUS_COMPLETED
+            );
         $sale->save();
 
         $currencySymbol = $sale->currency?->symbol ?? '';
@@ -862,6 +876,13 @@ class ProductionQuantityService
 
     private function resolveSaleItem(Sale $sale, ProductionOrder $order): ?SaleItem
     {
+        if ($order->sale_item_id) {
+            $item = $sale->items()->whereKey((int) $order->sale_item_id)->first();
+            if ($item) {
+                return $item;
+            }
+        }
+
         if (preg_match('/SaleItem ID:\s*(\d+)/i', (string) $order->notes, $matches)) {
             $item = $sale->items()->whereKey((int) $matches[1])->first();
             if ($item) {

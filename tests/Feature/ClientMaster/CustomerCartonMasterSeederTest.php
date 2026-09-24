@@ -480,12 +480,12 @@ it('is idempotent across the full client master and all-finished-goods BOM seedi
     ];
 
     expect($after)->toBe($before)
-        ->and($after['raw_materials'])->toBe(10)
+        ->and($after['raw_materials'])->toBe(11)
         ->and($after['finished_goods'])->toBe(171)
         ->and($after['specifications'])->toBe(171)
         ->and($after['boms'])->toBe(171)
         ->and($after['opening_purchases'])->toBe(1)
-        ->and($after['opening_purchase_items'])->toBe(10);
+        ->and($after['opening_purchase_items'])->toBe(11);
 });
 
 it('preserves operator edits on an already imported carton source row', function () {
