@@ -6,13 +6,13 @@ use Database\Seeders\DatabaseSeeder;
 use Illuminate\Support\Facades\DB;
 
 /**
- * The client-approved 10 baseline carton raw materials must deploy
+ * The client-approved baseline carton raw materials must deploy
  * idempotently: rerunning the seeder never creates duplicates.
  */
-it('deploys the 10 client baseline raw materials idempotently', function () {
+it('deploys the client baseline raw materials idempotently', function () {
     $names = collect(ClientCartonRawMaterialSeeder::MATERIALS)->pluck('name')->all();
 
-    expect($names)->toHaveCount(10);
+    expect($names)->toHaveCount(11);
 
     // The migration already deployed them; run the seeder twice more to prove
     // idempotency.
@@ -21,7 +21,7 @@ it('deploys the 10 client baseline raw materials idempotently', function () {
 
     $products = Product::whereIn('name', $names)->get();
 
-    expect($products)->toHaveCount(10);
+    expect($products)->toHaveCount(11);
 
     foreach (ClientCartonRawMaterialSeeder::MATERIALS as $material) {
         $matches = $products->where('name', $material['name']);
@@ -35,7 +35,11 @@ it('deploys the 10 client baseline raw materials idempotently', function () {
             ->and((int) $product->min_stock_alert)->toBe($material['min_stock'])
             ->and((bool) $product->is_active)->toBeTrue();
 
-        $expectedCategory = $material['category'] === 'paper' ? 'Paper Materials' : 'Mixing Materials';
+        $expectedCategory = match ($material['category']) {
+            'paper' => 'Paper Materials',
+            'mixing' => 'Mixing Materials',
+            'finishing' => 'Finishing Materials',
+        };
         $categoryName = DB::table('categories')->where('id', $product->category_id)->value('name');
 
         expect($categoryName)->toBe($expectedCategory);
@@ -43,12 +47,17 @@ it('deploys the 10 client baseline raw materials idempotently', function () {
 
     $paperNames = ['Test Liner', 'Fluting', 'Kraft Liner', 'Semi Kraft', 'White Liner', 'Box Board'];
     $mixingNames = ['Seligate (Glue)', 'Corn Flour', 'Borax', 'Caustic Soda'];
+    $finishingNames = ['Lamination Plastic'];
 
     foreach ($paperNames as $name) {
         expect($products->firstWhere('name', $name)->unit)->toBe('roll');
     }
 
     foreach ($mixingNames as $name) {
+        expect($products->firstWhere('name', $name)->unit)->toBe('kg');
+    }
+
+    foreach ($finishingNames as $name) {
         expect($products->firstWhere('name', $name)->unit)->toBe('kg');
     }
 });
