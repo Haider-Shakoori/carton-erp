@@ -114,6 +114,26 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Optional lamination add-on
+    |--------------------------------------------------------------------------
+    |
+    | Lamination is not baked into every master BOM. When the sale operator
+    | enables lamination for a carton, the order receives a derived BOM row
+    | whose per-carton stock consumption is frozen from the board blank area.
+    |
+    | Formula:
+    |   kg/carton = board_area_m2 × film_gsm × sides ÷ 1000 × (1 + waste%)
+    |
+    */
+    'lamination' => [
+        'material_name' => 'Lamination Plastic',
+        'film_gsm' => 20.0,
+        'sides' => 1,
+        'wastage_percentage' => 5.0,
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Adhesive Mix (mixing materials) — dimension driven formula
     |--------------------------------------------------------------------------
     |

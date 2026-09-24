@@ -103,6 +103,15 @@ class CartonSpecificationService
             ? max((float) $input['print_cost_afn'], 0.0)
             : max((float) ($printingDefaults['print_cost_afn'] ?? 0), 0.0);
 
+        $laminationEnabled = filter_var(
+            $input['lamination_enabled'] ?? false,
+            FILTER_VALIDATE_BOOLEAN
+        );
+        $laminationDefaults = (array) config('carton.lamination', []);
+        $laminationFilmGsm = max((float) ($laminationDefaults['film_gsm'] ?? 20), 0.0);
+        $laminationSides = max((int) ($laminationDefaults['sides'] ?? 1), 1);
+        $laminationWastage = max((float) ($laminationDefaults['wastage_percentage'] ?? 5), 0.0);
+
         $wastage = array_key_exists('wastage_percentage', $input)
             && $input['wastage_percentage'] !== null
             && $input['wastage_percentage'] !== ''
@@ -152,6 +161,10 @@ class CartonSpecificationService
             'printing_option' => $printingOption,
             'printing_label' => $printingDefaults['label'] ?? ucfirst($printingOption),
             'print_cost_afn' => $printCostAfn,
+            'lamination_enabled' => $laminationEnabled,
+            'lamination_film_gsm' => $laminationFilmGsm,
+            'lamination_sides' => $laminationSides,
+            'lamination_wastage_percentage' => $laminationWastage,
             'quantity' => $quantity,
             'wastage_percentage' => $wastage,
             'work_percentage' => $workPercentage,
@@ -274,6 +287,12 @@ class CartonSpecificationService
         foreach ($this->adhesiveRequirements($spec) as $adhesiveRow) {
             $adhesiveRow['sort_order'] = $sort++;
             $rows[] = $adhesiveRow;
+        }
+
+        if ((bool) ($spec['lamination_enabled'] ?? false)) {
+            $laminationRow = $this->laminationRequirement($spec);
+            $laminationRow['sort_order'] = $sort++;
+            $rows[] = $laminationRow;
         }
 
         return $rows;
@@ -404,6 +423,74 @@ class CartonSpecificationService
         return null;
     }
 
+    /**
+     * Optional per-order lamination material requirement.
+     *
+     * Hidden formula:
+     * board area (m²) × film GSM × sides ÷ 1000 × (1 + wastage%).
+     * The base kg/carton is frozen into stock_consumption_override so the
+     * resulting derived BOM remains reproducible if defaults change later.
+     */
+    public function laminationRequirement(array $spec): array
+    {
+        $materialName = (string) config('carton.lamination.material_name', 'Lamination Plastic');
+        $material = Product::query()
+            ->where('name', $materialName)
+            ->where('type', Product::TYPE_RAW_MATERIAL)
+            ->first();
+
+        if (! $material) {
+            throw new RuntimeException(
+                "Lamination material [{$materialName}] is missing. Add it to stock before quoting lamination."
+            );
+        }
+
+        $area = max((float) ($spec['board_area_m2'] ?? 0), 0.0);
+        $filmGsm = max((float) ($spec['lamination_film_gsm'] ?? 0), 0.0);
+        $sides = max((int) ($spec['lamination_sides'] ?? 1), 1);
+        $wastage = max((float) ($spec['lamination_wastage_percentage'] ?? 0), 0.0);
+        $kgPerUnit = $area * $filmGsm * $sides / 1000;
+
+        if ($area <= 0 || $filmGsm <= 0 || $kgPerUnit <= 0) {
+            throw new RuntimeException('Lamination formula could not determine a positive film requirement.');
+        }
+
+        return [
+            'component_type' => self::COMPONENT_AUXILIARY,
+            'role' => 'lamination',
+            'material_id' => (int) $material->id,
+            'material_name' => $material->name,
+            'formula_type' => 'fixed_rate',
+            'is_formula_based' => true,
+            'length_inch' => (float) $spec['length_inch'],
+            'width_inch' => (float) $spec['width_inch'],
+            'height_inch' => (float) $spec['height_inch'],
+            'reel_length_inch' => (float) $spec['reel_length_inch'],
+            'reel_height_inch' => (float) $spec['reel_height_inch'],
+            'paper_gsm' => null,
+            'multiplication_layer' => 1,
+            'formula_constant' => null,
+            'wastage_percentage' => $wastage,
+            'work_percentage' => 0.0,
+            'apply_work_percentage' => false,
+            'print' => 0.0,
+            'kg_per_unit' => $kgPerUnit,
+            'kg_with_wastage' => $kgPerUnit * (1 + ($wastage / 100)),
+            'unit' => 'kg',
+            'stock_consumption_override' => $kgPerUnit,
+            'stock_consumption_unit' => 'kg',
+            'rate_per_unit' => $kgPerUnit,
+            'rate_base_units' => 1,
+            'formula_data' => [
+                'formula' => 'board_area_m2 × film_gsm × sides ÷ 1000 × (1 + wastage%)',
+                'board_area_m2' => $area,
+                'film_gsm' => $filmGsm,
+                'sides' => $sides,
+                'wastage_percentage' => $wastage,
+            ],
+        ];
+    }
+
     // ─── FULL CALCULATION ───
 
     /**
@@ -420,6 +507,8 @@ class CartonSpecificationService
         $paperBasisKg = 0.0;
         $paperPhysicalKg = 0.0;
         $adhesiveKg = 0.0;
+        $laminationKg = 0.0;
+        $laminationCostAfn = 0.0;
         $workProfitAfn = 0.0;
         $physicalMaterialAfn = 0.0;
         $physicalMaterialUsd = 0.0;
@@ -465,15 +554,21 @@ class CartonSpecificationService
 
                 $row['row_net_rate_afn'] = $lineBaseAfn
                     + ($row['apply_work_percentage'] ? $lineBaseAfn * ((float) $row['work_percentage'] / 100) : 0.0);
-            } else {
+            } elseif ($row['component_type'] === self::COMPONENT_ADHESIVE) {
                 $adhesiveKg += $kgWithWastage;
+                $row['row_net_rate_afn'] = 0.0;
+            } elseif (($row['role'] ?? null) === 'lamination') {
+                $laminationKg += $kgWithWastage;
+                $laminationCostAfn += $linePhysicalAfn;
+                $row['row_net_rate_afn'] = $linePhysicalAfn;
+            } else {
                 $row['row_net_rate_afn'] = 0.0;
             }
         }
         unset($row);
 
         $printAfn = (float) $spec['print_cost_afn'];
-        $commercialNetAfn = $paperBaseAfn + $workProfitAfn + $printAfn;
+        $commercialNetAfn = $paperBaseAfn + $workProfitAfn + $printAfn + $laminationCostAfn;
         $sellingAfn = $commercialNetAfn * (1 + ((float) $spec['profit_margin_percentage'] / 100));
 
         $quantity = (float) $spec['quantity'];
@@ -497,6 +592,15 @@ class CartonSpecificationService
                 'parameters' => $this->adhesive->parameters(),
                 'recipe' => (array) config('carton.adhesive.recipe', []),
             ],
+            'lamination' => [
+                'enabled' => (bool) ($spec['lamination_enabled'] ?? false),
+                'kg_per_unit' => $laminationKg,
+                'kg_total' => $laminationKg * $quantity,
+                'film_gsm' => (float) ($spec['lamination_film_gsm'] ?? 0),
+                'sides' => (int) ($spec['lamination_sides'] ?? 1),
+                'wastage_percentage' => (float) ($spec['lamination_wastage_percentage'] ?? 0),
+                'cost_afn_per_unit' => $laminationCostAfn,
+            ],
             'physical' => [
                 'material_cost_usd_per_unit' => $physicalMaterialUsd,
                 'material_cost_afn_per_unit' => $physicalMaterialAfn,
@@ -511,6 +615,7 @@ class CartonSpecificationService
                 'paper_basis_afn_per_unit' => $paperBaseAfn,
                 'work_profit_afn_per_unit' => $workProfitAfn,
                 'print_cost_afn_per_unit' => $printAfn,
+                'lamination_cost_afn_per_unit' => $laminationCostAfn,
                 'net_rate_afn_per_unit' => $commercialNetAfn,
                 'profit_margin_percentage' => (float) $spec['profit_margin_percentage'],
                 'additional_markup_afn_per_unit' => $sellingAfn - $commercialNetAfn,
@@ -708,6 +813,10 @@ class CartonSpecificationService
             'per_gram_rate' => $costAfn,
             'work_percentage' => (float) ($row['work_percentage'] ?? 0),
             'print' => (float) ($row['print'] ?? 0),
+            'stock_consumption_override' => $row['stock_consumption_override'] ?? null,
+            'stock_consumption_unit' => $row['stock_consumption_unit'] ?? 'kg',
+            'rate_per_unit' => $row['rate_per_unit'] ?? null,
+            'rate_base_units' => $row['rate_base_units'] ?? null,
         ];
     }
 
@@ -749,6 +858,7 @@ class CartonSpecificationService
                 'cost_per_unit_usd' => round((float) $row['cost_per_unit_usd'], 8),
                 'landed_basis_unit' => $row['landed_basis_unit'],
                 'purchase_item_id' => $row['purchase_item_id'],
+                'formula_data' => $row['formula_data'] ?? null,
             ];
 
             if (($row['formula_type'] ?? null) === 'adhesive_mix') {
@@ -799,6 +909,13 @@ class CartonSpecificationService
                 'recipe' => $result['adhesive']['recipe'],
                 'kg_per_unit' => round((float) $result['adhesive']['kg_per_unit'], 8),
             ],
+            'lamination' => [
+                'enabled' => (bool) ($result['lamination']['enabled'] ?? false),
+                'kg_per_unit' => round((float) ($result['lamination']['kg_per_unit'] ?? 0), 8),
+                'film_gsm' => (float) ($result['lamination']['film_gsm'] ?? 0),
+                'sides' => (int) ($result['lamination']['sides'] ?? 1),
+                'wastage_percentage' => (float) ($result['lamination']['wastage_percentage'] ?? 0),
+            ],
             'exchange_rate' => $result['exchange_rate'],
             'rows' => $rows,
             'physical' => [
@@ -811,6 +928,7 @@ class CartonSpecificationService
                 'paper_basis_afn_per_unit' => round((float) $result['commercial']['paper_basis_afn_per_unit'], 4),
                 'work_profit_afn_per_unit' => round((float) $result['commercial']['work_profit_afn_per_unit'], 4),
                 'print_cost_afn_per_unit' => round((float) $result['commercial']['print_cost_afn_per_unit'], 4),
+                'lamination_cost_afn_per_unit' => round((float) ($result['commercial']['lamination_cost_afn_per_unit'] ?? 0), 4),
                 'net_rate_afn_per_unit' => round((float) $result['commercial']['net_rate_afn_per_unit'], 4),
                 'work_percentage' => (float) $result['commercial']['work_percentage'],
                 'profit_margin_percentage' => (float) $result['commercial']['profit_margin_percentage'],

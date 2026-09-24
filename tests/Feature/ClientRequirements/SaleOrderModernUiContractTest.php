@@ -21,7 +21,13 @@ it('keeps the approved modern sale order UI contract wired to existing sale beha
         ->toContain('soxAddCartonDrawer')
         ->toContain('Existing BOM')
         ->toContain('Quick Quotation')
+        ->toContain('width:min(1080px,96vw)!important')
         ->toContain('The override changes selling price only');
+
+    expect($show)
+        ->toContain('id="laminationEnabled"')
+        ->toContain('id="csLamination"')
+        ->toContain('hidden board-area formula');
 
     expect($controller)
         ->toContain("'items.bom.items.material'")
