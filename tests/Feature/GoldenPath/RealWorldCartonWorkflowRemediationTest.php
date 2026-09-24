@@ -1265,3 +1265,121 @@ it('deploys the exact client-approved 3D carton paper and mixing raw materials',
     }
 });
 
+
+
+it('reconciles the exact invoice line and sale totals for a secondary production order', function () {
+    $fx = rwCreatePurchaseFlow();
+    $bom = rwCreateBom($fx);
+    $sale = rwCreateSaleWithBom($fx, $bom, 'SO-RW-MULTI-PROD-001');
+
+    $firstItem = $sale->items->firstOrFail();
+
+    $addSecond = (new SaleController())->addItem(
+        rwRequest('/admin/sales/add-item', 'POST', [
+            'sale_id' => $sale->id,
+            'items' => [[
+                'bom_id' => $bom->id,
+                'qty' => 50,
+                'remarks' => 'Second sale line for production-link reconciliation QA',
+            ]],
+        ])
+    );
+
+    expect($addSecond->getData(true)['success'])->toBeTrue();
+
+    $sale->refresh()->load('items');
+    expect($sale->items)->toHaveCount(2);
+
+    $secondItem = $sale->items->where('id', '!=', $firstItem->id)->firstOrFail();
+    $firstTotalBefore = (float) $firstItem->fresh()->total;
+
+    $confirm = (new SaleController())->confirmSale(
+        rwRequest('/admin/sales/'.$sale->id.'/confirm', 'POST', [
+            'discount_amount' => 0,
+            'advance_payment' => 0,
+            'start_production' => 1,
+        ]),
+        $sale->id
+    );
+
+    expect($confirm->getData(true)['success'])->toBeTrue();
+
+    $orders = AppModelsProductionOrder::query()
+        ->where('sale_id', $sale->id)
+        ->orderBy('id')
+        ->get();
+
+    expect($orders)->toHaveCount(2)
+        ->and($orders->pluck('sale_item_id')->map(fn ($id) => (int) $id)->all())
+        ->toContain($firstItem->id, $secondItem->id);
+
+    $secondOrder = $orders->firstWhere('sale_item_id', $secondItem->id);
+    expect($secondOrder)->not->toBeNull()
+        ->and((int) $sale->fresh()->production_order_id)->not->toBe((int) $secondOrder->id);
+
+    $start = (new ProductionOrderController())->startProduction($secondOrder);
+    expect($start->getSession()->get('success'))->not->toBeNull();
+
+    $materialRows = DB::table('production_material_consumptions')
+        ->where('production_order_id', $secondOrder->id)
+        ->selectRaw('material_id, MAX(unit) AS unit, SUM(actual_quantity) AS actual_quantity')
+        ->groupBy('material_id')
+        ->get()
+        ->map(fn ($row) => [
+            'material_id' => (int) $row->material_id,
+            'actual_quantity' => (float) $row->actual_quantity,
+            'wastage_quantity' => 0,
+            'unit' => $row->unit,
+        ])
+        ->values()
+        ->all();
+
+    $complete = (new ProductionOrderController())->completeProduction(
+        $secondOrder->fresh(),
+        rwRequest(
+            '/admin/production-orders/'.$secondOrder->id.'/complete',
+            'POST',
+            [
+                'quantity_manufactured' => 40,
+                'quantity_produced' => 40,
+                'quantity_rejected' => 0,
+                'materials' => $materialRows,
+            ]
+        )
+    );
+
+    expect($complete->getSession()->get('success'))->toContain('40.00 manufactured');
+
+    $sale->refresh()->load('items');
+    $firstAfter = $sale->items->firstWhere('id', $firstItem->id);
+    $secondAfter = $sale->items->firstWhere('id', $secondItem->id);
+
+    expect((float) $firstAfter->qty)->toBe(100.0)
+        ->and((float) $firstAfter->total)->toEqualWithDelta($firstTotalBefore, 0.01)
+        ->and((float) $secondAfter->ordered_qty)->toBe(50.0)
+        ->and((float) $secondAfter->qty)->toBe(40.0)
+        ->and((float) $secondAfter->total)
+        ->toEqualWithDelta((float) $secondAfter->unit_price * 40, 0.01)
+        ->and((float) $sale->subtotal)
+        ->toEqualWithDelta((float) $firstAfter->total + (float) $secondAfter->total, 0.01)
+        ->and((float) $sale->grand_total)
+        ->toEqualWithDelta(
+            (float) $sale->subtotal
+            - (float) $sale->discount_total
+            + (float) $sale->tax_total
+            + (float) $sale->shipping_cost,
+            0.01
+        )
+        ->and((bool) $sale->is_produced)->toBeFalse();
+
+    $invoiceDebit = Transaction::query()
+        ->where('type', 'sale')
+        ->where('table_name', 'sales')
+        ->where('table_row_id', $sale->id)
+        ->where('transaction_type', 'debit')
+        ->where('is_cash', false)
+        ->firstOrFail();
+
+    expect((float) $invoiceDebit->amount)
+        ->toEqualWithDelta((float) $sale->grand_total, 0.01);
+});
