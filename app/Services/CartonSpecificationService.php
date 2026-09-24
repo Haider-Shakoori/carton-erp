@@ -741,7 +741,9 @@ class CartonSpecificationService
             'rate_per_unit' => $row['rate_per_unit'] ?? null,
             'rate_base_units' => $row['rate_base_units'] ?? null,
             'stock_consumption_override' => $row['stock_consumption_override'] ?? null,
-            'stock_consumption_unit' => isset($row['stock_consumption_override']) ? 'kg' : null,
+            // This column is NOT NULL in the production schema. All technical
+            // carton rows produced by this service consume stock on a kg basis.
+            'stock_consumption_unit' => $row['stock_consumption_unit'] ?? 'kg',
         ];
     }
 
