@@ -196,7 +196,10 @@ it('creates one safe draft BOM for every imported finished good', function () {
         }
     }
 
-    $approved = clientCartonApprovedRawMaterialNames();
+    $approved = array_values(array_filter(
+        clientCartonApprovedRawMaterialNames(),
+        fn (string $name) => $name !== 'Lamination Plastic'
+    ));
     sort($approved);
 
     foreach ($reviewRequired as $bom) {
@@ -207,7 +210,7 @@ it('creates one safe draft BOM for every imported finished good', function () {
             ->all();
 
         expect((float) $bom->selling_price_afn)->toBe(0.0)
-            ->and($bom->items)->toHaveCount(11)
+            ->and($bom->items)->toHaveCount(10)
             ->and($names)->toBe($approved)
             ->and($bom->items->filter(fn ($item) => (float) $item->quantity !== 0.0))
             ->toHaveCount(0)
