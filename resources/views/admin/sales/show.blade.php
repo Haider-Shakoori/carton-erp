@@ -2247,6 +2247,16 @@
                             <label class="form-label">Wastage %</label>
                             <input type="number" id="csWastage" class="form-control" min="0" max="100" step="0.1" value="5">
                         </div>
+                        <div class="col-md-2">
+                            <label class="form-label">Finishing</label>
+                            <div class="border rounded-3 px-3 py-2 bg-light">
+                                <div class="form-check form-switch mb-0">
+                                    <input class="form-check-input" type="checkbox" role="switch" id="csLaminationEnabled">
+                                    <label class="form-check-label fw-semibold" for="csLaminationEnabled">Lamination</label>
+                                </div>
+                                <small class="text-muted">Hidden area formula</small>
+                            </div>
+                        </div>
                         <div class="col-md-3">
                             <label class="form-label">Quoted Unit Price Override <span class="currency-badge">{{ $currencyCode }}</span></label>
                             <input type="number" id="csQuotedPrice" class="form-control" min="0" step="0.0001" placeholder="Optional">
@@ -2255,12 +2265,12 @@
                             <label class="form-label">Quotation Description</label>
                             <input type="text" id="csDescription" class="form-control" maxlength="2000" placeholder="Customer-facing description">
                         </div>
-                        <div class="col-md-4 d-flex align-items-end gap-2">
+                        <div class="col-md-2 d-flex align-items-end gap-2">
                             <button type="button" class="btn btn-outline-primary" id="csCalculateBtn">
                                 <i class="bi bi-calculator"></i> Calculate
                             </button>
                             <button type="button" class="btn btn-success" id="csAddBtn" disabled>
-                                <i class="bi bi-cart-plus"></i> Add to Sale
+                                <i class="bi bi-cart-plus"></i> Add
                             </button>
                         </div>
                     </div>
@@ -2348,6 +2358,7 @@
                             <div class="quote-summary-card"><div class="label">Order Value ({{ $currencyCode }})</div><div class="value" id="csOrderValue">-</div></div>
                             <div class="quote-summary-card"><div class="label">Estimated Paper</div><div class="value" id="csPaperKg">-</div></div>
                             <div class="quote-summary-card"><div class="label">Estimated Adhesive</div><div class="value" id="csAdhesiveKg">-</div></div>
+                            <div class="quote-summary-card"><div class="label">Estimated Lamination</div><div class="value" id="csLaminationKg">-</div></div>
                             <div class="quote-summary-card"><div class="label">Estimated Material Cost (AFN)</div><div class="value" id="csMaterialCost">-</div></div>
                             <div class="quote-summary-card"><div class="label">Work / Profit (AFN)</div><div class="value" id="csWorkProfit">-</div></div>
                             <div class="quote-summary-card"><div class="label">Expected Profit (AFN)</div><div class="value" id="csExpectedProfit">-</div></div>
