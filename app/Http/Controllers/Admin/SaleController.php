@@ -1369,6 +1369,7 @@ class SaleController extends Controller
             'quoted_unit_price' => 'nullable|numeric|min:0',
             'manual_unit_price' => 'nullable|numeric|min:0.0001',
             'quotation_description' => 'nullable|string|max:2000',
+            'lamination_enabled' => 'nullable|boolean',
             'formula_snapshot' => 'nullable|string',
             'remarks' => 'nullable|string|max:1000',
         ]);
@@ -1399,6 +1400,18 @@ class SaleController extends Controller
 
             $isUSD = $saleCurrencyCode === 'USD';
             $pricingMode = $validated['pricing_mode'];
+            $laminationEnabled = (bool) ($validated['lamination_enabled'] ?? false);
+
+            if ($laminationEnabled && $pricingMode !== 'saved') {
+                throw new \RuntimeException(
+                    'Optional lamination can be applied to a saved BOM or through Quick Quotation.'
+                );
+            }
+
+            if ($laminationEnabled) {
+                $bom = app(\App\Services\LaminationAddonService::class)->derive($bom, $request->user());
+            }
+
             $quotedUnitPrice = (float) ($validated['quoted_unit_price'] ?? 0);
             $costing = app(\App\Services\BOMCostingService::class);
 
@@ -1633,6 +1646,9 @@ class SaleController extends Controller
                 : "Saved BOM price: {$bom->code}");
             $remarks .= ' | Pricing mode: ' . strtoupper($pricingMode);
             $remarks .= ' | Materials: ' . count($materialBreakdown);
+            if ($laminationEnabled) {
+                $remarks .= ' | Lamination: enabled';
+            }
 
             $duplicate = SaleItem::where('sale_id', $sale->id)
                 ->where('product_id', $validated['product_id'])
