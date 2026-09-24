@@ -69,7 +69,13 @@ class BOMGovernanceService
             $revision->locked_at = null;
             $revision->created_by = $user->id;
             $revision->updated_by = $user->id;
-            $revision->save();
+
+            // A revision is a governed snapshot of its source. Save it without
+            // BOM creation defaults so business ownership (including a legacy
+            // null assignment) cannot silently change during revision cloning.
+            // Existing calculated totals are replicated from the source and the
+            // copied material lines are identical at this point.
+            $revision->saveQuietly();
 
             foreach ($source->items as $item) {
                 $copy = $item->replicate(['id', 'bom_id', 'created_at', 'updated_at']);

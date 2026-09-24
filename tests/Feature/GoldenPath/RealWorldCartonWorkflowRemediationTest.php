@@ -765,7 +765,7 @@ it('completes above the customer order, consumes extra FIFO stock, and expands t
     expect(abs((float) $invoiceDebit->amount - (float) $sale->grand_total))->toBeLessThan(0.01);
 });
 
-it('reduces realized profit when actual material consumption exceeds plan at the same finished output', function () {
+it('keeps roll-paper consumption formula-authoritative when browser values try to exceed plan', function () {
     $fx = rwCreatePurchaseFlow();
     $bom = rwCreateBom($fx);
     $sale = rwCreateSaleWithBom($fx, $bom, 'SO-RW-MATERIAL-OVERRUN-001');
@@ -791,7 +791,10 @@ it('reduces realized profit when actual material consumption exceeds plan at the
     $before = app(\App\Services\SaleProfitService::class)->calculate($sale);
     $revenueBefore = (float) $sale->grand_total;
 
-    $overMaterials = DB::table('production_material_consumptions')
+    // Roll paper is deliberately formula-authoritative: a browser/operator value
+    // cannot inflate or reduce paper usage because large reels are not weighed per
+    // job. Measured overrides are reserved for eligible non-roll formula materials.
+    $browserMaterials = DB::table('production_material_consumptions')
         ->where('production_order_id', $production->id)
         ->selectRaw('material_id, MAX(unit) AS unit, SUM(actual_quantity) AS actual_quantity')
         ->groupBy('material_id')
@@ -814,7 +817,7 @@ it('reduces realized profit when actual material consumption exceeds plan at the
                 'quantity_manufactured' => 100,
                 'quantity_produced' => 100,
                 'quantity_rejected' => 0,
-                'materials' => $overMaterials,
+                'materials' => $browserMaterials,
             ]
         )
     );
@@ -830,12 +833,12 @@ it('reduces realized profit when actual material consumption exceeds plan at the
         ->sum('total_cost_usd');
 
     expect(abs((float) $sale->grand_total - $revenueBefore))->toBeLessThan(0.01)
-        ->and((float) $after['actual_material_cost_usd'])
-        ->toBeGreaterThan((float) $before['actual_material_cost_usd'])
-        ->and((float) $after['actual_production_cost_afn'])
-        ->toBeGreaterThan((float) $before['actual_production_cost_afn'])
-        ->and((float) $after['actual_profit_afn'])
-        ->toBeLessThan((float) $before['actual_profit_afn'])
+        ->and(abs((float) $after['actual_material_cost_usd'] - (float) $before['actual_material_cost_usd']))
+        ->toBeLessThan(0.01)
+        ->and(abs((float) $after['actual_production_cost_afn'] - (float) $before['actual_production_cost_afn']))
+        ->toBeLessThan(0.01)
+        ->and(abs((float) $after['actual_profit_afn'] - (float) $before['actual_profit_afn']))
+        ->toBeLessThan(0.01)
         ->and(abs((float) $saleItem->total_cost_usd - $actualMaterialUsd))
         ->toBeLessThan(0.01)
         ->and(abs(
@@ -1102,7 +1105,9 @@ it('accepts a manual selling price and quotation description without changing ph
     // Production-create commercial preview: the configured Standard Work /
     // Profit is the base profit component. Manual selling price changes are a
     // separate labelled Price Override adjustment, never production cost.
-    $systemPrice = (float) $bomSummary['selling_price_afn'];
+    // The manual adjustment is measured from the frozen quotation price
+    // stored on the sale line, not from a later/recomputed BOM summary.
+    $systemPrice = (float) ($item->original_unit_price ?: $item->base_price);
     $expectedOverrideAfn = (130.75 - $systemPrice) * 100;
 
     $profitBreakdown = app(\App\Services\SaleProfitService::class)

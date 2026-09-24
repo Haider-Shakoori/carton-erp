@@ -2663,26 +2663,33 @@ class SaleController extends Controller
                 : null;
 
             if ($requestedPrice === null || $requestedPrice === '') {
-                // Clearing the field means "use BOM/system price" again.
-                // Reconstruct it from the frozen manual quotation snapshot when one
-                // exists; otherwise use the linked BOM's authoritative selling rate.
-                $snapshot = is_array($item->manual_bom_snapshot ?? null)
-                    ? $item->manual_bom_snapshot
-                    : [];
+                // Clearing a manual override must restore the exact system price
+                // accepted when this sale line was created. Do not recalculate the
+                // current BOM first: inventory rates, BOM revisions or decimal
+                // precision may have changed since quotation time.
+                $systemPrice = (float) ($item->original_unit_price ?: $item->base_price);
 
-                $systemPriceAfn = 0.0;
-                if (count($snapshot) > 0) {
-                    foreach ($snapshot as $row) {
-                        $systemPriceAfn += (float) ($row['row_net_rate'] ?? $row['final_rate_afn'] ?? 0);
+                // Legacy rows may predate the frozen base/original price fields.
+                // Only for those rows, reconstruct the best available system rate.
+                if ($systemPrice <= 0) {
+                    $snapshot = is_array($item->manual_bom_snapshot ?? null)
+                        ? $item->manual_bom_snapshot
+                        : [];
+
+                    $systemPriceAfn = 0.0;
+                    if (count($snapshot) > 0) {
+                        foreach ($snapshot as $row) {
+                            $systemPriceAfn += (float) ($row['row_net_rate'] ?? $row['final_rate_afn'] ?? 0);
+                        }
+                    } elseif ($item->bom) {
+                        $summary = app(\App\Services\BOMCostingService::class)->summarize($item->bom);
+                        $systemPriceAfn = (float) ($summary['selling_price_afn'] ?? $item->bom->selling_price_afn ?? 0);
                     }
-                } elseif ($item->bom) {
-                    $summary = app(\App\Services\BOMCostingService::class)->summarize($item->bom);
-                    $systemPriceAfn = (float) ($summary['selling_price_afn'] ?? $item->bom->selling_price_afn ?? 0);
-                }
 
-                $systemPrice = $systemPriceAfn > 0
-                    ? ($isUsd ? $systemPriceAfn / $rate : $systemPriceAfn)
-                    : (float) ($item->base_price ?: $item->original_unit_price ?: $item->unit_price);
+                    $systemPrice = $systemPriceAfn > 0
+                        ? ($isUsd ? $systemPriceAfn / $rate : $systemPriceAfn)
+                        : (float) $item->unit_price;
+                }
 
                 if ($systemPrice <= 0) {
                     return response()->json([

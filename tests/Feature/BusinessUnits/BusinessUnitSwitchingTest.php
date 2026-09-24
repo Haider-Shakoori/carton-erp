@@ -339,12 +339,14 @@ it('does not expose unassigned operational rows inside an active business worksp
         ->and(Purchase::query()->withoutGlobalScope('business_unit')->where('purchase_no', 'BU-NULL-LEGACY')->exists())->toBeTrue();
 });
 
-it('does not initialize DataTables against the empty BOM placeholder row', function () {
+it('keeps the responsive BOM index independent from DataTables empty-row handling', function () {
     $view = file_get_contents(resource_path('views/admin/bom/index.blade.php'));
 
     expect($view)
-        ->toContain('@if($boms->count() > 0)')
-        ->toContain("$('#bom-table').DataTable({");
+        ->toContain('@forelse($boms as $bom)')
+        ->toContain('class="bom-empty-row"')
+        ->toContain('$boms->links')
+        ->not->toContain("$('#bom-table').DataTable({");
 });
 
 it('exposes the setting toggle and top navigation business switcher contract', function () {

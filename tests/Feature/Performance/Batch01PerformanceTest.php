@@ -67,6 +67,9 @@ function addBatch01Transactions(Account $account, Currency $currency, User $user
 }
 
 it('shares one setting instance across nested views in one request scope', function () {
+    // CI runs the full suite on top of the seeded baseline. Make this test own
+    // the singleton settings row instead of depending on an empty table.
+    Setting::query()->delete();
     Setting::create(['company_name' => 'Batch 01 Company']);
 
     $queries = [];

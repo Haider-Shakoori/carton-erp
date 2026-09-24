@@ -176,6 +176,18 @@ return new class extends Migration
             return;
         }
 
+        // Recovery must also work when the settings table exists but has no row
+        // yet (for example a partially initialized or repaired installation).
+        if (! DB::table('settings')->exists()) {
+            DB::table('settings')->insert([
+                'default_business_unit_id' => $cartonId,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+
+            return;
+        }
+
         DB::table('settings')
             ->where(function ($query) {
                 $query->whereNull('default_business_unit_id')
