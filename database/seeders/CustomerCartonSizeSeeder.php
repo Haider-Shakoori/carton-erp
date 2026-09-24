@@ -21,6 +21,7 @@ class CustomerCartonSizeSeeder extends Seeder
         $legacyNameCounts = collect($rows)
             ->countBy(fn (array $row) => mb_strtolower(trim((string) ($row['product_name'] ?? ''))))
             ->all();
+        $previousResolvedNames = $this->resolvedNeutralProductNames($rows, true);
         $resolvedNames = $this->resolvedNeutralProductNames($rows);
 
         $category = Category::firstOrCreate(
@@ -34,6 +35,11 @@ class CustomerCartonSizeSeeder extends Seeder
         // Existing imports from the first client-master release carried the
         // customer/company name in Product::name. Rename only those exact
         // generated names. If an operator already renamed a product, preserve it.
+        $this->syncPreviouslyGeneratedNeutralProductNames(
+            $rows,
+            $previousResolvedNames,
+            $resolvedNames
+        );
         $this->syncLegacyImportedProductNames($rows, $legacyNameCounts, $resolvedNames);
 
         $createdCustomers = 0;
@@ -182,20 +188,22 @@ class CustomerCartonSizeSeeder extends Seeder
     }
 
     /**
-     * Finished-good display names intentionally contain no customer/company or
-     * print-brand names. Size + pack information identifies the carton; neutral
-     * Variant N suffixes keep otherwise identical rows distinct.
+     * Finished-good display names intentionally contain no customer/company,
+     * print-brand or pack-size text. Physical carton size identifies the product;
+     * neutral Variant N suffixes keep otherwise identical sizes distinct.
      *
      * @return array<string,string> keyed by immutable source_key
      */
-    private function resolvedNeutralProductNames(array $rows): array
-    {
+    private function resolvedNeutralProductNames(
+        array $rows,
+        bool $includePack = false
+    ): array {
         $grouped = [];
 
         foreach ($rows as $row) {
             $customerName = trim((string) ($row['customer'] ?? ''));
             $sourceKey = $this->sourceKey($row, $customerName);
-            $baseName = $this->neutralBaseProductName($row);
+            $baseName = $this->neutralBaseProductName($row, $includePack);
             $groupKey = mb_strtolower($baseName);
 
             $grouped[$groupKey][] = [
@@ -223,20 +231,82 @@ class CustomerCartonSizeSeeder extends Seeder
         return $resolved;
     }
 
-    private function neutralBaseProductName(array $row): string
-    {
+    private function neutralBaseProductName(
+        array $row,
+        bool $includePack = false
+    ): string {
         $size = $this->nullableText($row['size_raw'] ?? null);
-        $pack = $this->nullableText($row['pcs_ml'] ?? null);
+        $name = $size ? 'Carton '.$size : 'Carton - Size pending';
 
-        $parts = [
-            $size ? 'Carton '.$size : 'Carton - Size pending',
-        ];
+        if ($includePack) {
+            $pack = $this->nullableText($row['pcs_ml'] ?? null);
 
-        if ($pack) {
-            $parts[] = $pack;
+            if ($pack) {
+                $name .= ' - '.$pack;
+            }
         }
 
-        return implode(' - ', $parts);
+        return $name;
+    }
+
+    /**
+     * The previous neutral-name release retained the workbook pack text
+     * (for example "200ml,70pcs") in Product::name. Rename only those exact
+     * generated names so re-seeding upgrades existing installs without
+     * overwriting operator-customized names.
+     */
+    private function syncPreviouslyGeneratedNeutralProductNames(
+        array $rows,
+        array $previousResolvedNames,
+        array $resolvedNames
+    ): void {
+        foreach ($rows as $row) {
+            $customerName = trim((string) ($row['customer'] ?? ''));
+
+            if ($customerName === '') {
+                continue;
+            }
+
+            $sourceKey = $this->sourceKey($row, $customerName);
+            $previousName = $previousResolvedNames[$sourceKey] ?? null;
+            $desiredName = $resolvedNames[$sourceKey] ?? null;
+
+            if (! $previousName || ! $desiredName || $previousName === $desiredName) {
+                continue;
+            }
+
+            $specification = FinishedGoodSpecification::query()
+                ->where('source_key', $sourceKey)
+                ->with('product')
+                ->first();
+
+            if (! $specification?->product) {
+                continue;
+            }
+
+            $currentName = trim((string) $specification->product->name);
+            $packDescription = trim((string) ($row['pcs_ml'] ?? ''));
+
+            $matchesPreviousGeneratedName =
+                mb_strtolower($currentName) === mb_strtolower($previousName);
+
+            $stillContainsWorkbookPackSection =
+                $packDescription !== ''
+                && str_starts_with(mb_strtolower($currentName), 'carton ')
+                && str_contains(
+                    mb_strtolower($currentName),
+                    mb_strtolower($packDescription)
+                );
+
+            if (
+                $matchesPreviousGeneratedName
+                || $stillContainsWorkbookPackSection
+            ) {
+                // Updating through Product also regenerates the slug, removing
+                // stale pack text from existing imported finished goods.
+                $specification->product->update(['name' => $desiredName]);
+            }
+        }
     }
 
     private function syncLegacyImportedProductNames(
