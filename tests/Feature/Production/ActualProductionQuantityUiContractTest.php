@@ -72,3 +72,17 @@ it('forces in-progress orders through the actual-results completion workspace', 
         ->toContain('#completeProductionModal')
         ->not->toContain('route(\'production-orders.complete\', $row)');
 });
+
+it('requires the HTTP request for production completion so submitted actual quantities cannot fall back to ordered quantity', function () {
+    $method = new ReflectionMethod(
+        \App\Http\Controllers\Admin\ProductionOrderController::class,
+        'completeProduction'
+    );
+
+    $parameters = $method->getParameters();
+    $requestParameter = $parameters[1] ?? null;
+
+    expect($requestParameter)->not->toBeNull()
+        ->and($requestParameter->getType()?->getName())->toBe(\Illuminate\Http\Request::class)
+        ->and($requestParameter->isDefaultValueAvailable())->toBeFalse();
+});
