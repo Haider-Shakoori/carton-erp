@@ -814,7 +814,7 @@ class CartonSpecificationService
             'work_percentage' => (float) ($row['work_percentage'] ?? 0),
             'print' => (float) ($row['print'] ?? 0),
             'stock_consumption_override' => $row['stock_consumption_override'] ?? null,
-            'stock_consumption_unit' => $row['stock_consumption_unit'] ?? null,
+            'stock_consumption_unit' => $row['stock_consumption_unit'] ?? 'kg',
             'rate_per_unit' => $row['rate_per_unit'] ?? null,
             'rate_base_units' => $row['rate_base_units'] ?? null,
         ];
