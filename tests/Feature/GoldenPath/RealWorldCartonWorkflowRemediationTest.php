@@ -12,6 +12,7 @@ use App\Models\BOM;
 use App\Models\Category;
 use App\Models\Currency;
 use App\Models\Product;
+use App\Models\ProductionOrder;
 use App\Models\Purchase;
 use App\Models\PurchaseItem;
 use App\Models\Sale;
@@ -1304,7 +1305,7 @@ it('reconciles the exact invoice line and sale totals for a secondary production
 
     expect($confirm->getData(true)['success'])->toBeTrue();
 
-    $orders = AppModelsProductionOrder::query()
+    $orders = ProductionOrder::query()
         ->where('sale_id', $sale->id)
         ->orderBy('id')
         ->get();
