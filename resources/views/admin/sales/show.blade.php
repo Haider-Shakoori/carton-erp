@@ -2079,19 +2079,29 @@
                         </div>
                     </div>
 
-                    {{-- ─── Pricing Overrides & Quotation Description ─── --}}
+                    {{-- ─── Pricing Overrides, Optional Lamination & Quotation Description ─── --}}
                     <div class="row g-3 mt-2">
-                        <div class="col-md-3">
+                        <div class="col-md-2">
                             <label class="form-label">{{ __('ui.exchange_rate') }}</label>
                             <input type="number" id="exchangeRate" class="form-control" value="{{ $exchangeRate ?? 1 }}" step="0.000001" min="0.000001" oninput="recalculateLiveEstimate();">
                             <small class="text-muted">1 {{ $currencyCode }} = ? USD</small>
                         </div>
-                        <div class="col-md-3">
+                        <div class="col-md-2">
                             <label class="form-label">Manual Unit Price <span class="currency-badge">{{ $currencyCode }}</span></label>
                             <input type="number" id="manualUnitPrice" class="form-control" min="0" step="0.0001" placeholder="Optional override">
-                            <small class="text-muted">Leave blank to use the calculated/BOM price.</small>
+                            <small class="text-muted">Blank = system price.</small>
                         </div>
-                        <div class="col-md-6">
+                        <div class="col-md-3" id="laminationOptionWrap" style="display:none;">
+                            <label class="form-label">Finishing</label>
+                            <div class="border rounded-3 px-3 py-2 bg-light">
+                                <div class="form-check form-switch mb-1">
+                                    <input class="form-check-input" type="checkbox" role="switch" id="laminationEnabled">
+                                    <label class="form-check-label fw-semibold" for="laminationEnabled">Apply Lamination</label>
+                                </div>
+                                <small class="text-muted d-block" id="laminationHelp">Auto-calculated from carton board area and Lamination Plastic stock.</small>
+                            </div>
+                        </div>
+                        <div class="col-md-5">
                             <label class="form-label">Quotation Description</label>
                             <input type="text" id="quotationDescription" class="form-control" maxlength="2000"
                                    placeholder="Description to print on the quotation for this line item">
@@ -3133,6 +3143,7 @@
         let exchangeRate = {{ $exchangeRate ?? 85 }};
         let currentProductId = null;
         let currentBOMData = null;
+        let currentLaminationPreview = null;
         let currentStockData = null;
         let currentQuoteSnapshot = [];
         let pricingMode = null;
