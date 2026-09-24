@@ -50,6 +50,25 @@ return [
         'adhesive_formula' => '((BoardAreaM² × GlueLines × DryGlueGSM/line × (1 + GlueWaste%)) ÷ 1000 ÷ SolidsFraction) × RecipeFraction × ManufacturedQty',
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Optional lamination finishing
+    |--------------------------------------------------------------------------
+    |
+    | Lamination is not a permanent part of every master BOM. When enabled on
+    | a sale line, the system creates an order-specific hidden BOM row using
+    | the carton blank area. These defaults are factory configuration and can
+    | be calibrated later without changing historical order-specific BOMs.
+    |
+    */
+    'lamination' => [
+        'material_name' => 'Lamination Plastic',
+        'film_gsm' => 20.0,
+        'sides' => 1,
+        'wastage_percentage' => 5.0,
+        'formula' => 'BoardAreaM² × FilmGSM × Sides ÷ 1000 × (1 + Waste%)',
+    ],
+
     // Supported dimension units => inches.
     'length_units' => [
         'inch' => 1.0,
