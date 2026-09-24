@@ -20,6 +20,24 @@
     $soxGrandTotal = $soxIsUsd
         ? (float) ($sale->usd_grand_total ?? 0)
         : (float) ($sale->grand_total ?? 0);
+
+    $soxProductCount = $sale->items->count();
+    $soxOrderedQuantity = (float) $sale->items->sum(
+        fn ($soxLine) => (float) ($soxLine->ordered_qty ?? $soxLine->qty ?? 0)
+    );
+    $soxInvoiceQuantity = (float) $sale->items->sum(
+        fn ($soxLine) => (float) ($soxLine->qty ?? 0)
+    );
+    $soxQuantityUnits = $sale->items
+        ->map(fn ($soxLine) => trim((string) ($soxLine->product->unit ?? 'pcs')))
+        ->filter()
+        ->unique()
+        ->values();
+    $soxQuantityUnit = $soxQuantityUnits->count() === 1
+        ? (string) $soxQuantityUnits->first()
+        : 'units';
+    $soxQuantityVariance = $soxInvoiceQuantity - $soxOrderedQuantity;
+
     $soxMargin = $soxActualAvailable
         ? (float) ($soxPs['actual_margin_percentage'] ?? 0)
         : ($soxGrandTotal > 0 ? ($soxEstimatedProfit / $soxGrandTotal) * 100 : 0);
@@ -137,7 +155,7 @@
     .sox-btn { border-radius:10px; min-height:38px; padding:.45rem .9rem; font-size:.76rem; font-weight:700; border:1px solid var(--sox-border); background:#fff; color:#34415c; display:inline-flex; align-items:center; gap:.45rem; }
     .sox-btn:hover { border-color:#c7cdf0; color:var(--sox-primary); }
     .sox-btn.primary { background:linear-gradient(135deg,#4f46e5,#5b35f5); border-color:transparent; color:#fff; box-shadow:0 7px 18px rgba(79,70,229,.18); }
-    .sox-summary-grid { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:.8rem; margin-bottom:1rem; }
+    .sox-summary-grid { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:.8rem; margin-bottom:1rem; }
     .sox-kpi { min-height:92px; background:#fff; border:1px solid var(--sox-border); border-radius:13px; padding:.95rem; display:flex; gap:.8rem; align-items:flex-start; box-shadow:0 4px 20px rgba(15,23,42,.025); }
     .sox-kpi-icon { width:38px; height:38px; border-radius:10px; background:var(--sox-primary-soft); color:var(--sox-primary); display:flex; align-items:center; justify-content:center; flex:0 0 auto; font-size:1rem; }
     .sox-kpi.success .sox-kpi-icon { background:var(--sox-success-soft); color:var(--sox-success); }
@@ -309,7 +327,24 @@
         </div>
         <div class="sox-kpi success">
             <div class="sox-kpi-icon"><i class="bi bi-box-seam"></i></div>
-            <div><div class="sox-kpi-label">Total Items</div><div class="sox-kpi-value">{{ $sale->items->count() }} Products</div></div>
+            <div>
+                <div class="sox-kpi-label">Products</div>
+                <div class="sox-kpi-value">{{ $soxProductCount }} {{ $soxProductCount === 1 ? 'Product' : 'Products' }}</div>
+                <div class="sox-kpi-sub">Sale line items</div>
+            </div>
+        </div>
+        <div class="sox-kpi success">
+            <div class="sox-kpi-icon"><i class="bi bi-box2"></i></div>
+            <div>
+                <div class="sox-kpi-label">Invoice Qty</div>
+                <div class="sox-kpi-value">{{ number_format($soxInvoiceQuantity, 2) }} {{ $soxQuantityUnit }}</div>
+                <div class="sox-kpi-sub">
+                    Ordered: {{ number_format($soxOrderedQuantity, 2) }} {{ $soxQuantityUnit }}
+                    @if(abs($soxQuantityVariance) > 0.000001)
+                        · {{ $soxQuantityVariance > 0 ? '+' : '' }}{{ number_format($soxQuantityVariance, 2) }} variance
+                    @endif
+                </div>
+            </div>
         </div>
         <div class="sox-kpi success">
             <div class="sox-kpi-icon"><i class="bi bi-cash-stack"></i></div>
@@ -461,7 +496,8 @@
                     <div class="sox-detail-grid">
                         <div class="k">Currency</div><div class="v">{{ $soxCurrencyCode }}</div>
                         <div class="k">Exchange Rate</div><div class="v">1 USD = {{ number_format($soxExchangeRate, 4) }} AFN</div>
-                        <div class="k">Total Items</div><div class="v">{{ $sale->items->count() }} Products</div>
+                        <div class="k">Products</div><div class="v">{{ $soxProductCount }} {{ $soxProductCount === 1 ? 'Product' : 'Products' }}</div>
+                        <div class="k">Invoice / Ordered Qty</div><div class="v">{{ number_format($soxInvoiceQuantity, 2) }} / {{ number_format($soxOrderedQuantity, 2) }} {{ $soxQuantityUnit }}</div>
                         <div class="k">Created By</div><div class="v">{{ $sale->createdBy->name ?? auth()->user()?->name ?? 'Admin' }}</div>
                         <div class="k">Last Updated</div><div class="v">{{ $sale->updated_at?->format('M d, Y H:i') ?? '-' }}</div>
                         <div class="k">Shipping</div><div class="v">{{ $sale->shipping_address ?: '—' }}</div>
