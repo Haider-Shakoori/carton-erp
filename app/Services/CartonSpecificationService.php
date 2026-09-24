@@ -40,7 +40,8 @@ class CartonSpecificationService
 
     public function __construct(
         private readonly AdhesiveMixCalculator $adhesive,
-        private readonly BOMCostingService $costing
+        private readonly BOMCostingService $costing,
+        private readonly CartonLaminationService $lamination
     ) {
     }
 
@@ -131,6 +132,10 @@ class CartonSpecificationService
 
         $reel = $this->reelDimensions($lengthInch, $widthInch, $heightInch, $boxStyle);
         $blankAreaM2 = $reel['reel_length'] * $reel['reel_height'] * (float) config('carton.sq_inch_to_m2', 0.00064516);
+        $laminationEnabled = filter_var(
+            $input['lamination_enabled'] ?? false,
+            FILTER_VALIDATE_BOOLEAN
+        );
 
         return [
             'box_style' => $boxStyle,
@@ -145,6 +150,7 @@ class CartonSpecificationService
             'reel_length_inch' => round($reel['reel_length'], 2),
             'reel_height_inch' => round($reel['reel_height'], 2),
             'board_area_m2' => $blankAreaM2,
+            'lamination_enabled' => $laminationEnabled,
             'ply' => array_key_exists('ply', $input) && $input['ply'] !== null && $input['ply'] !== ''
                 ? (int) $input['ply']
                 : (int) $profile->ply,
@@ -274,6 +280,13 @@ class CartonSpecificationService
         foreach ($this->adhesiveRequirements($spec) as $adhesiveRow) {
             $adhesiveRow['sort_order'] = $sort++;
             $rows[] = $adhesiveRow;
+        }
+
+        if ((bool) ($spec['lamination_enabled'] ?? false)) {
+            $rows[] = $this->lamination->technicalRow(
+                (float) $spec['board_area_m2'],
+                $sort++
+            );
         }
 
         return $rows;
@@ -420,6 +433,8 @@ class CartonSpecificationService
         $paperBasisKg = 0.0;
         $paperPhysicalKg = 0.0;
         $adhesiveKg = 0.0;
+        $laminationKg = 0.0;
+        $laminationBaseAfn = 0.0;
         $workProfitAfn = 0.0;
         $physicalMaterialAfn = 0.0;
         $physicalMaterialUsd = 0.0;
@@ -465,6 +480,13 @@ class CartonSpecificationService
 
                 $row['row_net_rate_afn'] = $lineBaseAfn
                     + ($row['apply_work_percentage'] ? $lineBaseAfn * ((float) $row['work_percentage'] / 100) : 0.0);
+            } elseif (($row['role'] ?? null) === 'lamination') {
+                // Lamination is a real physical material and a direct quotation
+                // component, but it does not receive the paper 40% work/profit.
+                $lineBaseAfn = $kgBase * $costAfn;
+                $laminationKg += $kgWithWastage;
+                $laminationBaseAfn += $lineBaseAfn;
+                $row['row_net_rate_afn'] = $lineBaseAfn;
             } else {
                 $adhesiveKg += $kgWithWastage;
                 $row['row_net_rate_afn'] = 0.0;
@@ -473,7 +495,7 @@ class CartonSpecificationService
         unset($row);
 
         $printAfn = (float) $spec['print_cost_afn'];
-        $commercialNetAfn = $paperBaseAfn + $workProfitAfn + $printAfn;
+        $commercialNetAfn = $paperBaseAfn + $workProfitAfn + $printAfn + $laminationBaseAfn;
         $sellingAfn = $commercialNetAfn * (1 + ((float) $spec['profit_margin_percentage'] / 100));
 
         $quantity = (float) $spec['quantity'];
@@ -497,6 +519,13 @@ class CartonSpecificationService
                 'parameters' => $this->adhesive->parameters(),
                 'recipe' => (array) config('carton.adhesive.recipe', []),
             ],
+            'lamination' => [
+                'enabled' => (bool) ($spec['lamination_enabled'] ?? false),
+                'kg_per_unit' => $quantity > 0 ? $laminationKg : 0.0,
+                'kg_total' => $laminationKg * $quantity,
+                'base_cost_afn_per_unit' => $laminationBaseAfn,
+                'config' => (array) config('carton.lamination', []),
+            ],
             'physical' => [
                 'material_cost_usd_per_unit' => $physicalMaterialUsd,
                 'material_cost_afn_per_unit' => $physicalMaterialAfn,
@@ -511,6 +540,7 @@ class CartonSpecificationService
                 'paper_basis_afn_per_unit' => $paperBaseAfn,
                 'work_profit_afn_per_unit' => $workProfitAfn,
                 'print_cost_afn_per_unit' => $printAfn,
+                'lamination_cost_afn_per_unit' => $laminationBaseAfn,
                 'net_rate_afn_per_unit' => $commercialNetAfn,
                 'profit_margin_percentage' => (float) $spec['profit_margin_percentage'],
                 'additional_markup_afn_per_unit' => $sellingAfn - $commercialNetAfn,
@@ -708,6 +738,10 @@ class CartonSpecificationService
             'per_gram_rate' => $costAfn,
             'work_percentage' => (float) ($row['work_percentage'] ?? 0),
             'print' => (float) ($row['print'] ?? 0),
+            'rate_per_unit' => $row['rate_per_unit'] ?? null,
+            'rate_base_units' => $row['rate_base_units'] ?? null,
+            'stock_consumption_override' => $row['stock_consumption_override'] ?? null,
+            'stock_consumption_unit' => isset($row['stock_consumption_override']) ? 'kg' : null,
         ];
     }
 
@@ -799,11 +833,17 @@ class CartonSpecificationService
                 'recipe' => $result['adhesive']['recipe'],
                 'kg_per_unit' => round((float) $result['adhesive']['kg_per_unit'], 8),
             ],
+            'lamination' => [
+                'enabled' => (bool) ($result['lamination']['enabled'] ?? false),
+                'kg_per_unit' => round((float) ($result['lamination']['kg_per_unit'] ?? 0), 8),
+                'config' => (array) ($result['lamination']['config'] ?? []),
+            ],
             'exchange_rate' => $result['exchange_rate'],
             'rows' => $rows,
             'physical' => [
                 'paper_kg_per_unit' => round((float) $result['paper']['physical_kg_per_unit'], 8),
                 'adhesive_kg_per_unit' => round((float) $result['adhesive']['kg_per_unit'], 8),
+                'lamination_kg_per_unit' => round((float) ($result['lamination']['kg_per_unit'] ?? 0), 8),
                 'material_cost_afn_per_unit' => round((float) $result['physical']['material_cost_afn_per_unit'], 4),
                 'material_cost_usd_per_unit' => round((float) $result['physical']['material_cost_usd_per_unit'], 6),
             ],
@@ -811,6 +851,7 @@ class CartonSpecificationService
                 'paper_basis_afn_per_unit' => round((float) $result['commercial']['paper_basis_afn_per_unit'], 4),
                 'work_profit_afn_per_unit' => round((float) $result['commercial']['work_profit_afn_per_unit'], 4),
                 'print_cost_afn_per_unit' => round((float) $result['commercial']['print_cost_afn_per_unit'], 4),
+                'lamination_cost_afn_per_unit' => round((float) ($result['commercial']['lamination_cost_afn_per_unit'] ?? 0), 4),
                 'net_rate_afn_per_unit' => round((float) $result['commercial']['net_rate_afn_per_unit'], 4),
                 'work_percentage' => (float) $result['commercial']['work_percentage'],
                 'profit_margin_percentage' => (float) $result['commercial']['profit_margin_percentage'],
@@ -968,6 +1009,7 @@ class CartonSpecificationService
                 'adhesive_solids_percentage' => (float) config('carton.adhesive.adhesive_solids_percentage', 35),
                 'recipe' => (array) config('carton.adhesive.recipe', []),
             ],
+            'lamination' => (array) config('carton.lamination', []),
         ];
     }
 
