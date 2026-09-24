@@ -115,11 +115,15 @@ it('exposes the lamination switches and uses the wider Add Carton drawer', funct
     $saleView = file_get_contents(resource_path('views/admin/sales/show.blade.php'));
     $modernView = file_get_contents(resource_path('views/admin/sales/partials/modern-show.blade.php'));
 
+    $bomController = file_get_contents(app_path('Http/Controllers/Admin/BOMController.php'));
+
     expect($saleView)
         ->toContain('id="laminationEnabled"')
         ->toContain('id="csLaminationEnabled"')
         ->toContain('lamination_enabled:')
         ->toContain('Auto-calculated from carton board area and Lamination Plastic stock.')
         ->and($modernView)
-        ->toContain('width:min(1080px,96vw)!important;');
+        ->toContain('width:min(1080px,96vw)!important;')
+        ->and($bomController)
+        ->toContain("not like', '%[ORDER OPTION]%'");
 });
