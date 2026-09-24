@@ -1292,8 +1292,6 @@ it('reconciles the exact invoice line and sale totals for a secondary production
     expect($sale->items)->toHaveCount(2);
 
     $secondItem = $sale->items->where('id', '!=', $firstItem->id)->firstOrFail();
-    $firstTotalBefore = (float) $firstItem->fresh()->total;
-
     $confirm = (new SaleController())->confirmSale(
         rwRequest('/admin/sales/'.$sale->id.'/confirm', 'POST', [
             'discount_amount' => 0,
@@ -1314,15 +1312,28 @@ it('reconciles the exact invoice line and sale totals for a secondary production
         ->and($orders->pluck('sale_item_id')->map(fn ($id) => (int) $id)->all())
         ->toContain($firstItem->id, $secondItem->id);
 
-    $secondOrder = $orders->firstWhere('sale_item_id', $secondItem->id);
-    expect($secondOrder)->not->toBeNull()
-        ->and((int) $sale->fresh()->production_order_id)->not->toBe((int) $secondOrder->id);
+    $legacyOrderId = (int) $sale->fresh()->production_order_id;
+    $targetOrder = $orders->first(
+        fn (ProductionOrder $order) => (int) $order->id !== $legacyOrderId
+    );
 
-    $start = (new ProductionOrderController())->startProduction($secondOrder);
+    expect($targetOrder)->not->toBeNull();
+
+    $targetItem = $sale->items->firstWhere('id', (int) $targetOrder->sale_item_id);
+    $otherItem = $sale->items->first(
+        fn ($item) => (int) $item->id !== (int) $targetItem->id
+    );
+
+    $targetOrderedQty = (float) $targetItem->qty;
+    $targetGoodQty = $targetOrderedQty === 100.0 ? 80.0 : 40.0;
+    $otherQtyBefore = (float) $otherItem->qty;
+    $otherTotalBefore = (float) $otherItem->total;
+
+    $start = (new ProductionOrderController())->startProduction($targetOrder);
     expect($start->getSession()->get('success'))->not->toBeNull();
 
     $materialRows = DB::table('production_material_consumptions')
-        ->where('production_order_id', $secondOrder->id)
+        ->where('production_order_id', $targetOrder->id)
         ->selectRaw('material_id, MAX(unit) AS unit, SUM(actual_quantity) AS actual_quantity')
         ->groupBy('material_id')
         ->get()
@@ -1336,33 +1347,34 @@ it('reconciles the exact invoice line and sale totals for a secondary production
         ->all();
 
     $complete = (new ProductionOrderController())->completeProduction(
-        $secondOrder->fresh(),
+        $targetOrder->fresh(),
         rwRequest(
-            '/admin/production-orders/'.$secondOrder->id.'/complete',
+            '/admin/production-orders/'.$targetOrder->id.'/complete',
             'POST',
             [
-                'quantity_manufactured' => 40,
-                'quantity_produced' => 40,
+                'quantity_manufactured' => $targetGoodQty,
+                'quantity_produced' => $targetGoodQty,
                 'quantity_rejected' => 0,
                 'materials' => $materialRows,
             ]
         )
     );
 
-    expect($complete->getSession()->get('success'))->toContain('40.00 manufactured');
+    expect($complete->getSession()->get('success'))
+        ->toContain(number_format($targetGoodQty, 2).' manufactured');
 
     $sale->refresh()->load('items');
-    $firstAfter = $sale->items->firstWhere('id', $firstItem->id);
-    $secondAfter = $sale->items->firstWhere('id', $secondItem->id);
+    $targetAfter = $sale->items->firstWhere('id', $targetItem->id);
+    $otherAfter = $sale->items->firstWhere('id', $otherItem->id);
 
-    expect((float) $firstAfter->qty)->toBe(100.0)
-        ->and((float) $firstAfter->total)->toEqualWithDelta($firstTotalBefore, 0.01)
-        ->and((float) $secondAfter->ordered_qty)->toBe(50.0)
-        ->and((float) $secondAfter->qty)->toBe(40.0)
-        ->and((float) $secondAfter->total)
-        ->toEqualWithDelta((float) $secondAfter->unit_price * 40, 0.01)
+    expect((float) $otherAfter->qty)->toBe($otherQtyBefore)
+        ->and((float) $otherAfter->total)->toEqualWithDelta($otherTotalBefore, 0.01)
+        ->and((float) $targetAfter->ordered_qty)->toBe($targetOrderedQty)
+        ->and((float) $targetAfter->qty)->toBe($targetGoodQty)
+        ->and((float) $targetAfter->total)
+        ->toEqualWithDelta((float) $targetAfter->unit_price * $targetGoodQty, 0.01)
         ->and((float) $sale->subtotal)
-        ->toEqualWithDelta((float) $firstAfter->total + (float) $secondAfter->total, 0.01)
+        ->toEqualWithDelta((float) $otherAfter->total + (float) $targetAfter->total, 0.01)
         ->and((float) $sale->grand_total)
         ->toEqualWithDelta(
             (float) $sale->subtotal
