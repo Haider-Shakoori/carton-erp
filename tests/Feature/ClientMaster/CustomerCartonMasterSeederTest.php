@@ -31,7 +31,7 @@ function clientCartonApprovedRawMaterialNames(): array
         ->all();
 }
 
-it('keeps the raw-material master limited to the exact ten materials supplied by the client', function () {
+it('keeps the raw-material master aligned with carton and optional finishing materials', function () {
     $expected = [
         'Test Liner',
         'Fluting',
@@ -43,6 +43,7 @@ it('keeps the raw-material master limited to the exact ten materials supplied by
         'Corn Flour',
         'Borax',
         'Caustic Soda',
+        'Lamination Plastic',
     ];
 
     expect(clientCartonApprovedRawMaterialNames())->toBe($expected);
@@ -206,7 +207,7 @@ it('creates one safe draft BOM for every imported finished good', function () {
             ->all();
 
         expect((float) $bom->selling_price_afn)->toBe(0.0)
-            ->and($bom->items)->toHaveCount(10)
+            ->and($bom->items)->toHaveCount(11)
             ->and($names)->toBe($approved)
             ->and($bom->items->filter(fn ($item) => (float) $item->quantity !== 0.0))
             ->toHaveCount(0)
@@ -215,7 +216,7 @@ it('creates one safe draft BOM for every imported finished good', function () {
     }
 });
 
-it('seeds one arrived opening-stock purchase with all ten client materials available for production', function () {
+it('seeds one arrived opening-stock purchase with all carton and finishing materials available for production', function () {
     $this->seed(DatabaseSeeder::class);
 
     $purchase = Purchase::query()
@@ -225,7 +226,7 @@ it('seeds one arrived opening-stock purchase with all ten client materials avail
 
     expect($purchase->status)->toBe('arrived')
         ->and($purchase->currency->code)->toBe('USD')
-        ->and($purchase->items)->toHaveCount(10)
+        ->and($purchase->items)->toHaveCount(11)
         ->and((float) $purchase->usd_subtotal)->toBeGreaterThan(0);
 
     $actualNames = $purchase->items
@@ -479,12 +480,12 @@ it('is idempotent across the full client master and all-finished-goods BOM seedi
     ];
 
     expect($after)->toBe($before)
-        ->and($after['raw_materials'])->toBe(10)
+        ->and($after['raw_materials'])->toBe(11)
         ->and($after['finished_goods'])->toBe(171)
         ->and($after['specifications'])->toBe(171)
         ->and($after['boms'])->toBe(171)
         ->and($after['opening_purchases'])->toBe(1)
-        ->and($after['opening_purchase_items'])->toBe(10);
+        ->and($after['opening_purchase_items'])->toBe(11);
 });
 
 it('preserves operator edits on an already imported carton source row', function () {
