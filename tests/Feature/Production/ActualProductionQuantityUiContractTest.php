@@ -58,3 +58,17 @@ it('uses real output and standard formula material consumption at completion', f
         ->not->toContain('bi-upc-scan')
         ->not->toContain('reconcile raw-material consumption to this actual quantity');
 });
+
+
+it('forces in-progress orders through the actual-results completion workspace', function () {
+    $index = file_get_contents(resource_path('views/admin/production-orders/index.blade.php'));
+    $controller = file_get_contents(app_path('Http/Controllers/Admin/ProductionOrderController.php'));
+
+    expect($index)
+        ->toContain("#completeProductionModal")
+        ->not->toContain("form action=\"{{ route('production-orders.complete', $order) }}\"");
+
+    expect($controller)
+        ->toContain("#completeProductionModal")
+        ->not->toContain("form action=\"' . route('production-orders.complete', $row) . '\"");
+});
