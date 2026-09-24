@@ -1096,6 +1096,7 @@ class SaleController extends Controller
                 'profit_afn' => $profitAfn,
                 'profit_usd' => $profitUsd,
                 'profit_percentage' => $profitPercentage,
+                'lamination' => $laminationMeta,
             ]);
 
         } catch (\Throwable $e) {
@@ -1209,6 +1210,7 @@ class SaleController extends Controller
             'quantity' => 'nullable|numeric|min:0.01',
             'currency_code' => 'nullable|string|in:USD,AFN',
             'exchange_rate' => 'nullable|numeric|min:0.0001',
+            'lamination_enabled' => 'nullable|boolean',
         ]);
 
         $bom = BOM::with(['items.material'])->findOrFail($request->bom_id);
@@ -1216,6 +1218,27 @@ class SaleController extends Controller
         $currencyCode = $request->currency_code ?? 'AFN';
         $saleRate = (float) ($request->exchange_rate ?? $bom->exchange_rate ?? 85);
         $isUSD = $currencyCode === 'USD';
+
+        $laminationPreview = null;
+        if ($request->boolean('lamination_enabled')) {
+            try {
+                $laminationPreview = app(\App\Services\CartonLaminationService::class)
+                    ->previewForBom($bom, $saleRate);
+                $laminationPreview['enabled'] = true;
+                $laminationPreview['selling_price_addition'] = $isUSD
+                    ? ((float) $laminationPreview['selling_price_addition_afn_per_unit'] / max($saleRate, 0.000001))
+                    : (float) $laminationPreview['selling_price_addition_afn_per_unit'];
+                $laminationPreview['currency'] = $currencyCode;
+            } catch (\Throwable $e) {
+                $laminationPreview = [
+                    'enabled' => true,
+                    'available' => false,
+                    'message' => $e->getMessage(),
+                    'selling_price_addition' => 0,
+                    'currency' => $currencyCode,
+                ];
+            }
+        }
 
         $materialDetails = $bom->items->map(function ($item) use ($saleRate, $quantity, $isUSD) {
             $inventory = $this->latestInventoryCostForMaterial(
@@ -1347,6 +1370,7 @@ class SaleController extends Controller
                 'currency_symbol' => $isUSD ? '$' : '؋',
                 'exchange_rate' => $saleRate,
                 'materials' => $materialDetails,
+                'lamination' => $laminationPreview,
                 'has_missing_inventory_cost' => $hasMissingCost,
             ],
         ]);
@@ -1369,6 +1393,7 @@ class SaleController extends Controller
             'quoted_unit_price' => 'nullable|numeric|min:0',
             'manual_unit_price' => 'nullable|numeric|min:0.0001',
             'quotation_description' => 'nullable|string|max:2000',
+            'lamination_enabled' => 'nullable|boolean',
             'formula_snapshot' => 'nullable|string',
             'remarks' => 'nullable|string|max:1000',
         ]);
@@ -1400,7 +1425,16 @@ class SaleController extends Controller
             $isUSD = $saleCurrencyCode === 'USD';
             $pricingMode = $validated['pricing_mode'];
             $quotedUnitPrice = (float) ($validated['quoted_unit_price'] ?? 0);
+            $laminationEnabled = (bool) ($validated['lamination_enabled'] ?? false);
+            $laminationMeta = null;
             $costing = app(\App\Services\BOMCostingService::class);
+
+            if ($laminationEnabled) {
+                $laminationResult = app(\App\Services\CartonLaminationService::class)
+                    ->createOrderSpecificBom($bom, auth()->id(), $exchangeRate);
+                $bom = $laminationResult['bom'];
+                $laminationMeta = $laminationResult['lamination'];
+            }
 
             $totalCostUsd = 0.0;
             $materialBreakdown = [];
@@ -1559,6 +1593,37 @@ class SaleController extends Controller
                     ];
                 }
 
+                if ($laminationEnabled && is_array($laminationMeta)) {
+                    $laminationBaseKg = (float) ($laminationMeta['kg_per_unit'] ?? 0);
+                    $laminationPhysicalKg = (float) ($laminationMeta['kg_with_wastage'] ?? $laminationBaseKg);
+                    $laminationCostUsd = (float) ($laminationMeta['landed_cost_usd_per_kg'] ?? 0);
+                    $laminationCostAfn = (float) ($laminationMeta['landed_cost_afn_per_kg'] ?? ($laminationCostUsd * $exchangeRate));
+
+                    $commercialNetRateAfn += $laminationBaseKg * $laminationCostAfn;
+                    $physicalMaterialCostPerUnitUsd += $laminationPhysicalKg * $laminationCostUsd;
+
+                    $materialBreakdown[] = [
+                        'material_id' => (int) $laminationMeta['material_id'],
+                        'material_name' => $laminationMeta['material_name'],
+                        'formula_type' => 'fixed_rate',
+                        'component_type' => 'auxiliary',
+                        'role' => 'lamination',
+                        'board_area_m2' => (float) ($laminationMeta['board_area_m2'] ?? 0),
+                        'film_gsm' => (float) ($laminationMeta['film_gsm'] ?? 0),
+                        'sides' => (int) ($laminationMeta['sides'] ?? 1),
+                        'wastage' => (float) ($laminationMeta['wastage_percentage'] ?? 0),
+                        'work_percentage' => 0,
+                        'print_cost' => 0,
+                        'kg_per_finished_unit' => $laminationBaseKg,
+                        'kg_with_wastage' => $laminationPhysicalKg,
+                        'landed_cost_usd_per_kg' => $laminationCostUsd,
+                        'per_gram_rate' => $laminationCostAfn,
+                        'physical_cost_usd' => $laminationPhysicalKg * $laminationCostUsd,
+                        'row_net_rate' => $laminationBaseKg * $laminationCostAfn,
+                        'final_rate_afn' => $laminationBaseKg * $laminationCostAfn,
+                    ];
+                }
+
                 $profitMargin = max((float) ($bom->profit_margin_percentage ?? 0), 0);
                 $calculatedSellingAfn = $commercialNetRateAfn * (1 + ($profitMargin / 100));
                 $calculatedUnitPrice = $isUSD
@@ -1632,6 +1697,7 @@ class SaleController extends Controller
                 ? "Manual BOM quotation using {$bom->code}"
                 : "Saved BOM price: {$bom->code}");
             $remarks .= ' | Pricing mode: ' . strtoupper($pricingMode);
+            $remarks .= ' | Lamination: ' . ($laminationEnabled ? 'ENABLED (AUTO FORMULA)' : 'NONE');
             $remarks .= ' | Materials: ' . count($materialBreakdown);
 
             $duplicate = SaleItem::where('sale_id', $sale->id)
