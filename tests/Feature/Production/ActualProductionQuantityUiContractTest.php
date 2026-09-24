@@ -66,9 +66,9 @@ it('forces in-progress orders through the actual-results completion workspace', 
 
     expect($index)
         ->toContain('#completeProductionModal')
-        ->not->toContain('form action="{{ route(\'production-orders.complete\', $order) }}"');
+        ->not->toContain('route(\'production-orders.complete\', $order)');
 
     expect($controller)
         ->toContain('#completeProductionModal')
-        ->not->toContain('form action="' . "' . route('production-orders.complete', $row) . '" . '"');
+        ->not->toContain('route(\'production-orders.complete\', $row)');
 });
