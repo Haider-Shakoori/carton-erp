@@ -74,7 +74,7 @@ function cqFixture(): array
     ]);
 
     $materialIds = [];
-    foreach (['Fluting', 'Kraft Liner', 'Corn Flour', 'Seligate (Glue)', 'Caustic Soda', 'Borax'] as $name) {
+    foreach (['Fluting', 'Kraft Liner', 'Corn Flour', 'Seligate (Glue)', 'Caustic Soda', 'Borax', 'Lamination Plastic'] as $name) {
         $materialIds[$name] = (int) Product::where('name', $name)->value('id');
     }
 
@@ -128,10 +128,11 @@ function cqFixture(): array
         'Seligate (Glue)' => 0.6,
         'Caustic Soda' => 0.4,
         'Borax' => 1.0,
+        'Lamination Plastic' => 2.25,
     ];
 
     foreach ($landed as $name => $cost) {
-        $isKg = in_array($name, ['Corn Flour', 'Seligate (Glue)', 'Caustic Soda', 'Borax'], true);
+        $isKg = in_array($name, ['Corn Flour', 'Seligate (Glue)', 'Caustic Soda', 'Borax', 'Lamination Plastic'], true);
 
         DB::table('purchase_items')->insert([
             'purchase_id' => $purchaseId,
@@ -265,6 +266,32 @@ it('adds a frozen carton specification and technical BOM to a draft sale', funct
         ->and($item->bom->items)->toHaveCount(6)
         ->and($item->bom->items->where('component_type', 'adhesive'))->toHaveCount(4)
         ->and((float) $item->total)->toBeGreaterThan(0);
+});
+
+it('adds lamination to quick quotation as a stock-tracked derived BOM row', function () {
+    $fx = cqFixture();
+    $controller = app(CartonQuotationController::class);
+
+    $response = $controller->add(
+        cqRequest('/admin/sales/'.$fx['sale']->id.'/carton-spec/add', 'POST', cqSpecPayload($fx, [
+            'lamination_enabled' => 1,
+            'quantity' => 100,
+        ])),
+        $fx['sale']
+    );
+
+    $data = $response->getData(true);
+    expect($response->getStatusCode())->toBe(200)
+        ->and($data['success'])->toBeTrue();
+
+    $item = SaleItem::findOrFail($data['data']['sale_item_id']);
+    $lamination = $item->bom->items->firstWhere('notes', 'lamination');
+
+    expect($item->carton_spec_snapshot['lamination']['enabled'])->toBeTrue()
+        ->and($lamination)->not->toBeNull()
+        ->and($lamination->material->name)->toBe('Lamination Plastic')
+        ->and((float) $lamination->calculateStockRequirement(100, true))->toBeGreaterThan(0)
+        ->and((float) $item->cost_per_unit_usd)->toBeGreaterThan(0);
 });
 
 it('previews several carton sizes with standard price and per-size override', function () {
@@ -486,6 +513,7 @@ it('locks the simple quotation panel and the advanced technical BOM section in t
         ->toContain('id="csBoardProfile"')
         ->toContain('id="csFlute"')
         ->toContain('id="csPrinting"')
+        ->toContain('id="csLamination"')
         ->toContain('id="csQuantity"')
         ->toContain('Advanced / Technical BOM')
         ->toContain('Quote Multiple Sizes')
