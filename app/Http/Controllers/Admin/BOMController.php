@@ -29,7 +29,11 @@ class BOMController extends Controller
         // Keep this page fully server-driven. Mixing DataTables client
         // pagination with Laravel pagination caused duplicated paging/search
         // behaviour and made the status cards reflect only the current page.
-        $statsQuery = BOM::query();
+        $statsQuery = BOM::query()
+            ->where(function ($query) {
+                $query->whereNull('description')
+                    ->orWhere('description', 'not like', '%[ORDER OPTION]%');
+            });
 
         $stats = [
             'total' => (clone $statsQuery)->count(),
@@ -40,6 +44,13 @@ class BOMController extends Controller
         ];
 
         $query = BOM::query()
+            // Order-specific finishing variants remain linked to the sale and
+            // production records, but are not master BOMs and must not clutter
+            // the BOM management screen.
+            ->where(function ($query) {
+                $query->whereNull('description')
+                    ->orWhere('description', 'not like', '%[ORDER OPTION]%');
+            })
             ->with([
                 'product:id,name,unit',
                 'createdBy:id,name',
