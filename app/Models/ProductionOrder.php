@@ -226,7 +226,18 @@ class ProductionOrder extends Model
         return $costPerUnit * (1 + ($profitMargin / 100));
     }
 
+    /**
+     * Legacy one-to-one pointer kept for backward compatibility.
+     */
     public function sale()
+    {
+        return $this->hasOne(Sale::class, 'production_order_id');
+    }
+
+    /**
+     * Canonical explicit link used by new multi-line production orders.
+     */
+    public function linkedSale()
     {
         return $this->belongsTo(Sale::class, 'sale_id');
     }
@@ -241,6 +252,6 @@ class ProductionOrder extends Model
      */
     public function hasSale()
     {
-        return $this->sale()->exists();
+        return $this->linkedSale()->exists() || $this->sale()->exists();
     }
 }
