@@ -118,6 +118,7 @@ it('removes pack text from previously generated finished-good names while keepin
     $spec = FinishedGoodSpecification::query()
         ->importedClientCartons()
         ->where('source_row', 4)
+        ->whereHas('customer', fn ($q) => $q->where('name', 'Bless Bee'))
         ->with('product')
         ->firstOrFail();
 
@@ -141,6 +142,7 @@ it('normalizes existing imported product names and slugs that still contain work
     $spec = FinishedGoodSpecification::query()
         ->importedClientCartons()
         ->where('source_row', 5)
+        ->whereHas('customer', fn ($q) => $q->where('name', 'Bless Bee'))
         ->with('product')
         ->firstOrFail();
 
@@ -171,6 +173,7 @@ it('keeps client pack text out of generated BOM names while preserving it on the
     $spec = FinishedGoodSpecification::query()
         ->importedClientCartons()
         ->where('source_row', 4)
+        ->whereHas('customer', fn ($q) => $q->where('name', 'Bless Bee'))
         ->with(['product', 'product.boms'])
         ->firstOrFail();
 
