@@ -761,6 +761,74 @@ class ProductionQuantityService
         ];
     }
 
+    /**
+     * Repair an already-completed production order whose final invoice was not
+     * synchronized at completion time. Safe to call repeatedly: if the sale
+     * item already matches the good/usable output, no commercial values change.
+     */
+    public function reconcileCompletedInvoice(ProductionOrder $order): ?array
+    {
+        return DB::transaction(function () use ($order): ?array {
+            $order = ProductionOrder::query()
+                ->lockForUpdate()
+                ->findOrFail($order->id);
+
+            if ($order->status !== ProductionOrder::STATUS_COMPLETED) {
+                return null;
+            }
+
+            $goodQuantity = (float) ($order->quantity_produced ?? 0);
+            if ($goodQuantity <= self::EPSILON) {
+                return null;
+            }
+
+            $sale = $order->linkedSale()->with(['items', 'currency'])->first()
+                ?? $order->sale()->with(['items', 'currency'])->first();
+
+            if (! $sale) {
+                return null;
+            }
+
+            $saleItem = $this->resolveSaleItem($sale, $order);
+            if (! $saleItem) {
+                return null;
+            }
+
+            if (abs((float) $saleItem->qty - $goodQuantity) <= self::EPSILON) {
+                return [
+                    'sale_id' => $sale->id,
+                    'sale_item_id' => $saleItem->id,
+                    'ordered_quantity' => (float) ($saleItem->ordered_qty ?? $saleItem->qty),
+                    'invoice_quantity' => (float) $saleItem->qty,
+                    'grand_total' => (float) $sale->grand_total,
+                    'usd_grand_total' => (float) $sale->usd_grand_total,
+                    'due_amount' => (float) $sale->due_amount,
+                    'overpayment' => max(
+                        (float) $sale->advance_payment - (float) $sale->grand_total,
+                        0
+                    ),
+                    'already_reconciled' => true,
+                ];
+            }
+
+            $actualMaterialCostUsd = (float) ProductionMaterialConsumption::query()
+                ->where('production_order_id', $order->id)
+                ->sum('total_cost_usd');
+
+            if ($actualMaterialCostUsd <= self::EPSILON) {
+                $actualMaterialCostUsd = (float) ($order->total_material_cost ?? 0);
+            }
+
+            return $this->syncFinalInvoice(
+                $sale,
+                $saleItem,
+                $order,
+                $goodQuantity,
+                $actualMaterialCostUsd
+            );
+        });
+    }
+
     private function syncFinalInvoice(
         Sale $sale,
         SaleItem $saleItem,
