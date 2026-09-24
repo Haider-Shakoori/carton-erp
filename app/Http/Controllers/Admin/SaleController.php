@@ -1409,7 +1409,7 @@ class SaleController extends Controller
             }
 
             if ($laminationEnabled) {
-                $bom = app(\App\Services\LaminationAddonService::class)->derive($bom, $request->user());
+                $bom = app(\App\Services\LaminationAddonService::class)->derive($bom, auth()->user());
             }
 
             $quotedUnitPrice = (float) ($validated['quoted_unit_price'] ?? 0);
