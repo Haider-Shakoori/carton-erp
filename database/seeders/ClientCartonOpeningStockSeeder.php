@@ -54,6 +54,9 @@ class ClientCartonOpeningStockSeeder extends Seeder
         'Caustic Soda' => [
             'qty' => 500, 'unit' => 'kg', 'unit_price_usd' => 1.75,
         ],
+        'Lamination Plastic' => [
+            'qty' => 500, 'unit' => 'kg', 'unit_price_usd' => 2.00,
+        ],
     ];
 
     public function run(): void
@@ -88,7 +91,7 @@ class ClientCartonOpeningStockSeeder extends Seeder
                 'purchase_date' => now()->toDateString(),
                 'arrival_date' => now()->toDateString(),
                 'status' => 'arrived',
-                'notes' => 'Bootstrap opening stock for the exact client-approved raw materials. Seed reference prices only; replace with actual supplier invoices for live commercial costing.',
+                'notes' => 'Bootstrap opening stock for client-approved carton materials and optional finishing consumables. Seed reference prices only; replace with actual supplier invoices for live commercial costing.',
             ]
         );
 
