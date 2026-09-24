@@ -2292,7 +2292,7 @@
 
                         <div id="csMultiSizePanel" class="mt-3" style="display:none;">
                             <div class="alert alert-light border py-2 px-3 small">
-                                The Product, Box Style, Unit, Board Profile, Flute, Printing and Wastage selected above are shared.
+                                The Product, Box Style, Unit, Board Profile, Flute, Printing, Lamination and Wastage selected above are shared.
                                 Enter only the size-specific values below.
                             </div>
                             <div id="csMultiSizeRows"></div>
@@ -6444,6 +6444,9 @@
                 document.getElementById('csOrderValue').textContent = csNumber(orderValue, 2);
                 document.getElementById('csPaperKg').textContent = csNumber(preview.paper.physical_kg_total, 3) + ' kg';
                 document.getElementById('csAdhesiveKg').textContent = csNumber(preview.adhesive.kg_total, 3) + ' kg';
+                document.getElementById('csLaminationKg').textContent = preview.lamination && preview.lamination.enabled
+                    ? csNumber(preview.lamination.kg_total, 6) + ' kg'
+                    : 'None';
                 document.getElementById('csMaterialCost').textContent = csNumber(preview.physical.material_cost_afn_total, 2);
                 document.getElementById('csWorkProfit').textContent = csNumber(preview.commercial.work_profit_afn * quantity, 2);
                 document.getElementById('csExpectedProfit').textContent = csNumber(preview.expected_profit_afn, 2);
@@ -6528,6 +6531,7 @@
                     ply: document.getElementById('csPly').value || null,
                     flute_type: document.getElementById('csFlute').value || null,
                     printing_option: document.getElementById('csPrinting').value,
+                    lamination_enabled: document.getElementById('csLaminationEnabled').checked ? 1 : 0,
                     wastage_percentage: document.getElementById('csWastage').value,
                     work_percentage: 40,
                     profit_margin_percentage: 0,
@@ -6669,6 +6673,7 @@
                     ply: document.getElementById('csPly').value || null,
                     flute_type: document.getElementById('csFlute').value || null,
                     printing_option: document.getElementById('csPrinting').value,
+                    lamination_enabled: document.getElementById('csLaminationEnabled').checked ? 1 : 0,
                     quantity: document.getElementById('csQuantity').value,
                     wastage_percentage: document.getElementById('csWastage').value,
                     quoted_unit_price: document.getElementById('csQuotedPrice').value || null,
@@ -6720,6 +6725,7 @@
                         ply: document.getElementById('csPly').value || null,
                         flute_type: document.getElementById('csFlute').value || null,
                         printing_option: document.getElementById('csPrinting').value,
+                        lamination_enabled: document.getElementById('csLaminationEnabled').checked ? 1 : 0,
                         quantity: document.getElementById('csQuantity').value,
                         wastage_percentage: document.getElementById('csWastage').value,
                         quoted_unit_price: document.getElementById('csQuotedPrice').value || null,
@@ -6757,6 +6763,14 @@
             document.getElementById('csBoardProfile').addEventListener('change', csApplyProfile);
             document.getElementById('csWastage').addEventListener('input', function () {
                 this.dataset.touched = '1';
+            });
+            document.getElementById('csLaminationEnabled').addEventListener('change', function () {
+                csPreview = null;
+                csMultiPreview = null;
+                document.getElementById('csAddBtn').disabled = true;
+                document.getElementById('csAddManyBtn').disabled = true;
+                document.getElementById('csSummary').style.display = 'none';
+                document.getElementById('csMultiPreview').style.display = 'none';
             });
             document.getElementById('csCalculateBtn').addEventListener('click', csCalculate);
             document.getElementById('csAddBtn').addEventListener('click', csAdd);
