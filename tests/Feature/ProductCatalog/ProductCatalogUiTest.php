@@ -11,7 +11,9 @@ uses(RefreshDatabase::class);
 it('renders the complete product catalog with the refreshed management UI', function () {
     $user = User::factory()->create();
     $category = Category::create([
-        'name' => 'Paper Materials',
+        // The seeded ERP already contains the real "Paper Materials" category.
+        // Use a test-owned unique name so this remains isolated on seeded CI.
+        'name' => 'Catalog Paper Materials ' . uniqid(),
         'description' => 'Raw paper inputs',
         'is_active' => true,
     ]);
