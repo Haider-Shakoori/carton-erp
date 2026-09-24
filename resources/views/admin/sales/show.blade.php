@@ -2091,7 +2091,15 @@
                             <input type="number" id="manualUnitPrice" class="form-control" min="0" step="0.0001" placeholder="Optional override">
                             <small class="text-muted">Leave blank to use the calculated/BOM price.</small>
                         </div>
-                        <div class="col-md-6">
+                        <div class="col-md-2">
+                            <label class="form-label d-block">Finishing</label>
+                            <div class="form-check form-switch pt-2">
+                                <input class="form-check-input" type="checkbox" id="laminationEnabled">
+                                <label class="form-check-label fw-semibold" for="laminationEnabled">Add Lamination</label>
+                            </div>
+                            <small class="text-muted">Uses stock + hidden board-area formula.</small>
+                        </div>
+                        <div class="col-md-4">
                             <label class="form-label">Quotation Description</label>
                             <input type="text" id="quotationDescription" class="form-control" maxlength="2000"
                                    placeholder="Description to print on the quotation for this line item">
@@ -2209,7 +2217,7 @@
                             <label class="form-label">Unit</label>
                             <select id="csUnit" class="form-select"></select>
                         </div>
-                        <div class="col-md-3">
+                        <div class="col-md-2">
                             <label class="form-label">Board Profile <span class="text-danger">*</span></label>
                             <select id="csBoardProfile" class="form-select"></select>
                             <small class="text-muted" id="csProfileHelp"></small>
@@ -2218,13 +2226,20 @@
                             <label class="form-label">Ply</label>
                             <input type="number" id="csPly" class="form-control" min="1" step="1" readonly>
                         </div>
-                        <div class="col-md-2">
+                        <div class="col-md-1">
                             <label class="form-label">Flute</label>
                             <select id="csFlute" class="form-select"></select>
                         </div>
                         <div class="col-md-2">
                             <label class="form-label">Printing</label>
                             <select id="csPrinting" class="form-select"></select>
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label d-block">Lamination</label>
+                            <div class="form-check form-switch pt-2">
+                                <input class="form-check-input" type="checkbox" id="csLamination">
+                                <label class="form-check-label" for="csLamination">Use Lamination</label>
+                            </div>
                         </div>
                         <div class="col-md-2">
                             <label class="form-label">Quantity <span class="text-danger">*</span></label>
@@ -2338,6 +2353,7 @@
                             <div class="quote-summary-card"><div class="label">Order Value ({{ $currencyCode }})</div><div class="value" id="csOrderValue">-</div></div>
                             <div class="quote-summary-card"><div class="label">Estimated Paper</div><div class="value" id="csPaperKg">-</div></div>
                             <div class="quote-summary-card"><div class="label">Estimated Adhesive</div><div class="value" id="csAdhesiveKg">-</div></div>
+                            <div class="quote-summary-card"><div class="label">Lamination</div><div class="value" id="csLaminationKg">Not selected</div></div>
                             <div class="quote-summary-card"><div class="label">Estimated Material Cost (AFN)</div><div class="value" id="csMaterialCost">-</div></div>
                             <div class="quote-summary-card"><div class="label">Work / Profit (AFN)</div><div class="value" id="csWorkProfit">-</div></div>
                             <div class="quote-summary-card"><div class="label">Expected Profit (AFN)</div><div class="value" id="csExpectedProfit">-</div></div>
@@ -4097,6 +4113,7 @@
                     quoted_unit_price: autoUnitPrice,
                     manual_unit_price: manualUnitPrice > 0 ? manualUnitPrice : null,
                     quotation_description: $('#quotationDescription').val(),
+                    lamination_enabled: $('#laminationEnabled').is(':checked') ? 1 : 0,
                     pricing_mode: pricingMode || 'saved',
                     formula_snapshot: pricingMode === 'manual' ? JSON.stringify(currentQuoteSnapshot) : null,
                     remarks: pricingMode === 'manual'
@@ -5717,6 +5734,7 @@
                     loadBomsForProduct(productId);
                     $('#unitPrice').val(0);
                     $('#manualUnitPrice').val('');
+                    $('#laminationEnabled').prop('checked', false);
                     $('#priceSource').text(@json(__('ui.select_pricing_method_plain')));
                     $('#addItemBtn').prop('disabled', true);
                     updateAddTotals();
@@ -5761,9 +5779,12 @@
                 }
 
                 if (value === '__manual__') {
+                    $('#laminationEnabled').prop('checked', false).prop('disabled', true);
                     openManualBomEstimator();
                     return;
                 }
+
+                $('#laminationEnabled').prop('disabled', false);
 
                 var selectedExchange = parseFloat(selectedOption.data('exchange')) || 85;
                 if ($('#exchangeRate').val() == 1 || $('#exchangeRate').val() == '') {
@@ -6321,6 +6342,9 @@
                 document.getElementById('csOrderValue').textContent = csNumber(orderValue, 2);
                 document.getElementById('csPaperKg').textContent = csNumber(preview.paper.physical_kg_total, 3) + ' kg';
                 document.getElementById('csAdhesiveKg').textContent = csNumber(preview.adhesive.kg_total, 3) + ' kg';
+                document.getElementById('csLaminationKg').textContent = preview.lamination && preview.lamination.enabled
+                    ? csNumber(preview.lamination.kg_total, 4) + ' kg'
+                    : 'Not selected';
                 document.getElementById('csMaterialCost').textContent = csNumber(preview.physical.material_cost_afn_total, 2);
                 document.getElementById('csWorkProfit').textContent = csNumber(preview.commercial.work_profit_afn * quantity, 2);
                 document.getElementById('csExpectedProfit').textContent = csNumber(preview.expected_profit_afn, 2);
@@ -6405,6 +6429,7 @@
                     ply: document.getElementById('csPly').value || null,
                     flute_type: document.getElementById('csFlute').value || null,
                     printing_option: document.getElementById('csPrinting').value,
+                    lamination_enabled: document.getElementById('csLamination').checked ? 1 : 0,
                     wastage_percentage: document.getElementById('csWastage').value,
                     work_percentage: 40,
                     profit_margin_percentage: 0,
@@ -6546,6 +6571,7 @@
                     ply: document.getElementById('csPly').value || null,
                     flute_type: document.getElementById('csFlute').value || null,
                     printing_option: document.getElementById('csPrinting').value,
+                    lamination_enabled: document.getElementById('csLamination').checked ? 1 : 0,
                     quantity: document.getElementById('csQuantity').value,
                     wastage_percentage: document.getElementById('csWastage').value,
                     quoted_unit_price: document.getElementById('csQuotedPrice').value || null,
@@ -6597,6 +6623,7 @@
                         ply: document.getElementById('csPly').value || null,
                         flute_type: document.getElementById('csFlute').value || null,
                         printing_option: document.getElementById('csPrinting').value,
+                        lamination_enabled: document.getElementById('csLamination').checked ? 1 : 0,
                         quantity: document.getElementById('csQuantity').value,
                         wastage_percentage: document.getElementById('csWastage').value,
                         quoted_unit_price: document.getElementById('csQuotedPrice').value || null,
