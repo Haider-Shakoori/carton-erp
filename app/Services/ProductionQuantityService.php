@@ -46,7 +46,8 @@ class ProductionQuantityService
                 );
             }
 
-            $sale ??= $order->sale()->with('items')->first();
+            $sale ??= $order->linkedSale()->with('items')->first()
+                ?? $order->sale()->with('items')->first();
 
             $orderedQty = (float) $order->quantity_ordered;
             if ($orderedQty <= self::EPSILON) {
@@ -197,7 +198,8 @@ class ProductionQuantityService
                 throw new RuntimeException('Only in-progress production orders can be completed.');
             }
 
-            $sale ??= $order->sale()->with(['items', 'currency'])->first();
+            $sale ??= $order->linkedSale()->with(['items', 'currency'])->first()
+                ?? $order->sale()->with(['items', 'currency'])->first();
             $saleItem = $sale ? $this->resolveSaleItem($sale, $order) : null;
 
             app(ProductionControlService::class)
