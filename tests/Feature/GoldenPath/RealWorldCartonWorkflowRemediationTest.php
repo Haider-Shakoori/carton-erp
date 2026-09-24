@@ -1396,3 +1396,69 @@ it('reconciles the exact invoice line and sale totals for a secondary production
     expect((float) $invoiceDebit->amount)
         ->toEqualWithDelta((float) $sale->grand_total, 0.01);
 });
+
+
+it('repairs a stale completed invoice from recorded good production output', function () {
+    $fx = rwCreatePurchaseFlow();
+    $bom = rwCreateBom($fx);
+    $sale = rwCreateSaleWithBom($fx, $bom, 'SO-RW-COMPLETED-REPAIR-001');
+
+    $confirm = (new SaleController())->confirmSale(
+        rwRequest('/admin/sales/'.$sale->id.'/confirm', 'POST', [
+            'discount_amount' => 0,
+            'advance_payment' => 0,
+            'start_production' => 1,
+        ]),
+        $sale->id
+    );
+    expect($confirm->getData(true)['success'])->toBeTrue();
+
+    $sale->refresh();
+    $production = $sale->productionOrder()->firstOrFail();
+
+    app(\App\Services\ProductionQuantityService::class)
+        ->start($production, $sale, 80.0);
+
+    app(\App\Services\ProductionQuantityService::class)
+        ->complete($production->fresh(), 80.0, $sale->fresh());
+
+    $sale->refresh()->load('items');
+    $item = $sale->items->firstOrFail();
+
+    expect((float) $item->qty)->toBe(80.0);
+
+    // Simulate a historical completion that was linked after completion but
+    // whose invoice line remained at the original order quantity.
+    $item->qty = 100;
+    $item->total = (float) $item->unit_price * 100;
+    $item->usd_total = (float) $item->usd_unit_price * 100;
+    $item->save();
+
+    $sale->refresh()->recalculateTotals();
+
+    $result = app(\App\Services\ProductionQuantityService::class)
+        ->reconcileCompletedInvoice($production->fresh());
+
+    $sale->refresh()->load('items');
+    $item = $sale->items->firstOrFail();
+
+    expect((float) $production->fresh()->quantity_produced)->toBe(80.0)
+        ->and((float) $item->ordered_qty)->toBe(100.0)
+        ->and((float) $item->qty)->toBe(80.0)
+        ->and((float) $item->total)
+        ->toEqualWithDelta((float) $item->unit_price * 80, 0.01)
+        ->and((float) $sale->grand_total)
+        ->toEqualWithDelta((float) $item->total, 0.01)
+        ->and((float) data_get($result, 'invoice_quantity'))->toBe(80.0);
+
+    $invoiceDebit = Transaction::query()
+        ->where('type', 'sale')
+        ->where('table_name', 'sales')
+        ->where('table_row_id', $sale->id)
+        ->where('transaction_type', 'debit')
+        ->where('is_cash', false)
+        ->firstOrFail();
+
+    expect((float) $invoiceDebit->amount)
+        ->toEqualWithDelta((float) $sale->grand_total, 0.01);
+});
