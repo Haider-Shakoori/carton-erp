@@ -1096,7 +1096,6 @@ class SaleController extends Controller
                 'profit_afn' => $profitAfn,
                 'profit_usd' => $profitUsd,
                 'profit_percentage' => $profitPercentage,
-                'lamination' => $laminationMeta,
             ]);
 
         } catch (\Throwable $e) {
@@ -1768,6 +1767,7 @@ class SaleController extends Controller
                 'profit_afn' => $profitAfn,
                 'profit_usd' => $profitUsd,
                 'profit_percentage' => $profitPercentage,
+                'lamination' => $laminationMeta,
             ]);
         } catch (\Throwable $e) {
             DB::rollBack();
