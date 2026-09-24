@@ -116,6 +116,35 @@ class CartonLaminationService
     }
 
     /**
+     * Preview lamination usage and direct selling-price impact without writing.
+     */
+    public function previewForBom(BOM $bom, float $exchangeRate): array
+    {
+        $boardAreaM2 = $this->boardAreaFromBom($bom);
+        $row = $this->technicalRow($boardAreaM2);
+        $latest = $this->costing->latestInventoryCost((int) $row['material_id'], $exchangeRate);
+
+        $costUsd = $latest['found'] ? (float) $latest['cost_usd'] : 0.0;
+        $costAfn = $costUsd * $exchangeRate;
+        $baseCostAfn = (float) $row['kg_per_unit'] * $costAfn;
+        $physicalCostAfn = (float) $row['kg_with_wastage'] * $costAfn;
+        $profitMargin = max((float) ($bom->profit_margin_percentage ?? 0), 0.0);
+
+        return array_merge($row['formula_data'], [
+            'available' => (bool) $latest['found'] && $costUsd > 0,
+            'material_id' => (int) $row['material_id'],
+            'material_name' => $row['material_name'],
+            'kg_per_unit' => (float) $row['kg_per_unit'],
+            'kg_with_wastage' => (float) $row['kg_with_wastage'],
+            'landed_cost_usd_per_kg' => $costUsd,
+            'landed_cost_afn_per_kg' => $costAfn,
+            'base_cost_afn_per_unit' => $baseCostAfn,
+            'physical_cost_afn_per_unit' => $physicalCostAfn,
+            'selling_price_addition_afn_per_unit' => $baseCostAfn * (1 + ($profitMargin / 100)),
+        ]);
+    }
+
+    /**
      * Create a hidden, order-specific BOM variant with lamination activated.
      */
     public function createOrderSpecificBom(BOM $source, ?int $userId, float $exchangeRate): array
