@@ -725,12 +725,11 @@
                                             </form>
                                         @endif
                                         @if($order->status === 'in_progress')
-                                            <form action="{{ route('production-orders.complete', $order) }}" method="POST" class="d-inline">
-                                                @csrf
-                                                <button type="submit" class="action-btn text-success" title="{{ __('ui.complete_production') }}" onclick="return confirm('✅ Complete production?\n\nThis will add finished goods to inventory.\n\nContinue?')">
-                                                    <i class="bi bi-check2"></i>
-                                                </button>
-                                            </form>
+                                            <a href="{{ route('production-orders.show', $order) }}#completeProductionModal"
+                                               class="action-btn text-success"
+                                               title="Complete production with actual quantities">
+                                                <i class="bi bi-check2"></i>
+                                            </a>
                                         @endif
                                         @if(in_array($order->status, ['pending', 'in_progress']))
                                             <form action="{{ route('production-orders.cancel', $order) }}" method="POST" class="d-inline">
