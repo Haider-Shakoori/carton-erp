@@ -65,10 +65,10 @@ it('forces in-progress orders through the actual-results completion workspace', 
     $controller = file_get_contents(app_path('Http/Controllers/Admin/ProductionOrderController.php'));
 
     expect($index)
-        ->toContain("#completeProductionModal")
-        ->not->toContain("form action=\"{{ route('production-orders.complete', $order) }}\"");
+        ->toContain('#completeProductionModal')
+        ->not->toContain('form action="{{ route(\'production-orders.complete\', $order) }}"');
 
     expect($controller)
-        ->toContain("#completeProductionModal")
-        ->not->toContain("form action=\"' . route('production-orders.complete', $row) . '\"");
+        ->toContain('#completeProductionModal')
+        ->not->toContain('form action="' . "' . route('production-orders.complete', $row) . '" . '"');
 });
