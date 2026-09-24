@@ -1666,12 +1666,11 @@ class ProductionOrderController extends Controller
 
                 if ($row->status === 'in_progress') {
                     $actions .= '
-                        <form action="' . route('production-orders.complete', $row) . '" method="POST" class="d-inline">
-                            ' . csrf_field() . '
-                            <button type="submit" class="btn btn-sm btn-success" onclick="return confirm(\'Complete production? This will add finished goods to inventory.\')">
-                                <i class="bi bi-check2"></i>
-                            </button>
-                        </form>
+                        <a href="' . route('production-orders.show', $row) . '#completeProductionModal"
+                           class="btn btn-sm btn-success"
+                           title="Complete production with actual quantities">
+                            <i class="bi bi-check2"></i>
+                        </a>
                     ';
                 }
 
