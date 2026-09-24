@@ -3441,6 +3441,7 @@
 
         // ─── OPEN MANUAL BOM ESTIMATOR ───
         function openManualBomEstimator() {
+            resetLaminationOption(true);
             var productId = $('#productSelect').val();
             var boms = getBomsForProduct(productId);
 
@@ -3512,6 +3513,96 @@
             loadBomDetails(manualTemplateBomId);
         }
 
+        function resetLaminationOption(hideOption) {
+            currentLaminationPreview = null;
+            $('#laminationEnabled').prop('checked', false);
+            $('#laminationHelp').text('Auto-calculated from carton board area and Lamination Plastic stock.');
+            if (hideOption) {
+                $('#laminationOptionWrap').hide();
+            } else {
+                $('#laminationOptionWrap').show();
+            }
+        }
+
+        function refreshLaminationPrice() {
+            if (pricingMode !== 'saved') {
+                resetLaminationOption(true);
+                return;
+            }
+
+            var bomId = $('#bomSelect').val();
+            if (!bomId || bomId === '__manual__' || !currentBOMData) {
+                resetLaminationOption(true);
+                return;
+            }
+
+            if (!$('#laminationEnabled').is(':checked')) {
+                currentLaminationPreview = null;
+                applySavedBomPrice(bomId);
+                return;
+            }
+
+            $('#laminationHelp').html('<span class="spinner-border spinner-border-sm me-1"></span>Calculating lamination usage...');
+            $('#addItemBtn').prop('disabled', true);
+
+            $.ajax({
+                url: '{{ route("admin.sales.bom-details") }}',
+                method: 'GET',
+                data: {
+                    bom_id: bomId,
+                    quantity: Math.max(parseFloat($('#itemQty').val()) || 1, 1),
+                    currency_code: currencyCode,
+                    exchange_rate: Math.max(parseFloat($('#exchangeRate').val()) || exchangeRate || 85, 0.000001),
+                    lamination_enabled: 1
+                },
+                success: function(response) {
+                    var lamination = response?.data?.lamination || null;
+
+                    if (!response.success || !lamination || !lamination.available) {
+                        $('#laminationEnabled').prop('checked', false);
+                        currentLaminationPreview = null;
+                        applySavedBomPrice(bomId);
+                        Swal.fire({
+                            icon: 'warning',
+                            title: 'Lamination unavailable',
+                            text: lamination?.message || 'Lamination Plastic needs valid landed stock before this option can be used.'
+                        });
+                        return;
+                    }
+
+                    currentLaminationPreview = lamination;
+                    var basePrice = getSavedBomPrice(currentBOMData);
+                    var addition = Number(lamination.selling_price_addition || 0);
+                    var sellingPrice = basePrice + addition;
+
+                    $('#unitPrice').val(sellingPrice.toFixed(4));
+                    $('#pricingModePrice').text(currencySymbol + sellingPrice.toFixed(2));
+                    $('#priceSource').html(
+                        '<span class="text-success"><i class="bi bi-layers me-1"></i>Laminated system price: ' +
+                        currencySymbol + sellingPrice.toFixed(4) + ' per box ' +
+                        '<span class="text-muted small">(Base: ' + currencySymbol + basePrice.toFixed(4) +
+                        ' | Lamination: +' + currencySymbol + addition.toFixed(4) + ')</span></span>'
+                    );
+                    $('#laminationHelp').text(
+                        'Auto usage: ' + Number(lamination.kg_with_wastage || 0).toFixed(6) +
+                        ' kg/carton incl. waste · ' + (lamination.material_name || 'Lamination Plastic')
+                    );
+                    $('#addItemBtn').prop('disabled', false).html('<i class="bi bi-cart-plus"></i> ' + @json(__('ui.add')));
+                    updateAddTotals();
+                },
+                error: function(xhr) {
+                    $('#laminationEnabled').prop('checked', false);
+                    currentLaminationPreview = null;
+                    applySavedBomPrice(bomId);
+                    Swal.fire({
+                        icon: 'error',
+                        title: 'Lamination calculation failed',
+                        text: xhr.responseJSON?.message || 'Could not calculate lamination usage.'
+                    });
+                }
+            });
+        }
+
         // ─── APPLY SAVED BOM PRICE ───
         function applySavedBomPrice(bomId) {
             var productId = $('#productSelect').val();
@@ -3530,6 +3621,7 @@
             pricingMode = 'saved';
             currentBOMData = bom;
             currentQuoteSnapshot = [];
+            $('#laminationOptionWrap').show();
 
             var sellingPrice = getSavedBomPrice(bom);
             var profitMargin = numeric(bom, ['profit_margin_percentage'], 0);
@@ -4108,6 +4200,7 @@
                     quoted_unit_price: autoUnitPrice,
                     manual_unit_price: manualUnitPrice > 0 ? manualUnitPrice : null,
                     quotation_description: $('#quotationDescription').val(),
+                    lamination_enabled: pricingMode === 'saved' && $('#laminationEnabled').is(':checked') ? 1 : 0,
                     pricing_mode: pricingMode || 'saved',
                     formula_snapshot: pricingMode === 'manual' ? JSON.stringify(currentQuoteSnapshot) : null,
                     remarks: pricingMode === 'manual'
@@ -5722,6 +5815,7 @@
 
             // ─── PRODUCT CHANGE ───
             $('#productSelect').on('change', function() {
+                resetLaminationOption(true);
                 var productId = $(this).val();
                 if (productId) {
                     currentProductId = productId;
@@ -5750,6 +5844,7 @@
                 var selectedOption = $(this).find('option:selected');
 
                 if (!value) {
+                    resetLaminationOption(true);
                     pricingMode = null;
                     currentBOMData = null;
                     $('#bomDetailsPreview, #pricingModeNotice').hide();
@@ -5762,6 +5857,7 @@
                 }
 
                 if (selectedOption.prop('disabled')) {
+                    resetLaminationOption(true);
                     $('#bomDetailsPreview, #pricingModeNotice').hide();
                     $('#unitPrice').val(0);
                     $('#manualUnitPrice').val('');
@@ -5780,7 +5876,12 @@
                 if ($('#exchangeRate').val() == 1 || $('#exchangeRate').val() == '') {
                     $('#exchangeRate').val(selectedExchange);
                 }
+                resetLaminationOption(false);
                 applySavedBomPrice(value);
+            });
+
+            $('#laminationEnabled').on('change', function() {
+                refreshLaminationPrice();
             });
 
             // ─── MANUAL BOM TEMPLATE CHANGE ───
