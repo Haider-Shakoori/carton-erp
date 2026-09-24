@@ -34,6 +34,7 @@ function cartonSpecFixtures(): array
         'Seligate (Glue)' => 'kg',
         'Caustic Soda' => 'kg',
         'Borax' => 'kg',
+        'Lamination Plastic' => 'kg',
         'Spec Carton Box' => 'pcs',
     ] as $name => $unit) {
         // The client material migration already deploys the baseline raw
@@ -77,10 +78,11 @@ function cartonSpecFixtures(): array
         'Seligate (Glue)' => 0.6,
         'Caustic Soda' => 0.4,
         'Borax' => 1.0,
+        'Lamination Plastic' => 2.25,
     ];
 
     foreach ($landedCosts as $name => $cost) {
-        $isKgOnly = in_array($name, ['Corn Flour', 'Seligate (Glue)', 'Caustic Soda', 'Borax'], true);
+        $isKgOnly = in_array($name, ['Corn Flour', 'Seligate (Glue)', 'Caustic Soda', 'Borax', 'Lamination Plastic'], true);
 
         DB::table('purchase_items')->insert([
             'purchase_id' => $purchaseId,
@@ -248,6 +250,43 @@ it('scales order totals with quantity while unit values stay fixed', function ()
         (float) $one['paper']['physical_kg_per_unit'] * 10,
         0.0001
     );
+});
+
+it('adds optional lamination from board area and carries it into BOM stock consumption', function () {
+    $fx = cartonSpecFixtures();
+    $service = app(CartonSpecificationService::class);
+
+    $plain = $service->calculate(cartonSpecInput($fx));
+    $laminated = $service->calculate(cartonSpecInput($fx, [
+        'lamination_enabled' => true,
+        'quantity' => 10,
+    ]));
+
+    $areaM2 = (float) $laminated['spec']['board_area_m2'];
+    $baseKg = $areaM2 * 20 / 1000;
+    $withWasteKg = $baseKg * 1.05;
+    $row = collect($laminated['rows'])->firstWhere('role', 'lamination');
+
+    expect($laminated['lamination']['enabled'])->toBeTrue()
+        ->and((float) $row['stock_consumption_override'])->toEqualWithDelta($baseKg, 0.00000001)
+        ->and((float) $laminated['lamination']['kg_per_unit'])->toEqualWithDelta($withWasteKg, 0.00000001)
+        ->and((float) $laminated['lamination']['kg_total'])->toEqualWithDelta($withWasteKg * 10, 0.0000001)
+        ->and((float) $laminated['physical']['material_cost_afn_per_unit'])
+        ->toBeGreaterThan((float) $plain['physical']['material_cost_afn_per_unit'])
+        ->and((float) $laminated['commercial']['selling_price_afn_per_unit'])
+        ->toBeGreaterThan((float) $plain['commercial']['selling_price_afn_per_unit']);
+
+    $bom = $service->persistTechnicalBom(
+        $laminated,
+        $fx['products']['Spec Carton Box'],
+        $fx['user']->id
+    );
+    $laminationItem = $bom->items->firstWhere('notes', 'lamination');
+
+    expect($laminationItem)->not->toBeNull()
+        ->and($laminationItem->formula_type)->toBe('fixed_rate')
+        ->and((float) $laminationItem->calculateStockRequirement(10, true))
+        ->toEqualWithDelta($withWasteKg * 10, 0.0000001);
 });
 
 it('does not change adhesive quantity when only paper GSM changes', function () {
