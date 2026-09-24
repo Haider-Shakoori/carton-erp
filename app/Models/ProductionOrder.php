@@ -20,6 +20,8 @@ class ProductionOrder extends Model
         'order_number',
         'product_id',
         'bom_id',
+        'sale_id',
+        'sale_item_id',
         'quantity_ordered',
         'quantity_planned',
         'quantity_manufactured',
@@ -226,7 +228,12 @@ class ProductionOrder extends Model
 
     public function sale()
     {
-        return $this->hasOne(Sale::class, 'production_order_id');
+        return $this->belongsTo(Sale::class, 'sale_id');
+    }
+
+    public function saleItem()
+    {
+        return $this->belongsTo(SaleItem::class, 'sale_item_id');
     }
 
     /**
