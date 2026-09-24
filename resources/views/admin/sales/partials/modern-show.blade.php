@@ -216,7 +216,7 @@
     .sox-cost-box .k { font-size:.64rem; color:var(--sox-muted); }
     .sox-cost-box .v { font-size:1rem; font-weight:850; margin-top:.3rem; }
     .sox-notes { background:#f6f5ff; border-radius:10px; padding:.9rem 1rem; color:#4d5873; font-size:.7rem; line-height:1.65; }
-    .sox-drawer.offcanvas { width:min(720px,94vw)!important; }
+    .sox-drawer.offcanvas { width:min(1080px,96vw)!important; }
     .sox-drawer .offcanvas-header { padding:1rem 1.1rem; border-bottom:1px solid var(--sox-border); }
     .sox-drawer .offcanvas-title { font-weight:850; }
     .sox-mode-switch { display:grid; grid-template-columns:1fr 1fr; gap:.4rem; padding:.75rem 1rem; }
