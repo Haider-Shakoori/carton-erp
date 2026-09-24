@@ -537,6 +537,10 @@ it('allows an explicit measured override for a formula-based mixing material', f
     $controller->startProduction($production);
     $production->refresh();
 
+    $before = app(SaleProfitService::class)->calculate($sale->fresh());
+
+    expect($before['actual_available'])->toBeTrue();
+
     $expected = collect(
         app(ProductionQuantityService::class)
             ->requirementsForQuantity($production, 100)
@@ -578,7 +582,21 @@ it('allows an explicit measured override for a formula-based mixing material', f
         ->where('material_id', $cornId)
         ->sum('actual_quantity');
 
-    expect($cornConsumed)->toEqualWithDelta($measuredCorn, 0.001);
+    $after = app(SaleProfitService::class)->calculate($sale->fresh());
+
+    expect($cornConsumed)->toEqualWithDelta($measuredCorn, 0.001)
+        ->and($after['gross_sales_afn'])
+        ->toEqualWithDelta($before['gross_sales_afn'], 0.01)
+        ->and($after['actual_material_cost_usd'])
+        ->toBeGreaterThan($before['actual_material_cost_usd'])
+        ->and($after['actual_production_cost_afn'])
+        ->toBeGreaterThan($before['actual_production_cost_afn'])
+        ->and($after['actual_profit_afn'])
+        ->toBeLessThan($before['actual_profit_afn'])
+        ->and(abs(
+            ((float) $after['gross_sales_afn'] - (float) $after['actual_production_cost_afn'])
+            - (float) $after['actual_profit_afn']
+        ))->toBeLessThan(0.02);
 });
 
 it('detects an adhesive stock shortage before production starts', function () {
