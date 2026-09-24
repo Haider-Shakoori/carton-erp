@@ -22,7 +22,14 @@ it('keeps the approved modern sale order UI contract wired to existing sale beha
         ->toContain('Existing BOM')
         ->toContain('Quick Quotation')
         ->toContain('width:min(1080px,96vw)!important')
-        ->toContain('The override changes selling price only');
+        ->toContain('The override changes selling price only')
+        ->toContain('Invoice Qty')
+        ->toContain('Ordered:')
+        ->toContain('$soxOrderedQuantity')
+        ->toContain('$soxInvoiceQuantity')
+        ->toContain('$soxQuantityVariance')
+        ->toContain('Invoice / Ordered Qty')
+        ->toContain('grid-template-columns:repeat(6,minmax(0,1fr))');
 
     expect($show)
         ->toContain('id="laminationEnabled"')
