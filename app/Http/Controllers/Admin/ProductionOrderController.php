@@ -1034,47 +1034,10 @@ class ProductionOrderController extends Controller
      */
     public function completeProduction(
         ProductionOrder $productionOrder,
-        ?Request $request = null
+        Request $request
     ) {
         if ($productionOrder->status !== ProductionOrder::STATUS_IN_PROGRESS) {
             return back()->with('error', 'Only in-progress orders can be completed.');
-        }
-
-        // Preserve legacy direct-controller calls used by existing regression
-        // tests and internal code. Normal HTTP completion always supplies the
-        // explicit completion form and therefore requires the actual materials.
-        if ($request === null) {
-            try {
-                $sale = $this->resolveLinkedSale(
-                    $productionOrder,
-                    ['items', 'currency']
-                );
-
-                $legacyGoodQty = (float) $productionOrder->quantity_ordered;
-
-                app(\App\Services\ProductionQuantityService::class)->complete(
-                    $productionOrder,
-                    $legacyGoodQty,
-                    $sale,
-                    $legacyGoodQty,
-                    0.0,
-                    null
-                );
-
-                return redirect()->route('production-orders.show', $productionOrder)
-                    ->with('success', sprintf(
-                        'Production completed with actual output of %s units.',
-                        number_format($legacyGoodQty, 2)
-                    ));
-            } catch (\Throwable $e) {
-                Log::error('Legacy complete production failed', [
-                    'production_order_id' => $productionOrder->id,
-                    'error' => $e->getMessage(),
-                    'trace' => $e->getTraceAsString(),
-                ]);
-
-                return back()->with('error', 'Failed to complete production: ' . $e->getMessage());
-            }
         }
 
         try {
