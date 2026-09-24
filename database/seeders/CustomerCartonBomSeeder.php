@@ -203,15 +203,19 @@ class CustomerCartonBomSeeder extends Seeder
         int $creatorId,
         string $reason
     ): void {
+        // Optional finishing materials such as Lamination Plastic are
+        // deliberately excluded from master/review BOM placeholders. They are
+        // attached only to order-specific BOMs when the sale checkbox is enabled.
+        $baseDefinitions = collect(ClientCartonRawMaterialSeeder::MATERIALS)
+            ->reject(fn (array $definition) => ($definition['category'] ?? null) === 'finishing')
+            ->values();
+
         $materials = Product::query()
-            ->whereIn(
-                'name',
-                collect(ClientCartonRawMaterialSeeder::MATERIALS)->pluck('name')->all()
-            )
+            ->whereIn('name', $baseDefinitions->pluck('name')->all())
             ->get()
             ->keyBy('name');
 
-        $missing = collect(ClientCartonRawMaterialSeeder::MATERIALS)
+        $missing = $baseDefinitions
             ->pluck('name')
             ->reject(fn (string $name) => $materials->has($name))
             ->values();
@@ -228,7 +232,8 @@ class CustomerCartonBomSeeder extends Seeder
             $code,
             $creatorId,
             $reason,
-            $materials
+            $materials,
+            $baseDefinitions
         ): void {
             $bom = BOM::create([
                 'name' => $specification->product->name.' - Client Master BOM',
@@ -249,7 +254,7 @@ class CustomerCartonBomSeeder extends Seeder
                 'created_by' => $creatorId,
             ]);
 
-            foreach (ClientCartonRawMaterialSeeder::MATERIALS as $index => $definition) {
+            foreach ($baseDefinitions as $index => $definition) {
                 $material = $materials->get($definition['name']);
 
                 BOMItem::create([
