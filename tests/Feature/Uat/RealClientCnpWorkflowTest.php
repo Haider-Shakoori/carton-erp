@@ -388,22 +388,38 @@ it('runs the seeded CNP 5-ply carton through real-client purchase, sale, product
         ->and($atStart)->toHaveCount(6)
         ->and((float) $atStart->sum('actual_quantity'))->toBeGreaterThan(0);
 
-    // Simulate shop-floor actuals entered in the improved completion screen:
-    // paper slightly over plan, mixing materials slightly under plan, and waste
-    // classified inside actual consumption.
+    // Simulate the current completion policy:
+    // - roll paper is formula-authoritative and follows Manufactured Qty;
+    // - measurable non-roll adhesive ingredients may explicitly override the
+    //   standard formula with a shop-floor measured actual;
+    // - measured waste is classified inside the measured actual quantity.
     $paperNames = ['Fluting', 'Kraft Liner'];
 
     $actualMaterials = $atStart->map(function ($row) use ($paperNames) {
         $material = Product::findOrFail((int) $row->material_id);
         $isPaper = in_array($material->name, $paperNames, true);
-        $multiplier = $isPaper ? 1.02 : 0.98;
-        $actual = (float) $row->actual_quantity * $multiplier;
-        $waste = $actual * ($isPaper ? 0.015 : 0.005);
+        $planned = (float) $row->actual_quantity;
+
+        if ($isPaper) {
+            return [
+                'material_id' => (int) $row->material_id,
+                'actual_quantity' => round($planned, 6),
+                'wastage_quantity' => 0,
+                'unit' => (string) $row->unit,
+            ];
+        }
+
+        // Exercise both sides of production variance with genuine measurable
+        // materials: glue is over standard, the remaining ingredients are under.
+        $multiplier = $material->name === 'Seligate (Glue)' ? 1.02 : 0.98;
+        $actual = $planned * $multiplier;
+        $waste = $actual * 0.005;
 
         return [
             'material_id' => (int) $row->material_id,
             'actual_quantity' => round($actual, 6),
             'wastage_quantity' => round($waste, 6),
+            'use_measured_actual' => 1,
             'unit' => (string) $row->unit,
         ];
     })->values()->all();
