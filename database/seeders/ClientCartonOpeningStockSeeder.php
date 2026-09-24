@@ -54,6 +54,9 @@ class ClientCartonOpeningStockSeeder extends Seeder
         'Caustic Soda' => [
             'qty' => 500, 'unit' => 'kg', 'unit_price_usd' => 1.75,
         ],
+        'Lamination Plastic' => [
+            'qty' => 1000, 'unit' => 'kg', 'unit_price_usd' => 2.25,
+        ],
     ];
 
     public function run(): void
