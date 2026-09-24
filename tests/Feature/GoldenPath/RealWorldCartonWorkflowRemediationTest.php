@@ -495,7 +495,14 @@ it('continues real imported stock through sale confirmation, production creation
     expect($consumptions->count())->toBeGreaterThanOrEqual(2)
         ->and((float) $consumptions->sum('total_cost_usd'))->toBeGreaterThan(0);
 
-    (new ProductionOrderController())->completeProduction($production);
+    app(\App\Services\ProductionQuantityService::class)->complete(
+        $production,
+        (float) $production->quantity_ordered,
+        $sale,
+        (float) $production->quantity_ordered,
+        0.0,
+        null
+    );
     $production->refresh();
     $sale->refresh();
 
@@ -525,7 +532,14 @@ it('reconciles actual FIFO production cost and profit after completion', functio
     $start = (new ProductionOrderController())->startProduction($production);
     expect($start->getSession()->get('success'))->not->toBeNull();
 
-    (new ProductionOrderController())->completeProduction($production);
+    app(\App\Services\ProductionQuantityService::class)->complete(
+        $production,
+        (float) $production->quantity_ordered,
+        $sale,
+        (float) $production->quantity_ordered,
+        0.0,
+        null
+    );
     $sale->refresh();
 
     $summary = app(\App\Services\SaleProfitService::class)->calculate($sale);
