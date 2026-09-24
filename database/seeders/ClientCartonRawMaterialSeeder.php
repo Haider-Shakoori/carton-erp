@@ -29,6 +29,7 @@ class ClientCartonRawMaterialSeeder extends Seeder
         ['name' => 'Corn Flour', 'unit' => 'kg', 'category' => 'mixing', 'min_stock' => 25],
         ['name' => 'Borax', 'unit' => 'kg', 'category' => 'mixing', 'min_stock' => 10],
         ['name' => 'Caustic Soda', 'unit' => 'kg', 'category' => 'mixing', 'min_stock' => 10],
+        ['name' => 'Lamination Plastic', 'unit' => 'kg', 'category' => 'finishing', 'min_stock' => 10],
     ];
 
     public function run(): void
@@ -48,6 +49,11 @@ class ClientCartonRawMaterialSeeder extends Seeder
             'mixing' => $this->ensureCategory(
                 'Mixing Materials',
                 'Glue-mixing ingredients used in corrugated 3D carton production, including Seligate, corn flour, Borax and Caustic Soda.',
+                $now
+            ),
+            'finishing' => $this->ensureCategory(
+                'Finishing Materials',
+                'Optional finishing consumables used per customer order, including lamination plastic.',
                 $now
             ),
         ];
