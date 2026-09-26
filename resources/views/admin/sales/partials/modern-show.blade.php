@@ -24,6 +24,23 @@
         ? (float) ($soxPs['actual_margin_percentage'] ?? 0)
         : ($soxGrandTotal > 0 ? ($soxEstimatedProfit / $soxGrandTotal) * 100 : 0);
 
+    $soxProductCount = $sale->items->count();
+    $soxOrderedQty = (float) $sale->items->sum(
+        fn ($line) => (float) ($line->ordered_qty ?? $line->qty ?? 0)
+    );
+    $soxInvoiceQty = (float) $sale->items->sum(
+        fn ($line) => (float) ($line->qty ?? 0)
+    );
+    $soxQuantityUnits = $sale->items
+        ->map(fn ($line) => trim((string) ($line->product->unit ?? 'pcs')))
+        ->filter()
+        ->unique()
+        ->values();
+    $soxQuantityUnit = $soxQuantityUnits->count() === 1
+        ? (string) $soxQuantityUnits->first()
+        : ($soxQuantityUnits->isEmpty() ? 'pcs' : 'mixed units');
+    $soxQuantityVariance = $soxInvoiceQty - $soxOrderedQty;
+
     $soxProductionStatus = 'Not Started';
     $soxProductionClass = 'pending';
     if ($sale->is_produced) {
@@ -137,7 +154,7 @@
     .sox-btn { border-radius:10px; min-height:38px; padding:.45rem .9rem; font-size:.76rem; font-weight:700; border:1px solid var(--sox-border); background:#fff; color:#34415c; display:inline-flex; align-items:center; gap:.45rem; }
     .sox-btn:hover { border-color:#c7cdf0; color:var(--sox-primary); }
     .sox-btn.primary { background:linear-gradient(135deg,#4f46e5,#5b35f5); border-color:transparent; color:#fff; box-shadow:0 7px 18px rgba(79,70,229,.18); }
-    .sox-summary-grid { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:.8rem; margin-bottom:1rem; }
+    .sox-summary-grid { display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); gap:.8rem; margin-bottom:1rem; }
     .sox-kpi { min-height:92px; background:#fff; border:1px solid var(--sox-border); border-radius:13px; padding:.95rem; display:flex; gap:.8rem; align-items:flex-start; box-shadow:0 4px 20px rgba(15,23,42,.025); }
     .sox-kpi-icon { width:38px; height:38px; border-radius:10px; background:var(--sox-primary-soft); color:var(--sox-primary); display:flex; align-items:center; justify-content:center; flex:0 0 auto; font-size:1rem; }
     .sox-kpi.success .sox-kpi-icon { background:var(--sox-success-soft); color:var(--sox-success); }
@@ -228,8 +245,11 @@
     .sox-drawer-host .sale-section .section-body { padding:.5rem 0; }
     .sox-drawer-host .row > [class*="col-md-"] { margin-bottom:.45rem; }
     .sox-row-action { width:32px; height:32px; border:1px solid var(--sox-border); border-radius:8px; background:#fff; color:#586681; }
-    @media (max-width:1200px){ .sox-lower-grid{grid-template-columns:1fr}.sox-selected-card{position:static}.sox-summary-grid{grid-template-columns:repeat(3,1fr)} .sox-main-grid{grid-template-columns:1fr} .sox-order-summary{display:grid;grid-template-columns:repeat(2,1fr);gap:0 1rem}.sox-summary-note{grid-column:1/-1} }
+    @media (max-width:1400px){ .sox-summary-grid{grid-template-columns:repeat(4,1fr)} }
+    @media (max-width:1200px){ .sox-lower-grid{grid-template-columns:1fr}.sox-selected-card{position:static}.sox-main-grid{grid-template-columns:1fr} .sox-order-summary{display:grid;grid-template-columns:repeat(2,1fr);gap:0 1rem}.sox-summary-note{grid-column:1/-1} }
+    @media (max-width:992px){ .sox-summary-grid{grid-template-columns:repeat(3,1fr)} }
     @media (max-width:768px){ .sox-header{flex-direction:column}.sox-actions{justify-content:flex-start}.sox-summary-grid{grid-template-columns:1fr 1fr}.sox-search{max-width:none;width:100%}.sox-toolbar{width:100%;flex-wrap:wrap}.sox-card-head{align-items:flex-start;flex-direction:column}.sox-overview-grid,.sox-cost-grid{grid-template-columns:1fr}.sox-title{font-size:1.4rem} }
+    @media (max-width:480px){ .sox-summary-grid{grid-template-columns:1fr} }
 </style>
 
 <div class="sox-shell" id="modernSaleOrderUi">
@@ -307,9 +327,35 @@
             <div class="sox-kpi-icon"><i class="bi bi-currency-exchange"></i></div>
             <div><div class="sox-kpi-label">Currency / Exchange Rate</div><div class="sox-kpi-value">{{ $soxCurrencyCode }}</div><div class="sox-kpi-sub">1 USD = {{ number_format($soxExchangeRate, 4) }} AFN</div></div>
         </div>
-        <div class="sox-kpi success">
+        <div class="sox-kpi">
             <div class="sox-kpi-icon"><i class="bi bi-box-seam"></i></div>
-            <div><div class="sox-kpi-label">Total Items</div><div class="sox-kpi-value">{{ $sale->items->count() }} Products</div></div>
+            <div>
+                <div class="sox-kpi-label">Products</div>
+                <div class="sox-kpi-value">{{ $soxProductCount }} {{ \Illuminate\Support\Str::plural('Product', $soxProductCount) }}</div>
+                <div class="sox-kpi-sub">Sale lines</div>
+            </div>
+        </div>
+        <div class="sox-kpi">
+            <div class="sox-kpi-icon" style="background:#fff7ed;color:#ea580c"><i class="bi bi-clipboard-check"></i></div>
+            <div>
+                <div class="sox-kpi-label">Ordered Qty</div>
+                <div class="sox-kpi-value">{{ number_format($soxOrderedQty, 2) }} {{ $soxQuantityUnit }}</div>
+                <div class="sox-kpi-sub">Original customer quantity</div>
+            </div>
+        </div>
+        <div class="sox-kpi success">
+            <div class="sox-kpi-icon"><i class="bi bi-check2-circle"></i></div>
+            <div>
+                <div class="sox-kpi-label">Invoice Qty</div>
+                <div class="sox-kpi-value">{{ number_format($soxInvoiceQty, 2) }} {{ $soxQuantityUnit }}</div>
+                <div class="sox-kpi-sub">
+                    @if(abs($soxQuantityVariance) > 0.000001)
+                        {{ $soxQuantityVariance > 0 ? '+' : '' }}{{ number_format($soxQuantityVariance, 2) }} vs ordered
+                    @else
+                        Matches ordered quantity
+                    @endif
+                </div>
+            </div>
         </div>
         <div class="sox-kpi success">
             <div class="sox-kpi-icon"><i class="bi bi-cash-stack"></i></div>
@@ -461,7 +507,9 @@
                     <div class="sox-detail-grid">
                         <div class="k">Currency</div><div class="v">{{ $soxCurrencyCode }}</div>
                         <div class="k">Exchange Rate</div><div class="v">1 USD = {{ number_format($soxExchangeRate, 4) }} AFN</div>
-                        <div class="k">Total Items</div><div class="v">{{ $sale->items->count() }} Products</div>
+                        <div class="k">Products</div><div class="v">{{ $soxProductCount }} {{ \Illuminate\Support\Str::plural('Product', $soxProductCount) }}</div>
+                        <div class="k">Ordered Qty</div><div class="v">{{ number_format($soxOrderedQty, 2) }} {{ $soxQuantityUnit }}</div>
+                        <div class="k">Invoice Qty</div><div class="v">{{ number_format($soxInvoiceQty, 2) }} {{ $soxQuantityUnit }}</div>
                         <div class="k">Created By</div><div class="v">{{ $sale->createdBy->name ?? auth()->user()?->name ?? 'Admin' }}</div>
                         <div class="k">Last Updated</div><div class="v">{{ $sale->updated_at?->format('M d, Y H:i') ?? '-' }}</div>
                         <div class="k">Shipping</div><div class="v">{{ $sale->shipping_address ?: '—' }}</div>
