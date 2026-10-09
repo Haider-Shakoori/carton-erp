@@ -155,7 +155,7 @@ it('refuses to activate unverified BOMs through the legacy toggle endpoint', fun
     $this->actingAs($user)
         ->withoutMiddleware(\App\Http\Middleware\CheckPermissionWithFeedback::class)
         ->from('/admin/bom')
-        ->post(route('bom.toggleStatus', $revision))
+        ->post(route('bom.toggle-status', $revision))
         ->assertRedirect()
         ->assertSessionHas('error');
 
