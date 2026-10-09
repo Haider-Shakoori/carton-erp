@@ -198,6 +198,12 @@
             </div>
         </div>
 
+        <div class="alert alert-info" role="note">
+            <strong>Financial status:</strong> This distribution credits shareholder sub-ledger balances.
+            A non-cash allocation is <strong>not</strong> a settled payment. Actual cash or bank
+            withdrawals must be recorded and approved separately in Shareholder Withdrawals.
+        </div>
+
         <!-- Statistics -->
         <div class="row g-3 mb-4">
             <div class="col-md-3">
