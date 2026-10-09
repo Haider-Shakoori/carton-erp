@@ -26,3 +26,7 @@ Current production start/completion already uses \`ProductionQuantityService\`, 
 Do not scale BOMs by finished weight without verifying GSM, layer counts, flute take-up, glue/ink, scrap, and approved wastage.
 
 Import never adjusts stock, reopens orders, backfills roll purchases, or modifies/prices/approves BOMs. After import, review discrepancies between measured carton weight and BOM theoretical materials before approving BOM amendments.
+
+## Weight audit
+
+Open **Products & Materials → Weight / BOM audit** to compare each product's gross measured grams with material-by-material calculated **paper-only** grams in the selected business-unit BOM. Draft, incomplete, or missing BOMs are visibly flagged. An indicative difference may represent glue, ink, moisture, flute take-up or scrap; it is not an automatic stock adjustment.
