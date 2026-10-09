@@ -995,6 +995,12 @@ class BOMController extends Controller
                 'selling_price_afn' => $bom->selling_price_afn,
             ]);
 
+            // An editor cannot publish an unverified recipe by setting the
+            // status/is_active fields on the legacy create/update forms.
+            if ($bom->status === 'active' || $bom->is_active) {
+                app(\App\Services\BOMGovernanceService::class)->assertPublishable($bom);
+            }
+
             DB::commit();
             Log::info("BOM Store - Transaction Committed Successfully", [
                 'bom_id' => $bom->id,
@@ -1550,6 +1556,12 @@ class BOMController extends Controller
 
             $bom = app(\App\Services\BOMCostingService::class)
                 ->refreshBomMaterialCosts($bom);
+
+            // An editor cannot publish an unverified recipe by setting the
+            // status/is_active fields on the legacy create/update forms.
+            if ($bom->status === 'active' || $bom->is_active) {
+                app(\App\Services\BOMGovernanceService::class)->assertPublishable($bom);
+            }
 
             DB::commit();
 
