@@ -146,3 +146,20 @@ it('does not promote review-required placeholders with fictitious recipes', func
     expect($revision->fresh()->status)->toBe('draft')
         ->and($source->fresh()->status)->toBe('active');
 });
+
+it('refuses to activate unverified BOMs through the legacy toggle endpoint', function () {
+    [$user, $source] = enterpriseBomFixture();
+    $revision = app(BOMGovernanceService::class)->createRevision($source, $user);
+    $revision->update(['description' => '[REVIEW REQUIRED] client data incomplete']);
+
+    $this->actingAs($user)
+        ->withoutMiddleware(\App\Http\Middleware\CheckPermissionWithFeedback::class)
+        ->from('/admin/bom')
+        ->post(route('bom.toggleStatus', $revision))
+        ->assertRedirect()
+        ->assertSessionHas('error');
+
+    expect($revision->fresh()->status)->toBe('draft')
+        ->and($revision->fresh()->is_active)->toBeFalse()
+        ->and($source->fresh()->status)->toBe('active');
+});
