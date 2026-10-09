@@ -106,6 +106,21 @@ class BOMGovernanceService
                 throw new RuntimeException('A BOM revision cannot be approved without material lines.');
             }
 
+            // Client-imported templates may contain ten placeholder lines with
+            // zero consumption. Their existence is NOT a validated recipe.
+            // Never allow an unverified placeholder to become a live production BOM.
+            if (str_starts_with(trim((string) $revision->description), '[REVIEW REQUIRED]')) {
+                throw new RuntimeException(
+                    'This BOM is marked REVIEW REQUIRED. Verify carton dimensions, ply and material quantities before approval and remove the review flag.'
+                );
+            }
+
+            if (! $revision->items()->where('quantity', '>', 0)->exists()) {
+                throw new RuntimeException(
+                    'Cannot approve a zero-consumption BOM. Enter at least one verified positive raw-material quantity.'
+                );
+            }
+
             $effective = $effectiveFrom instanceof Carbon
                 ? $effectiveFrom->copy()->startOfDay()
                 : Carbon::parse($effectiveFrom ?: now())->startOfDay();
