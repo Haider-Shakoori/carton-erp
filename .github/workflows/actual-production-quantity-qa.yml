@@ -86,9 +86,6 @@ jobs:
           npm ci
           npm run build
 
-      - name: Frontend security audit
-        run: npm audit --audit-level=high
-
       - name: Prepare application
         run: |
           cp .env.example .env
@@ -210,3 +207,6 @@ jobs:
 
       - name: Composer security audit
         run: composer audit --no-interaction
+
+      - name: Frontend security audit
+        run: npm audit --audit-level=high
