@@ -45,6 +45,52 @@ class FinishedGoodsCsvController extends Controller
         return view('admin.products.weight-audit', compact('finishedProducts', 'auditor'));
     }
 
+    /**
+     * Export stable product IDs so existing customer cartons can be weighed
+     * and re-imported without creating duplicate records.
+     */
+    public function export(): StreamedResponse
+    {
+        return response()->streamDownload(function (): void {
+            $output = fopen('php://output', 'w');
+            fputcsv($output, self::HEADERS);
+
+            Product::query()->finishedGoods()->with(['category', 'finishedGoodSpecifications'])
+                ->chunkById(200, function ($products) use ($output): void {
+                    foreach ($products as $product) {
+                        $spec = $product->finishedGoodSpecifications
+                            ->firstWhere('source_key', 'finished-good-csv:' . $product->id)
+                            ?? $product->finishedGoodSpecifications->first();
+
+                        fputcsv($output, [
+                            $product->id,
+                            $product->sku ?: '',
+                            $product->name,
+                            $product->category?->name ?? '',
+                            $product->unit ?? 'pcs',
+                            $product->finished_weight_g ?? '',
+                            $spec?->length ?? '',
+                            $spec?->width ?? '',
+                            $spec?->height ?? '',
+                            $spec?->ply ?? '',
+                            $spec?->flute_type ?? '',
+                            $spec?->color_count ?? '',
+                            $spec?->printing_type ?? '',
+                            $spec?->finish_type ?? '',
+                            $spec?->print_spec ?? '',
+                            $spec?->reel_cut ?? '',
+                            $spec?->pieces_per_carton ?? '',
+                            $spec?->pack_description ?? '',
+                            $product->description ?? '',
+                            (int) $product->is_active,
+                        ]);
+                    }
+                });
+
+            fclose($output);
+        }, 'existing-finished-goods.csv', ['Content-Type' => 'text/csv; charset=UTF-8']);
+    }
+
     public function template(): StreamedResponse
     {
         return response()->streamDownload(function (): void {
