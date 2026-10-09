@@ -1632,8 +1632,11 @@ class BOMController extends Controller
     public function toggleStatus(BOM $bom)
     {
         try {
-            if ($bom->status === 'draft' && $bom->items()->count() === 0) {
-                return back()->with('error', 'Cannot activate BOM with no items.');
+            if ($bom->status !== 'active') {
+                // The legacy toggle endpoint must respect the same release
+                // gate as governed BOM approvals. Existing client placeholders
+                // are always drafts with zero quantities and cannot be used.
+                app(\App\Services\BOMGovernanceService::class)->assertPublishable($bom);
             }
 
             $bom->update([
