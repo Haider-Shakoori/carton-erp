@@ -122,3 +122,27 @@ it('approves and locks the new revision while archiving historical BOM state', f
     expect($response->getTargetUrl())->toContain('/bom/'.$approved->id)
         ->and(session('error'))->toContain('locked');
 });
+
+it('does not approve zero-consumption BOMs and keeps prior approved BOM active', function () {
+    [$user, $source] = enterpriseBomFixture();
+    $revision = app(BOMGovernanceService::class)->createRevision($source, $user);
+    $revision->items()->update(['quantity' => 0]);
+
+    expect(fn () => app(BOMGovernanceService::class)->approveRevision($revision, $user))
+        ->toThrow(RuntimeException::class, 'zero-consumption');
+
+    expect($revision->fresh()->status)->toBe('draft')
+        ->and($source->fresh()->status)->toBe('active');
+});
+
+it('does not promote review-required placeholders with fictitious recipes', function () {
+    [$user, $source] = enterpriseBomFixture();
+    $revision = app(BOMGovernanceService::class)->createRevision($source, $user);
+    $revision->update(['description' => '[REVIEW REQUIRED] 7-ply recipe not verified']);
+
+    expect(fn () => app(BOMGovernanceService::class)->approveRevision($revision, $user))
+        ->toThrow(RuntimeException::class, 'REVIEW REQUIRED');
+
+    expect($revision->fresh()->status)->toBe('draft')
+        ->and($source->fresh()->status)->toBe('active');
+});
