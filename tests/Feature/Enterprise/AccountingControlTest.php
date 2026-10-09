@@ -72,6 +72,9 @@ it('posts balanced idempotent double entry journals and financial statements', f
         ->and(round($pnl['expenses_usd'], 2))->toBe(30.0)
         ->and(round($pnl['net_profit_usd'], 2))->toBe(70.0)
         ->and(round($balance['assets_usd'], 2))->toBe(70.0)
+        ->and(round($balance['retained_earnings_usd'], 2))->toBe(70.0)
+        ->and(round($balance['total_equity_usd'], 2))->toBe(70.0)
+        ->and(round($balance['balance_difference_usd'], 2))->toBe(0.0)
         ->and(round($cashFlow['cash_in_usd'], 2))->toBe(100.0)
         ->and(round($cashFlow['cash_out_usd'], 2))->toBe(30.0)
         ->and(round($cashFlow['net_cash_flow_usd'], 2))->toBe(70.0);
