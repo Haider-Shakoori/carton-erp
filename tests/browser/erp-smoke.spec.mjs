@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
 const browserPassword = process.env.BROWSER_SMOKE_PASSWORD;
@@ -156,6 +156,30 @@ test('real browser CSV export, upload, and repeatable import update finished-goo
   await evidence(page, 'finished-goods-csv-import-confirmation');
   await openAdminPage(page, '/admin/products/finished-goods/weight-audit');
   await expect(page.locator('table')).toContainText('Review result');
+  await expect(page.getByRole('link', { name: /review-required BOM worksheet/i })).toBeVisible();
+  const reviewExport = await page.request.get('/admin/products/finished-goods/bom-review-sheet');
+  expect(reviewExport.status()).toBe(200);
+  const reviewBody = await reviewExport.text();
+  expect(reviewBody).toContain('verified_paper_kg_per_carton');
+  const reviewRows = csvParse(reviewBody);
+  expect(reviewRows.length, 'Client seed should expose BOMs needing factory measurements').toBeGreaterThan(1);
+  writeFileSync(path.join('test-results', 'bom-review-required-worksheet.csv'), reviewBody);
+});
+
+test('real purchasing and production entry forms render and remain behind authentication', async ({ page }) => {
+  await login(page);
+  for (const [url, name] of [
+    ['/admin/purchase-orders/create', 'purchase-order-create'],
+    ['/admin/production-orders', 'production-orders'],
+    ['/admin/production-orders/create', 'production-order-create'],
+    ['/admin/sales/create', 'sale-order-create'],
+    ['/admin/bom/create', 'bom-create'],
+  ]) {
+    await test.step('View ' + url, async () => {
+      await openAdminPage(page, url);
+      await evidence(page, name);
+    });
+  }
 });
 
 test('mobile Chromium can authenticate and open the goods catalog', async ({ page }) => {
