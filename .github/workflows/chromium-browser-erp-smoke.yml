@@ -1,0 +1,118 @@
+name: Chromium Browser ERP Smoke
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'app/**'
+      - 'database/**'
+      - 'resources/**'
+      - 'routes/**'
+      - 'tests/browser/**'
+      - 'playwright.config.mjs'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/chromium-browser-erp-smoke.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  browser-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      APP_ENV: testing
+      APP_DEBUG: "true"
+      APP_URL: http://127.0.0.1:8000
+      DB_CONNECTION: mysql
+      DB_HOST: 127.0.0.1
+      DB_PORT: 3306
+      DB_DATABASE: carton_browser_ci
+      DB_USERNAME: laravel
+      DB_PASSWORD: laravel
+      CACHE_STORE: array
+      SESSION_DRIVER: database
+      QUEUE_CONNECTION: sync
+      MAIL_MAILER: array
+      COMPOSER_NO_AUDIT: "1"
+      PLAYWRIGHT_BASE_URL: http://127.0.0.1:8000
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_DATABASE: carton_browser_ci
+          MYSQL_USER: laravel
+          MYSQL_PASSWORD: laravel
+          MYSQL_ROOT_PASSWORD: root
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, dom, fileinfo, mysql, pdo_mysql, bcmath, intl, curl
+          coverage: none
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install locked dependencies
+        run: |
+          composer install --no-interaction --prefer-dist --no-progress
+          npm ci --no-fund
+          npm run build
+      - name: Audit backend and frontend dependency security
+        run: |
+          composer audit --no-interaction
+          npm audit --audit-level=high
+      - name: Install real Chromium for Playwright
+        run: npx playwright install --with-deps chromium
+      - name: Seed isolated ERP with a random CI-only administrator password
+        shell: bash
+        run: |
+          set -e
+          cp .env.example .env
+          TEST_PASSWORD="$(openssl rand -hex 26)"
+          export INITIAL_ADMIN_PASSWORD="$TEST_PASSWORD"
+          export BROWSER_SMOKE_PASSWORD="$TEST_PASSWORD"
+          echo "INITIAL_ADMIN_PASSWORD=$TEST_PASSWORD" >> "$GITHUB_ENV"
+          echo "BROWSER_SMOKE_PASSWORD=$TEST_PASSWORD" >> "$GITHUB_ENV"
+          php artisan key:generate --force
+          mysql -h127.0.0.1 -uroot -proot -e "SET GLOBAL log_bin_trust_function_creators = 1;"
+          php artisan migrate:fresh --seed --force
+          php artisan view:cache
+      - name: Start ERP web server and verify HTTP response
+        shell: bash
+        run: |
+          nohup php artisan serve --host=127.0.0.1 --port=8000 > storage/logs/playwright-server.log 2>&1 &
+          for i in $(seq 1 35); do
+            if curl --fail --silent --output /dev/null http://127.0.0.1:8000/login; then
+              echo "ERP browser-test server responding"
+              exit 0
+            fi
+            sleep 2
+          done
+          tail -n 120 storage/logs/playwright-server.log
+          exit 1
+      - name: End-to-end Chromium smoke, financial screens, CSV and mobile viewport
+        run: npx playwright test
+      - name: Upload screenshots, traces, videos, JUnit and browser-server logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: chromium-erp-smoke-report
+          path: |
+            test-results/
+            playwright-report/
+            storage/logs/playwright-server.log
+            storage/logs/laravel.log
+          retention-days: 14
+          if-no-files-found: ignore
