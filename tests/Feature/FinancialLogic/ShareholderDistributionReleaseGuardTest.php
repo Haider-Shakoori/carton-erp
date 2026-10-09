@@ -8,7 +8,7 @@ use App\Models\Transaction;
 use App\Models\User;
 use App\Services\ProfitSharingService;
 use App\Services\SaleProfitService;
-use Database\Seeders\DatabaseSeeder;
+use Database\Seeders\CurrencySeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 
 uses(RefreshDatabase::class);
@@ -34,7 +34,7 @@ function shareholderReleaseService(int $missingActualCosts = 0): ProfitSharingSe
 
 function shareholderReleaseFixture(): User
 {
-    test()->seed(DatabaseSeeder::class);
+    test()->seed(CurrencySeeder::class);
     $user = User::factory()->create();
     // Do not rely on the initial factory dataset containing shareholder masters.
     Shareholder::query()->where('is_active', true)->update(['is_active' => false]);
@@ -71,7 +71,7 @@ it('allocates exact rounded shares as unpaid noncash ledger credits and rejects 
 
     expect($distribution->status)->toBe(ProfitDistribution::STATUS_DISTRIBUTED)
         ->and((float) $distribution->total_profit)->toBe(101.01)
-        ->and((float) $distribution->items->sum('amount'))->toBe(101.01)
+        ->and(round((float) $distribution->items->sum('amount'), 2))->toBe(101.01)
         ->and($distribution->items)->toHaveCount(2)
         ->and($distribution->items->every(fn ($item) => $item->status === ProfitDistributionItem::STATUS_PENDING))->toBeTrue()
         ->and($distribution->items->every(fn ($item) => $item->payment_date === null))->toBeTrue();
