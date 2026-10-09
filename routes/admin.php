@@ -313,6 +313,8 @@ Route::middleware(['auth', InitializeBusinessUnitContext::class])->prefix('admin
     Route::prefix('products')->name('admin.products.')->group(function () {
         Route::get('/finished-goods/import', [\App\Http\Controllers\Admin\FinishedGoodsCsvController::class, 'index'])
             ->name('import.index')->middleware('permission.feedback:view products');
+        Route::get('/finished-goods/bom-review-sheet', [\App\Http\Controllers\Admin\FinishedGoodsCsvController::class, 'exportBomReviewSheet'])
+            ->name('bom-review-sheet')->middleware('permission.feedback:view products');
         Route::get('/finished-goods/weight-audit', [\App\Http\Controllers\Admin\FinishedGoodsCsvController::class, 'weightAudit'])
             ->name('weight-audit')->middleware('permission.feedback:view products');
         Route::get('/finished-goods/export', [\App\Http\Controllers\Admin\FinishedGoodsCsvController::class, 'export'])
