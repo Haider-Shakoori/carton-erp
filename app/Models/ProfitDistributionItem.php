@@ -109,8 +109,9 @@ class ProfitDistributionItem extends Model
 
         $this->update([
             'transaction_id' => $transaction->id,
-            'status' => self::STATUS_PAID,
-            'payment_date' => now(),
+            // A sub-ledger allocation is not a paid cash withdrawal.
+            'status' => self::STATUS_PENDING,
+            'payment_date' => null,
         ]);
 
         return $transaction;
