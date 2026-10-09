@@ -182,9 +182,26 @@ test('real purchasing and production entry forms render and remain behind authen
   }
 });
 
-test('mobile Chromium can authenticate and open the goods catalog', async ({ page }) => {
+test('mobile Chromium uses a real 390px responsive viewport, with an off-canvas navigation drawer', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await login(page);
   await openAdminPage(page, '/admin/products');
+
+  await expect(page.locator('#sidebar')).not.toBeInViewport();
+  const overflow = await page.evaluate(() => ({
+    viewport: window.innerWidth,
+    documentWidth: document.documentElement.scrollWidth,
+    bodyWidth: document.body.scrollWidth,
+  }));
+  expect(overflow.documentWidth, 'Document must not expand past a 390px mobile viewport').toBeLessThanOrEqual(overflow.viewport + 3);
+  expect(overflow.bodyWidth, 'Body must not overflow the mobile viewport').toBeLessThanOrEqual(overflow.viewport + 3);
   await evidence(page, 'mobile-products-catalog');
+
+  await page.locator('#sidebarToggle').click();
+  await expect(page.locator('#sidebar')).toBeInViewport();
+  await expect(page.locator('#sidebarOverlay')).toBeVisible();
+  await evidence(page, 'mobile-navigation-open');
+
+  await page.locator('#sidebarOverlay').click({ position: { x: 380, y: 390 } });
+  await expect(page.locator('#sidebar')).not.toBeInViewport();
 });
