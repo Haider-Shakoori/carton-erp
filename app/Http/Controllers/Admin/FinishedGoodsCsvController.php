@@ -163,7 +163,7 @@ class FinishedGoodsCsvController extends Controller
                     'name' => ['required', 'string', 'max:255'],
                     'category' => ['required', 'string', 'max:255'],
                     'unit' => ['nullable', 'string', 'max:100'],
-                    'weight_g' => ['required', 'numeric', 'min:0.01', 'max:9999999999'],
+                    'weight_g' => ['required', 'numeric', 'min:0.01', 'max:99999999.99'],
                     'length_mm' => ['nullable', 'numeric', 'gt:0', 'max:99999999'],
                     'width_mm' => ['nullable', 'numeric', 'gt:0', 'max:99999999'],
                     'height_mm' => ['nullable', 'numeric', 'gt:0', 'max:99999999'],
@@ -217,6 +217,13 @@ class FinishedGoodsCsvController extends Controller
 
                 if (! empty($row['product_id']) && ! $product) {
                     throw ValidationException::withMessages(['csv' => "Row {$line}: product_id not found."]);
+                }
+                // Product IDs are not permission to rename an unrelated legacy carton.
+                // A stable SKU explicitly identifies a rename-capable record.
+                if ($product && $sku === '' && $product->name !== $row['name']) {
+                    throw ValidationException::withMessages([
+                        'csv' => "Row {$line}: product_id/name mismatch. Use the exported name or provide a verified SKU.",
+                    ]);
                 }
                 if ($product && $product->type !== Product::TYPE_FINISHED_GOOD) {
                     throw ValidationException::withMessages(['csv' => "Row {$line}: item is not a finished good."]);
