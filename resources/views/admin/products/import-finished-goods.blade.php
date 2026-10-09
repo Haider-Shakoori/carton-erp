@@ -28,6 +28,9 @@
             <a href="{{ route('admin.products.import.template') }}" class="btn btn-outline-primary mb-4">
                 <i class="bi bi-download me-1"></i> Download CSV template
             </a>
+            <a href="{{ route('admin.products.import.export') }}" class="btn btn-outline-secondary mb-4 ms-2">
+                <i class="bi bi-file-earmark-spreadsheet me-1"></i> Export existing finished goods with IDs
+            </a>
             <p><strong>Step 2:</strong> Keep categories identical to those already created in the catalog.
                 Dimensions use millimetres; carton weights use grams. The importer accepts 5,000 rows per file
                 and rejects invalid files without saving partial changes.</p>
