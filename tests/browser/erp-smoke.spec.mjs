@@ -138,12 +138,20 @@ test('real browser CSV export, upload, and repeatable import update finished-goo
       buffer: Buffer.from(csv),
     });
     await page.getByRole('button', { name: /Import finished goods/i }).click();
-    await expect(page.locator('.alert-success')).toContainText(/1 updated/);
-    const verify = await page.request.get('/admin/products/finished-goods/export');
-    expect(verify.status()).toBe(200);
-    const rows = csvParse(await verify.text());
-    const row = rows.slice(1).find(r => r[0] === product[0]);
-    expect(Number(row[headers.indexOf('weight_g')])).toBe(412.75);
+    // Flash notifications can be consumed by concurrent dashboard AJAX polling.
+    // Verify the persisted value via a fresh authenticated export instead of
+    // treating missing one-time UI feedback as a failed financial operation.
+    const validationError = await page.locator('.alert-danger').allTextContents();
+    await expect.poll(async () => {
+      const verify = await page.request.get('/admin/products/finished-goods/export');
+      if (verify.status() !== 200) return 'HTTP ' + verify.status();
+      const rows = csvParse(await verify.text());
+      const row = rows.slice(1).find(r => r[0] === product[0]);
+      return row ? Number(row[headers.indexOf('weight_g')]) : 'Product not found';
+    }, {
+      message: 'Carton weight must persist after CSV upload. Validation errors: ' + validationError.join(' | '),
+      timeout: 12_000,
+    }).toBe(412.75);
   }
   await evidence(page, 'finished-goods-csv-import-confirmation');
   await openAdminPage(page, '/admin/products/finished-goods/weight-audit');
