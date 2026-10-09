@@ -87,6 +87,29 @@ class BOMGovernanceService
         });
     }
 
+    /**
+     * Shared publication gate for both governed approvals and the legacy
+     * activate/deactivate action. Reject zero-quantity client placeholders.
+     */
+    public function assertPublishable(BOM $bom): void
+    {
+        if (str_starts_with(trim((string) $bom->description), '[REVIEW REQUIRED]')) {
+            throw new RuntimeException(
+                'This BOM is marked REVIEW REQUIRED. Verify dimensions, ply and material quantities and remove the review flag before activation.'
+            );
+        }
+
+        if ($bom->items()->count() === 0) {
+            throw new RuntimeException('A BOM revision cannot be approved without material lines.');
+        }
+
+        if (! $bom->items()->where('quantity', '>', 0)->exists()) {
+            throw new RuntimeException(
+                'Cannot approve a zero-consumption BOM. Enter at least one verified positive raw-material quantity.'
+            );
+        }
+    }
+
     public function approveRevision(
         BOM $revision,
         User $user,
@@ -102,24 +125,7 @@ class BOMGovernanceService
                 throw new RuntimeException('Only draft BOM revisions can be approved.');
             }
 
-            if ($revision->items()->count() === 0) {
-                throw new RuntimeException('A BOM revision cannot be approved without material lines.');
-            }
-
-            // Client-imported templates may contain ten placeholder lines with
-            // zero consumption. Their existence is NOT a validated recipe.
-            // Never allow an unverified placeholder to become a live production BOM.
-            if (str_starts_with(trim((string) $revision->description), '[REVIEW REQUIRED]')) {
-                throw new RuntimeException(
-                    'This BOM is marked REVIEW REQUIRED. Verify carton dimensions, ply and material quantities before approval and remove the review flag.'
-                );
-            }
-
-            if (! $revision->items()->where('quantity', '>', 0)->exists()) {
-                throw new RuntimeException(
-                    'Cannot approve a zero-consumption BOM. Enter at least one verified positive raw-material quantity.'
-                );
-            }
+            $this->assertPublishable($revision);
 
             $effective = $effectiveFrom instanceof Carbon
                 ? $effectiveFrom->copy()->startOfDay()
