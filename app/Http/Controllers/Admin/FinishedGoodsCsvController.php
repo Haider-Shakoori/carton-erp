@@ -4,6 +4,8 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Category;
+use App\Models\BOM;
+use App\Services\FinishedGoodWeightAuditService;
 use App\Models\FinishedGoodSpecification;
 use App\Models\Product;
 use Illuminate\Http\RedirectResponse;
@@ -26,6 +28,21 @@ class FinishedGoodsCsvController extends Controller
     public function index()
     {
         return view('admin.products.import-finished-goods');
+    }
+
+    public function weightAudit(FinishedGoodWeightAuditService $auditor)
+    {
+        $finishedProducts = Product::query()
+            ->finishedGoods()
+            ->with(['boms' => function ($query) {
+                $query->with('items.material')
+                    ->orderByRaw("CASE WHEN status = 'active' THEN 0 ELSE 1 END")
+                    ->latest('id');
+            }])
+            ->orderBy('name')
+            ->paginate(50);
+
+        return view('admin.products.weight-audit', compact('finishedProducts', 'auditor'));
     }
 
     public function template(): StreamedResponse
@@ -163,7 +180,7 @@ class FinishedGoodsCsvController extends Controller
                     throw ValidationException::withMessages(['csv' => "Row {$line}: SKU does not match existing product."]);
                 }
                 if ($sku !== '' && Product::query()->where('sku', $sku)
-                    ->when($product, fn ($query) => $query->whereKeyNot($product->id))->exists()) {
+                    ->when($product, fn ($query) => $query->where('id', '!=', $product->id))->exists()) {
                     throw ValidationException::withMessages(['csv' => "Row {$line}: SKU is assigned to another product."]);
                 }
 
