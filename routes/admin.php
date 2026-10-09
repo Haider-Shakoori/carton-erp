@@ -311,6 +311,12 @@ Route::middleware(['auth', InitializeBusinessUnitContext::class])->prefix('admin
 
     // ==================== PRODUCT ROUTES ====================
     Route::prefix('products')->name('admin.products.')->group(function () {
+        Route::get('/finished-goods/import', [\App\Http\Controllers\Admin\FinishedGoodsCsvController::class, 'index'])
+            ->name('import.index')->middleware('permission.feedback:view products');
+        Route::get('/finished-goods/template', [\App\Http\Controllers\Admin\FinishedGoodsCsvController::class, 'template'])
+            ->name('import.template')->middleware('permission.feedback:view products');
+        Route::post('/finished-goods/import', [\App\Http\Controllers\Admin\FinishedGoodsCsvController::class, 'store'])
+            ->name('import.store')->middleware(['permission.feedback:create products', 'permission.feedback:update products']);
         Route::get('/', [ProductController::class, 'index'])->name('index')->middleware('permission.feedback:view products');
         Route::post('/', [ProductController::class, 'store'])->name('store')->middleware('permission.feedback:create products');
         Route::put('/{product}', [ProductController::class, 'update'])->name('update')->middleware('permission.feedback:update products');
