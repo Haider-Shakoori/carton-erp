@@ -986,6 +986,9 @@
                 </div>
 
                 <div class="catalog-hero-actions">
+                    <a class="btn btn-outline-primary" href="{{ route('admin.products.import.index') }}">
+                        <i class="bi bi-filetype-csv me-1"></i> Import finished goods CSV
+                    </a>
                     <div class="dropdown">
                         <button class="btn btn-primary dropdown-toggle catalog-create-btn"
                                 type="button"
@@ -1101,7 +1104,7 @@
                                 data-bs-target="#finished-goods-tab"
                                 data-table="#finished-goods-table"
                                 data-category-column="3"
-                                data-status-column="5"
+                                data-status-column="6"
                                 type="button">
                             <i class="bi bi-box2-check"></i>
                             Finished Goods
@@ -1305,6 +1308,7 @@
                                     <th>{{ __('ui.product_name') }}</th>
                                     <th>{{ __('ui.category') }}</th>
                                     <th>{{ __('ui.unit') }}</th>
+                                    <th>Weight (g)</th>
                                     <th style="width: 110px;">{{ __('ui.status') }}</th>
                                     <th style="width: 100px;" class="text-end">{{ __('ui.actions') }}</th>
                                 </tr>
@@ -1357,6 +1361,9 @@
                                                 {{ $unit }}
                                             </span>
                                         </td>
+                                        <td class="text-nowrap">
+                                            {{ $product->finished_weight_g !== null ? number_format((float) $product->finished_weight_g, 2) . ' g' : 'Not recorded' }}
+                                        </td>
                                         <td>
                                             @if ($product->is_active)
                                                 <span class="catalog-status active">
@@ -1376,6 +1383,8 @@
                                                         data-name="{{ $product->name }}"
                                                         data-category_id="{{ $product->category_id }}"
                                                         data-unit="{{ $product->unit }}"
+                                                        data-sku="{{ $product->sku }}"
+                                                        data-finished_weight_g="{{ $product->finished_weight_g }}"
                                                         data-description="{{ $product->description }}"
                                                         data-is_active="{{ $product->is_active }}"
                                                         data-image="{{ $product->image }}"
@@ -1712,6 +1721,18 @@
                             </div>
 
                             <div class="col-md-6">
+                                <label class="form-label" for="fg_sku">SKU / Item code</label>
+                                <input class="form-control" type="text" name="sku" id="fg_sku"
+                                       maxlength="100" placeholder="Optional stable CSV identifier">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label" for="fg_weight_g">Measured carton weight (grams)</label>
+                                <input class="form-control" type="number" name="finished_weight_g" id="fg_weight_g"
+                                       min="0.01" step="0.01" placeholder="e.g. 245.00">
+                                <small class="text-muted">Gross finished weight; the BOM controls per-material consumption.</small>
+                            </div>
+
+                            <div class="col-md-6">
                                 <label class="form-label">{{ __('ui.product_image') }}</label>
                                 <div class="image-upload-wrapper">
                                     <input type="file" class="form-control form-control-sm" name="image"
@@ -1995,6 +2016,8 @@
             window.resetFinishedGoodsForm = function() {
                 $('#finishedGoodsForm')[0].reset();
                 $('#fg_product_id').val('');
+                $('#fg_sku').val('');
+                $('#fg_weight_g').val('');
                 $('#finishedGoodsModalTitle').text(@json(__('ui.add_finished_good')));
                 $('#fg_product_image_preview_wrapper').addClass('d-none');
                 $('#fg_current_image_container').addClass('d-none');
@@ -2059,6 +2082,8 @@
                 $('#fg_product_name').val($(this).data('name'));
                 $('#fg_product_category_id').val($(this).data('category_id')).trigger('change');
                 $('#fg_product_unit').val($(this).data('unit'));
+                $('#fg_sku').val($(this).attr('data-sku'));
+                $('#fg_weight_g').val($(this).attr('data-finished_weight_g'));
                 $('#fg_product_description').val($(this).data('description'));
                 $('#fg_product_is_active').prop('checked', $(this).data('is_active') == 1);
 
