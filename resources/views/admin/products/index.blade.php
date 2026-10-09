@@ -986,6 +986,9 @@
                 </div>
 
                 <div class="catalog-hero-actions">
+                    <a class="btn btn-outline-secondary" href="{{ route('admin.products.weight-audit') }}">
+                        <i class="bi bi-clipboard-data me-1"></i> Weight / BOM audit
+                    </a>
                     <a class="btn btn-outline-primary" href="{{ route('admin.products.import.index') }}">
                         <i class="bi bi-filetype-csv me-1"></i> Import finished goods CSV
                     </a>
