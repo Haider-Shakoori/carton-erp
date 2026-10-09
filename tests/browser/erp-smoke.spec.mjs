@@ -166,10 +166,17 @@ test('real browser CSV export, upload, and repeatable import update finished-goo
   writeFileSync(path.join('test-results', 'bom-review-required-worksheet.csv'), reviewBody);
 });
 
-test('real purchasing and production entry forms render and remain behind authentication', async ({ page }) => {
+test('real purchasing modal and production entry forms render and remain behind authentication', async ({ page }) => {
   await login(page);
+  // Purchase creation uses a Bootstrap modal on the index (the legacy
+  // /create route intentionally redirects to the index).
+  await openAdminPage(page, '/admin/purchase-orders');
+  await page.locator('[data-bs-target="#createPurchaseModal"]').click();
+  await expect(page.locator('#createPurchaseModal')).toBeVisible();
+  await expect(page.locator('#createPurchaseModal form')).toBeVisible();
+  await evidence(page, 'purchase-order-create-modal');
+  await page.locator('#createPurchaseModal [data-bs-dismiss="modal"]').first().click();
   for (const [url, name] of [
-    ['/admin/purchase-orders/create', 'purchase-order-create'],
     ['/admin/production-orders', 'production-orders'],
     ['/admin/production-orders/create', 'production-order-create'],
     ['/admin/sales/create', 'sale-order-create'],
