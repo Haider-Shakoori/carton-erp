@@ -46,6 +46,55 @@ class FinishedGoodsCsvController extends Controller
     }
 
     /**
+     * Safety-first factory review worksheet: export unapproved seed placeholders
+     * without updating any production BOM, FIFO stock, or historic customer data.
+     * Operators must obtain real dimensions/ply/layer use and approve a revision.
+     */
+    public function exportBomReviewSheet(): StreamedResponse
+    {
+        return response()->streamDownload(function (): void {
+            $out = fopen('php://output', 'w');
+            fputcsv($out, [
+                'product_id', 'sku', 'finished_good', 'source_row', 'source_length_mm',
+                'source_width_mm', 'source_height_mm', 'source_ply', 'measured_weight_g',
+                'bom_code', 'review_reason', 'verified_length_mm', 'verified_width_mm',
+                'verified_height_mm', 'verified_ply', 'verified_paper_kg_per_carton',
+                'verified_board_profile', 'verified_by', 'review_notes',
+            ]);
+
+            BOM::query()
+                ->where('description', 'like', '[REVIEW REQUIRED]%')
+                ->with(['product.finishedGoodSpecifications'])
+                ->orderBy('id')
+                ->chunkById(200, function ($boms) use ($out): void {
+                    foreach ($boms as $bom) {
+                        $product = $bom->product;
+                        $source = $product?->finishedGoodSpecifications
+                            ->first(fn ($spec) => $spec->source_row !== null)
+                            ?? $product?->finishedGoodSpecifications->first();
+
+                        fputcsv($out, [
+                            $product?->id ?? '',
+                            $product?->sku ?? '',
+                            $product?->name ?? '',
+                            $source?->source_row ?? '',
+                            $source?->length ?? '',
+                            $source?->width ?? '',
+                            $source?->height ?? '',
+                            $source?->ply ?? '',
+                            $product?->finished_weight_g ?? '',
+                            $bom->code,
+                            $bom->description,
+                            '', '', '', '', '', '', '', '',
+                        ]);
+                    }
+                });
+
+            fclose($out);
+        }, 'bom-review-required-worksheet.csv', ['Content-Type' => 'text/csv; charset=UTF-8']);
+    }
+
+    /**
      * Export stable product IDs so existing customer cartons can be weighed
      * and re-imported without creating duplicate records.
      */
