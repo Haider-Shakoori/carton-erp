@@ -133,8 +133,16 @@
 
                         <div class="alert alert-info">
                             <i class="bi bi-info-circle me-1"></i>
-                            Total distribution amount must equal the total profit.
+                            Allocations are non-cash shareholder ledger credits. Cash withdrawals require a separate approved transaction.
+                            Profit allocation is blocked while any confirmed sale has estimated rather than actual production costs.
                         </div>
+                        @if(($profitData['estimated_sales_count'] ?? 0) > 0)
+                            <div class="alert alert-warning" role="alert">
+                                <strong>Allocation blocked:</strong>
+                                {{ $profitData['estimated_sales_count'] }} confirmed sale(s) lack actual production costs.
+                                Complete the production cost records before distributing profits.
+                            </div>
+                        @endif
 
                         <div id="shareholderList">
                             @foreach($shareholders as $shareholder)
