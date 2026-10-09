@@ -9,7 +9,12 @@
             <h1 class="h3 mb-1">Carton weight / BOM audit</h1>
             <p class="text-muted mb-0">Measured gross carton weight vs theoretical BOM paper grams per finished carton.</p>
         </div>
-        <a class="btn btn-outline-secondary" href="{{ route('admin.products.index') }}">Back to catalog</a>
+        <div class="d-flex flex-wrap gap-2">
+            <a class="btn btn-outline-warning" href="{{ route('admin.products.bom-review-sheet') }}">
+                Download review-required BOM worksheet
+            </a>
+            <a class="btn btn-outline-secondary" href="{{ route('admin.products.index') }}">Back to catalog</a>
+        </div>
     </div>
     <div class="alert alert-info">
         Indicative only: glue, ink, moisture and rejects may explain a difference.
