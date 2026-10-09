@@ -81,6 +81,7 @@ jobs:
           set -e
           cp .env.example .env
           TEST_PASSWORD="$(openssl rand -hex 26)"
+          echo "::add-mask::$TEST_PASSWORD"
           export INITIAL_ADMIN_PASSWORD="$TEST_PASSWORD"
           export BROWSER_SMOKE_PASSWORD="$TEST_PASSWORD"
           echo "INITIAL_ADMIN_PASSWORD=$TEST_PASSWORD" >> "$GITHUB_ENV"
