@@ -315,6 +315,8 @@ Route::middleware(['auth', InitializeBusinessUnitContext::class])->prefix('admin
             ->name('import.index')->middleware('permission.feedback:view products');
         Route::get('/finished-goods/weight-audit', [\App\Http\Controllers\Admin\FinishedGoodsCsvController::class, 'weightAudit'])
             ->name('weight-audit')->middleware('permission.feedback:view products');
+        Route::get('/finished-goods/export', [\App\Http\Controllers\Admin\FinishedGoodsCsvController::class, 'export'])
+            ->name('import.export')->middleware('permission.feedback:view products');
         Route::get('/finished-goods/template', [\App\Http\Controllers\Admin\FinishedGoodsCsvController::class, 'template'])
             ->name('import.template')->middleware('permission.feedback:view products');
         Route::post('/finished-goods/import', [\App\Http\Controllers\Admin\FinishedGoodsCsvController::class, 'store'])
