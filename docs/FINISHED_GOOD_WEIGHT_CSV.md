@@ -5,6 +5,7 @@ Historical 171 client cartons are preserved and can be updated by importing thei
 For new cartons, set a unique SKU. Importing the same SKU a second time updates it rather than creating another record.
 
 Download the sample from **Products & Materials → Import finished goods → Download CSV template**.
+For the existing 171 goods, choose **Export existing finished goods with IDs**, fill the missing weight_g values, and re-import. The stable product IDs stop the import creating duplicates.
 The CSV headers are:
 
 \`\`\`csv
