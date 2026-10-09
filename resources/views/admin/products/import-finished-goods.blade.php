@@ -1,4 +1,4 @@
-@extends('layouts.app')
+@extends('layouts.admin.base')
 
 @section('title', 'Import Finished Goods CSV')
 
