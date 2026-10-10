@@ -18,6 +18,19 @@ class FinishedGoodWeightAuditService
         $measured = $product->finished_weight_g !== null
             ? (float) $product->finished_weight_g : null;
 
+        // Show the engineering BLOCK even when no scale weight has been
+        // imported. Otherwise all seed placeholders display merely
+        // "Missing weight" and the more serious unusable recipe is hidden.
+        if ($bom && str_starts_with(trim((string) $bom->description), '[REVIEW REQUIRED]')) {
+            return [
+                'measured_g' => $measured && $measured > 0 ? $measured : null,
+                'paper_g' => null,
+                'difference_g' => null,
+                'status' => 'BOM review required',
+                'materials' => [],
+            ];
+        }
+
         if ($measured === null || $measured <= 0) {
             return ['measured_g' => null, 'paper_g' => null, 'difference_g' => null,
                 'status' => 'Missing weight', 'materials' => []];
