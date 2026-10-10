@@ -1,0 +1,59 @@
+name: Refresh Security Lockfiles
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/refresh-security-lockfiles.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  remediation:
+    if: github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'feat/finished-good-weight-csv-import'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout actual PR branch for a controlled lockfile update
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          persist-credentials: true
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, dom, fileinfo, mysql, pdo_mysql, bcmath, intl, curl
+          coverage: none
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Update vulnerable Composer package within existing constraints
+        run: composer update league/commonmark --with-all-dependencies --no-interaction --no-progress
+      - name: Refresh npm lockfile and safe transitive updates
+        run: |
+          npm install --no-audit
+          npm audit fix --no-fund
+      - name: Verify production asset build
+        run: npm run build
+      - name: Verify both dependency security audits (fail closed)
+        run: |
+          composer audit --no-interaction
+          npm audit --audit-level=high
+      - name: Commit and push validated lockfiles to this PR only
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add composer.lock package-lock.json
+          if ! git diff --cached --quiet; then
+            git commit -m "fix(security): refresh PHP and JS dependency lockfiles"
+            git push origin HEAD:feat/finished-good-weight-csv-import
+          fi
+      - name: Capture dependency remediation evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependency-security-lockfile-evidence
+          path: |
+            composer.lock
+            package-lock.json
+          if-no-files-found: ignore

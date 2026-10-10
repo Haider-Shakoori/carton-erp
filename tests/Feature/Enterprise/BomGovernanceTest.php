@@ -122,3 +122,44 @@ it('approves and locks the new revision while archiving historical BOM state', f
     expect($response->getTargetUrl())->toContain('/bom/'.$approved->id)
         ->and(session('error'))->toContain('locked');
 });
+
+it('does not approve zero-consumption BOMs and keeps prior approved BOM active', function () {
+    [$user, $source] = enterpriseBomFixture();
+    $revision = app(BOMGovernanceService::class)->createRevision($source, $user);
+    $revision->items()->update(['quantity' => 0]);
+
+    expect(fn () => app(BOMGovernanceService::class)->approveRevision($revision, $user))
+        ->toThrow(RuntimeException::class, 'zero-consumption');
+
+    expect($revision->fresh()->status)->toBe('draft')
+        ->and($source->fresh()->status)->toBe('active');
+});
+
+it('does not promote review-required placeholders with fictitious recipes', function () {
+    [$user, $source] = enterpriseBomFixture();
+    $revision = app(BOMGovernanceService::class)->createRevision($source, $user);
+    $revision->update(['description' => '[REVIEW REQUIRED] 7-ply recipe not verified']);
+
+    expect(fn () => app(BOMGovernanceService::class)->approveRevision($revision, $user))
+        ->toThrow(RuntimeException::class, 'REVIEW REQUIRED');
+
+    expect($revision->fresh()->status)->toBe('draft')
+        ->and($source->fresh()->status)->toBe('active');
+});
+
+it('refuses to activate unverified BOMs through the legacy toggle endpoint', function () {
+    [$user, $source] = enterpriseBomFixture();
+    $revision = app(BOMGovernanceService::class)->createRevision($source, $user);
+    $revision->update(['description' => '[REVIEW REQUIRED] client data incomplete']);
+
+    $this->actingAs($user)
+        ->withoutMiddleware(\App\Http\Middleware\CheckPermissionWithFeedback::class)
+        ->from('/admin/bom')
+        ->post(route('bom.toggle-status', $revision))
+        ->assertRedirect()
+        ->assertSessionHas('error');
+
+    expect($revision->fresh()->status)->toBe('draft')
+        ->and($revision->fresh()->is_active)->toBeFalse()
+        ->and($source->fresh()->status)->toBe('active');
+});

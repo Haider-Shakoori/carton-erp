@@ -995,6 +995,12 @@ class BOMController extends Controller
                 'selling_price_afn' => $bom->selling_price_afn,
             ]);
 
+            // An editor cannot publish an unverified recipe by setting the
+            // status/is_active fields on the legacy create/update forms.
+            if ($bom->status === 'active' || $bom->is_active) {
+                app(\App\Services\BOMGovernanceService::class)->assertPublishable($bom);
+            }
+
             DB::commit();
             Log::info("BOM Store - Transaction Committed Successfully", [
                 'bom_id' => $bom->id,
@@ -1551,6 +1557,12 @@ class BOMController extends Controller
             $bom = app(\App\Services\BOMCostingService::class)
                 ->refreshBomMaterialCosts($bom);
 
+            // An editor cannot publish an unverified recipe by setting the
+            // status/is_active fields on the legacy create/update forms.
+            if ($bom->status === 'active' || $bom->is_active) {
+                app(\App\Services\BOMGovernanceService::class)->assertPublishable($bom);
+            }
+
             DB::commit();
 
             return redirect()->route('bom.index')
@@ -1632,8 +1644,11 @@ class BOMController extends Controller
     public function toggleStatus(BOM $bom)
     {
         try {
-            if ($bom->status === 'draft' && $bom->items()->count() === 0) {
-                return back()->with('error', 'Cannot activate BOM with no items.');
+            if ($bom->status !== 'active') {
+                // The legacy toggle endpoint must respect the same release
+                // gate as governed BOM approvals. Existing client placeholders
+                // are always drafts with zero quantities and cannot be used.
+                app(\App\Services\BOMGovernanceService::class)->assertPublishable($bom);
             }
 
             $bom->update([

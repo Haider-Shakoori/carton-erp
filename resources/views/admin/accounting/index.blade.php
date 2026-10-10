@@ -98,7 +98,20 @@
                 <div class="table-responsive">
                     <table class="table table-sm mb-0">
                         <thead><tr><th>Code</th><th>Account</th><th>Type</th><th class="text-end">Amount USD</th></tr></thead>
-                        <tbody>@foreach($balanceSheet['rows'] as $row)<tr><td>{{ $row['code'] }}</td><td>{{ $row['name'] }}</td><td>{{ ucfirst($row['type']) }}</td><td class="text-end">{{ number_format($row['amount_usd'],2) }}</td></tr>@endforeach</tbody>
+                        <tbody>
+                            @foreach($balanceSheet['rows'] as $row)
+                                <tr><td>{{ $row['code'] }}</td><td>{{ $row['name'] }}</td><td>{{ ucfirst($row['type']) }}</td><td class="text-end">{{ number_format($row['amount_usd'],2) }}</td></tr>
+                            @endforeach
+                            <tr class="table-light fw-semibold"><td colspan="3">Retained earnings (cumulative net profit)</td><td class="text-end">{{ number_format($balanceSheet['retained_earnings_usd'],2) }}</td></tr>
+                        </tbody>
+                        <tfoot class="fw-semibold">
+                            <tr><td colspan="3">Total assets</td><td class="text-end">{{ number_format($balanceSheet['assets_usd'],2) }}</td></tr>
+                            <tr><td colspan="3">Liabilities + equity + retained earnings</td><td class="text-end">{{ number_format($balanceSheet['liabilities_and_equity_usd'],2) }}</td></tr>
+                            <tr class="{{ abs($balanceSheet['balance_difference_usd']) > 0.01 ? 'table-danger' : 'table-success' }}">
+                                <td colspan="3">Balance sheet difference (must equal 0)</td>
+                                <td class="text-end">{{ number_format($balanceSheet['balance_difference_usd'],2) }}</td>
+                            </tr>
+                        </tfoot>
                     </table>
                 </div>
             </div>

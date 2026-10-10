@@ -101,6 +101,7 @@
 
         .app-main {
             flex: 1;
+            min-width: 0;
             margin-left: var(--sidebar-width);
             transition: margin-left 0.3s ease;
             display: flex;
@@ -114,6 +115,7 @@
 
         .app-content {
             flex: 1;
+            min-width: 0;
             padding: 1.5rem 2rem 2rem;
             margin-top: var(--navbar-height);
         }
@@ -121,10 +123,32 @@
         @media (max-width: 992px) {
             .app-main {
                 margin-left: 0;
+                margin-right: 0;
+                width: 100%;
+                max-width: 100%;
             }
 
             .app-content {
                 padding: 1rem;
+                width: 100%;
+                min-width: 0;
+            }
+
+            /* Sidebar is off-canvas by default on phones and tablets. */
+            .sidebar {
+                transform: translateX(-100%);
+            }
+
+            .sidebar.mobile-open {
+                transform: translateX(0);
+            }
+
+            html[dir="rtl"] .sidebar {
+                transform: translateX(100%);
+            }
+
+            html[dir="rtl"] .sidebar.mobile-open {
+                transform: translateX(0);
             }
         }
 
@@ -2384,15 +2408,21 @@ SCRIPTS
             form.submit();
         });
 
-        // ─── Sidebar Toggle (Mobile) ───
+        // ─── Sidebar: mobile uses off-canvas state; desktop retains collapse. ───
         $('#sidebarToggle').on('click', function() {
-            $('#sidebar').toggleClass('hidden');
-            $('#sidebarOverlay').toggleClass('show');
+            if (window.matchMedia('(max-width: 992px)').matches) {
+                const expanded = $('#sidebar').toggleClass('mobile-open').hasClass('mobile-open');
+                $('#sidebarOverlay').toggleClass('show', expanded);
+                $(this).attr('aria-expanded', expanded ? 'true' : 'false');
+            } else {
+                $('#sidebar').toggleClass('hidden');
+            }
         });
 
         $('#sidebarOverlay').on('click', function() {
-            $('#sidebar').addClass('hidden');
+            $('#sidebar').removeClass('mobile-open');
             $('#sidebarOverlay').removeClass('show');
+            $('#sidebarToggle').attr('aria-expanded', 'false');
         });
 
         // ─── Submenu Toggle ───
@@ -2404,9 +2434,10 @@ SCRIPTS
 
         // ─── Auto-close sidebar on nav click (mobile) ───
         $('.sidebar-nav a:not([data-toggle="submenu"])').on('click', function() {
-            if (window.innerWidth < 992) {
-                $('#sidebar').addClass('hidden');
+            if (window.innerWidth <= 992) {
+                $('#sidebar').removeClass('mobile-open');
                 $('#sidebarOverlay').removeClass('show');
+                $('#sidebarToggle').attr('aria-expanded', 'false');
             }
         });
 

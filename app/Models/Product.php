@@ -27,6 +27,8 @@ class Product extends Model
 
     protected $fillable = [
         'name',
+        'sku',
+        'finished_weight_g',
         'slug',
         'unit',
         'default_kg_per_roll',
@@ -42,6 +44,7 @@ class Product extends Model
         'is_active' => 'boolean',
         'min_stock_alert' => 'integer',
         'default_kg_per_roll' => 'decimal:4',
+        'finished_weight_g' => 'decimal:2',
     ];
 
     protected $appends = ['current_stock', 'is_low_stock', 'weighted_avg_cost'];

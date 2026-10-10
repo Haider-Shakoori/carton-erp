@@ -103,6 +103,8 @@ class ProductController extends Controller
                 'category_id' => 'required|exists:categories,id',
                 'unit' => 'nullable|string|max:100',
                 'default_kg_per_roll' => 'nullable|numeric|min:0.0001',
+                'sku' => 'nullable|string|max:100|regex:/^[A-Za-z0-9._-]+$/',
+                'finished_weight_g' => 'nullable|numeric|min:0.01|max:99999999.99',
                 'min_stock_alert' => 'nullable|integer|min:0',
                 'image' => 'nullable|image|mimes:jpeg,png,jpg,gif,webp|max:2048',
                 'description' => 'nullable|string',
@@ -121,6 +123,20 @@ class ProductController extends Controller
                 'finished' => Product::TYPE_FINISHED_GOOD,
                 default => $requestedType,
             };
+            // Gross finished-carton weight is reference data, not a paper-stock deduction.
+            if ($validated['type'] !== Product::TYPE_FINISHED_GOOD) {
+                $validated['finished_weight_g'] = null;
+            }
+            if (array_key_exists('sku', $validated) && $validated['sku'] !== null) {
+                $validated['sku'] = strtoupper(trim($validated['sku']));
+            }
+            $currentProductId = $request->product_id ?: ($product->id ?? null);
+            if (! empty($validated['sku']) && Product::query()
+                ->where('sku', $validated['sku'])
+                ->when($currentProductId, fn ($query) => $query->where('id', '!=', $currentProductId))
+                ->exists()) {
+                throw \Illuminate\Validation\ValidationException::withMessages(['sku' => 'This SKU is already used.']);
+            }
             $validated['min_stock_alert'] = $request->min_stock_alert ?? 0;
             $validated['is_active'] = $request->has('is_active');
 
@@ -173,6 +189,8 @@ class ProductController extends Controller
                 'category_id' => 'required|exists:categories,id',
                 'unit' => 'nullable|string|max:100',
                 'default_kg_per_roll' => 'nullable|numeric|min:0.0001',
+                'sku' => 'nullable|string|max:100|regex:/^[A-Za-z0-9._-]+$/',
+                'finished_weight_g' => 'nullable|numeric|min:0.01|max:99999999.99',
                 'min_stock_alert' => 'nullable|integer|min:0',
                 'image' => 'nullable|image|mimes:jpeg,png,jpg,gif,webp|max:2048',
                 'description' => 'nullable|string',
@@ -191,6 +209,20 @@ class ProductController extends Controller
                 'finished' => Product::TYPE_FINISHED_GOOD,
                 default => $requestedType,
             };
+            // Gross finished-carton weight is reference data, not a paper-stock deduction.
+            if ($validated['type'] !== Product::TYPE_FINISHED_GOOD) {
+                $validated['finished_weight_g'] = null;
+            }
+            if (array_key_exists('sku', $validated) && $validated['sku'] !== null) {
+                $validated['sku'] = strtoupper(trim($validated['sku']));
+            }
+            $currentProductId = $request->product_id ?: ($product->id ?? null);
+            if (! empty($validated['sku']) && Product::query()
+                ->where('sku', $validated['sku'])
+                ->when($currentProductId, fn ($query) => $query->where('id', '!=', $currentProductId))
+                ->exists()) {
+                throw \Illuminate\Validation\ValidationException::withMessages(['sku' => 'This SKU is already used.']);
+            }
             $validated['min_stock_alert'] = $request->min_stock_alert ?? 0;
             $validated['is_active'] = $request->has('is_active');
 

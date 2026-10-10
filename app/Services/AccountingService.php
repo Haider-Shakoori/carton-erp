@@ -549,12 +549,31 @@ class AccountingService
                 ];
             });
 
+        // P&L accounts are not booked as equity journals until year-end close.
+        // For management reporting, include cumulative undistributed earnings
+        // in equity so Assets = Liabilities + Equity + Earnings can be checked.
+        // This read-only calculation does NOT create or modify ledger entries.
+        $earnings = (float) $this->profitAndLoss(
+            Carbon::parse('1900-01-01'),
+            $asOf,
+            $consolidated,
+            $allowedBusinessUnitIds
+        )['net_profit_usd'];
+        $assets = round((float) $rows->where('type', 'asset')->sum('amount_usd'), 6);
+        $liabilities = round((float) $rows->where('type', 'liability')->sum('amount_usd'), 6);
+        $bookedEquity = round((float) $rows->where('type', 'equity')->sum('amount_usd'), 6);
+        $totalEquity = round($bookedEquity + $earnings, 6);
+
         return [
             'as_of' => $asOf->toDateString(),
             'rows' => $rows->all(),
-            'assets_usd' => round((float) $rows->where('type', 'asset')->sum('amount_usd'), 6),
-            'liabilities_usd' => round((float) $rows->where('type', 'liability')->sum('amount_usd'), 6),
-            'equity_usd' => round((float) $rows->where('type', 'equity')->sum('amount_usd'), 6),
+            'assets_usd' => $assets,
+            'liabilities_usd' => $liabilities,
+            'equity_usd' => $bookedEquity,
+            'retained_earnings_usd' => round($earnings, 6),
+            'total_equity_usd' => $totalEquity,
+            'liabilities_and_equity_usd' => round($liabilities + $totalEquity, 6),
+            'balance_difference_usd' => round($assets - $liabilities - $totalEquity, 6),
         ];
     }
 

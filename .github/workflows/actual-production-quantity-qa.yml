@@ -86,9 +86,6 @@ jobs:
           npm ci
           npm run build
 
-      - name: Frontend security audit
-        run: npm audit --audit-level=high
-
       - name: Prepare application
         run: |
           cp .env.example .env
@@ -98,6 +95,11 @@ jobs:
 
       - name: PHP syntax check
         run: |
+          php -l app/Http/Controllers/Admin/FinishedGoodsCsvController.php
+          php -l app/Services/FinishedGoodWeightAuditService.php
+          php -l database/migrations/2026_10_09_090000_add_finished_weight_and_sku_to_products.php
+          php -l tests/Feature/ProductCatalog/FinishedGoodsCsvImportTest.php
+          php -l tests/Feature/FinancialLogic/FinancialReleaseInvariantsTest.php
           php -l app/Services/ProductionQuantityService.php
           php -l app/Services/StockDeductionService.php
           php -l app/Services/ProductionService.php
@@ -175,6 +177,8 @@ jobs:
 
       - name: Focused actual production quantity tests
         run: |
+          php artisan test tests/Feature/ProductCatalog/FinishedGoodsCsvImportTest.php
+          php artisan test tests/Feature/FinancialLogic/FinancialReleaseInvariantsTest.php
           php artisan test tests/Feature/Production/ActualProductionQuantityUiContractTest.php
           php artisan test tests/Feature/Production/ProductionOrderStartProductionFkCostRegressionTest.php
           php artisan test tests/Feature/CartonSpecification/CartonSpecificationServiceTest.php
@@ -205,3 +209,7 @@ jobs:
 
       - name: Composer security audit
         run: composer audit --no-interaction
+
+      - name: Frontend security audit
+        if: ${{ !cancelled() }}
+        run: npm audit --audit-level=high

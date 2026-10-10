@@ -122,9 +122,14 @@ class Shareholder extends Model
 
     public function getTotalDistributedAttribute()
     {
-        return $this->profitDistributions()
-            ->where('status', ProfitDistributionItem::STATUS_PAID)
-            ->sum('amount');
+        // Sum approved allocations actually credited to the sub-ledger.
+        // The cash-paid metric is tracked separately by paid withdrawals.
+        return (float) $this->profitDistributions()
+            ->whereHas('transaction', function ($query) {
+                $query->where('status', 'active')
+                    ->where('is_cash', false)
+                    ->where('transaction_type', 'credit');
+            })->sum('amount');
     }
 
     public function getTotalWithdrawnAttribute()

@@ -138,6 +138,10 @@ class ProfitSharingService
             'expense_count' => $expenseTransactions->count(),
             'actual_sales_count' => $actualSalesCount,
             'estimated_sales_count' => $estimatedSalesCount,
+            'ready_to_distribute' => $estimatedSalesCount === 0,
+            'distribution_block_reason' => $estimatedSalesCount > 0
+                ? "Blocked: {$estimatedSalesCount} confirmed sale(s) have no actual recorded production cost. Complete and reconcile physical production before shareholder allocation."
+                : null,
         ];
     }
 
@@ -151,8 +155,10 @@ class ProfitSharingService
             $startDate = Carbon::parse($startDate)->toDateString();
             $endDate = Carbon::parse($endDate)->toDateString();
 
-            $existing = ProfitDistribution::whereDate('period_start', $startDate)
-                ->whereDate('period_end', $endDate)
+            // A different but overlapping period must never credit the same
+            // earned profit to shareholders twice.
+            $existing = ProfitDistribution::whereDate('period_start', '<=', $endDate)
+                ->whereDate('period_end', '>=', $startDate)
                 ->whereIn('status', [
                     ProfitDistribution::STATUS_APPROVED,
                     ProfitDistribution::STATUS_DISTRIBUTED,
@@ -165,6 +171,12 @@ class ProfitSharingService
             }
 
             $profitData = $this->calculatePeriodProfit($startDate, $endDate);
+            if ((int) ($profitData['estimated_sales_count'] ?? 0) > 0) {
+                throw new RuntimeException(
+                    'Shareholder allocation blocked: '.$profitData['estimated_sales_count']
+                    .' confirmed sale(s) lack actual production costs. Estimates may be used for previews, never payouts.'
+                );
+            }
             $totalProfit = round((float) $profitData['total_profit'], 2);
 
             if ($totalProfit <= 0) {
@@ -261,10 +273,13 @@ class ProfitSharingService
                     'is_visible' => true,
                 ]);
 
+                // A non-cash credit to the shareholder sub-ledger is an
+                // allocation, not proof of a settled cash/bank payment.
+                // Actual cash withdrawals use the separate withdrawal workflow.
                 $item->update([
                     'transaction_id' => $transaction->id,
-                    'status' => ProfitDistributionItem::STATUS_PAID,
-                    'payment_date' => now(),
+                    'status' => ProfitDistributionItem::STATUS_PENDING,
+                    'payment_date' => null,
                 ]);
             }
 
