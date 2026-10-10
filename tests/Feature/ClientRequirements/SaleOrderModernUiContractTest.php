@@ -22,6 +22,13 @@ it('keeps the approved modern sale order UI contract wired to existing sale beha
         ->toContain('Existing BOM')
         ->toContain('Quick Quotation')
         ->toContain('width:min(1080px,96vw)!important')
+        ->toContain('Products')
+        ->toContain('Ordered Qty')
+        ->toContain('Invoice Qty')
+        ->toContain('Original customer quantity')
+        ->toContain('Matches ordered quantity')
+        ->toContain('$line->ordered_qty ?? $line->qty ?? 0')
+        ->toContain('$soxQuantityVariance = $soxInvoiceQty - $soxOrderedQty')
         ->toContain('The override changes selling price only');
 
     expect($show)
