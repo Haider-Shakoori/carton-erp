@@ -102,3 +102,18 @@ it('detects historical paid flags with non-cash ledger credits without auto-rewr
         ->and($item->fresh()->status)->toBe(ProfitDistributionItem::STATUS_PAID)
         ->and($transaction->fresh()->is_cash)->toBeFalsy();
 });
+
+
+it('prioritizes an unapproved engineering BOM over a missing gross carton weight in the UI audit', function () {
+    $finished = new \App\Models\Product();
+    $finished->finished_weight_g = null;
+    $unapproved = new \App\Models\BOM();
+    $unapproved->description = '[REVIEW REQUIRED] 7-ply paper recipe missing';
+
+    $assessment = app(\App\Services\FinishedGoodWeightAuditService::class)
+        ->assess($finished, $unapproved);
+
+    expect($assessment['status'])->toBe('BOM review required')
+        ->and($assessment['measured_g'])->toBeNull()
+        ->and($assessment['paper_g'])->toBeNull();
+});
