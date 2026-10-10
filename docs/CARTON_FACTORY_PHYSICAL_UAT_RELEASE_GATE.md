@@ -1,5 +1,9 @@
 # Carton Factory — Physical UAT and Financial Go-Live Gate
 
+> **GitHub-only test mode:** The ERP is not deployed to any VPS or hosting. Run `php artisan erp:release-audit --json` inside a GitHub Actions MySQL runner to get a downloadable read-only risk report (`factory-release-audit.json`). The workflow's seeded data reports intentional review cases; this does **not** certify actual factory readings. Use `php artisan erp:release-audit --fail-on-risk` on a verified staging copy when one exists. The command never changes BOMs, ledger or inventory.
+>
+> Prior allocations with `profit_distribution_items.status=paid` but a non-cash linked transaction are flagged for **manual bank/cash reconciliation**. Do not bulk-update old records until genuine payment evidence is provided. The factory must still supply missing material-specific recipes, dimensions, and ply/7-ply profile approvals.
+
 **Scope:** 3D Carton and Syrup Pack. **Status:** OPEN — cannot be approved by GitHub CI alone.
 
 ## 1. Incomplete customer BOMs: measured recipes required

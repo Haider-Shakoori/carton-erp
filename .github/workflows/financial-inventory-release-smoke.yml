@@ -70,6 +70,8 @@ jobs:
           php artisan route:list --path=admin/products > /tmp/catalog-routes.txt
           php artisan view:cache
           php artisan erp:readiness
+      - name: Export read-only factory release risk report
+        run: php artisan erp:release-audit --json > factory-release-audit.json
       - name: Run full release-critical functional + financial matrix
         shell: bash
         run: |
@@ -78,6 +80,7 @@ jobs:
             tests/Feature/ProductCatalog/FinishedGoodsCsvImportTest.php \
             tests/Feature/FinancialLogic/FinancialReleaseInvariantsTest.php \
             tests/Feature/FinancialLogic/ShareholderDistributionReleaseGuardTest.php \
+            tests/Feature/FinancialLogic/FactoryReleaseAuditTest.php \
             tests/Feature/Enterprise/AccountingControlTest.php \
             tests/Feature/Enterprise/ProductionCostVarianceTest.php \
             tests/Feature/GoldenPath/RealWorldCartonWorkflowRemediationTest.php \
@@ -95,5 +98,6 @@ jobs:
           name: financial-inventory-smoke
           path: |
             financial-inventory-smoke.log
+            factory-release-audit.json
             /tmp/catalog-routes.txt
           if-no-files-found: ignore
