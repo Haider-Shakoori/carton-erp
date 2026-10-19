@@ -34,11 +34,14 @@ class FinishedGoodsCsvController extends Controller
     {
         $finishedProducts = Product::query()
             ->finishedGoods()
-            ->with(['boms' => function ($query) {
-                $query->with('items.material')
-                    ->orderByRaw("CASE WHEN status = 'active' THEN 0 ELSE 1 END")
-                    ->latest('id');
-            }])
+            ->with([
+                'finishedGoodSpecifications',
+                'boms' => function ($query) {
+                    $query->with('items.material')
+                        ->orderByRaw("CASE WHEN status = 'active' THEN 0 ELSE 1 END")
+                        ->latest('id');
+                },
+            ])
             ->orderBy('name')
             ->paginate(50);
 
