@@ -7,7 +7,7 @@
     <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
         <div>
             <h1 class="h3 mb-1">Carton weight / BOM audit</h1>
-            <p class="text-muted mb-0">Measured gross carton weight vs theoretical BOM paper grams per finished carton.</p>
+            <p class="text-muted mb-0">Recorded product weight or handwritten factory-sheet reference vs theoretical BOM paper grams per finished carton.</p>
         </div>
         <div class="d-flex flex-wrap gap-2">
             <a class="btn btn-outline-warning" href="{{ route('admin.products.bom-review-sheet') }}">
@@ -18,6 +18,7 @@
     </div>
     <div class="alert alert-info">
         Indicative only: glue, ink, moisture and rejects may explain a difference.
+        Factory-sheet figures are transcribed and require confirmation. They match by carton dimensions and ply only, so they are not proof of an identical paper recipe across customers.
         Weight checks never change FIFO inventory, stock consumption or approved BOM material recipes.
         BOMs are evaluated in the current business-unit context.
     </div>
@@ -27,7 +28,7 @@
             <table class="table table-hover mb-0 align-middle">
                 <thead>
                 <tr>
-                    <th>Finished good</th><th>Gross weight (g)</th><th>BOM</th>
+                    <th>Finished good</th><th>Net weight / reference (g)</th><th>BOM</th>
                     <th>Paper only (g)</th><th>Gross minus paper (g)</th><th>Review result</th>
                 </tr>
                 </thead>
@@ -42,7 +43,14 @@
                             <strong>{{ $product->name }}</strong>
                             <small class="d-block text-muted">{{ $product->sku ?: '#'.$product->id }}</small>
                         </td>
-                        <td>{{ $audit['measured_g'] !== null ? number_format($audit['measured_g'], 2) : '—' }}</td>
+                        <td>
+                            {{ $audit['measured_g'] !== null ? number_format($audit['measured_g'], 2) : '—' }}
+                            @if(($audit['measured_source'] ?? null) === 'factory_sheet_reference')
+                                <small class="d-block text-warning">Factory sheet reference · verify before BOM correction</small>
+                            @elseif(($audit['measured_source'] ?? null) === 'product')
+                                <small class="d-block text-muted">Product master weight</small>
+                            @endif
+                        </td>
                         <td>
                             {{ $bom?->code ?: '—' }}
                             @if($bom)<small class="d-block text-muted">{{ $bom->status }}</small>@endif
